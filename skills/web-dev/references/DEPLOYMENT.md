@@ -7,7 +7,6 @@
 - [Cloud Functions](#cloud-functions)
 - [Cloud DNS Setup](#cloud-dns-setup)
 - [Firestore Security Rules](#firestore-security-rules)
-- [Firebase Auth](#firebase-auth)
 - [Free Tier Reference](#free-tier-reference)
 - [Cloud Run (Escape Hatch)](#cloud-run-escape-hatch)
 
@@ -34,9 +33,9 @@ Use `apphosting.yaml` in the root directory to manage runtime settings and envir
 runConfig:
   cpu: 1
   memoryMiB: 1024
-  minInstances: 0      # Scale to zero when inactive (free tier friendly)
-  maxInstances: 10     # Limit scaling to control costs
-  concurrency: 100     # Handle up to 100 requests per instance
+  minInstances: 0 # Scale to zero when inactive (free tier friendly)
+  maxInstances: 10 # Limit scaling to control costs
+  concurrency: 100 # Handle up to 100 requests per instance
 
 env:
   # Static environment variables
@@ -52,7 +51,7 @@ env:
 ```
 
 ### Custom domain
-...
+
 1. Add `projectname.charlies.bot` in Firebase console → App Hosting → Custom domains
 2. Use `run_gcloud_command` to add the DNS records in Cloud DNS (see DNS section below)
 3. SSL is auto-provisioned — no manual cert setup
@@ -64,64 +63,15 @@ env:
 
 ## Cloud Functions
 
-Use for backend logic alongside App Hosting.
-
-### HTTP callable functions
-
-```typescript
-import { onRequest } from 'firebase-functions/v2/https';
-
-export const api = onRequest(async (req, res) => {
-  // Handle API request
-  res.json({ status: 'ok' });
-});
-```
-
-### Firestore triggers
-
-```typescript
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
-
-export const onUserCreated = onDocumentCreated('users/{userId}', async (event) => {
-  const userData = event.data?.data();
-  // React to new user document
-});
-```
-
-### Auth triggers
-
-```typescript
-import { beforeUserCreated } from 'firebase-functions/v2/identity';
-
-export const onNewUser = beforeUserCreated(async (event) => {
-  // Custom logic on user creation
-});
-```
-
-### Scheduled functions
-
-```typescript
-import { onSchedule } from 'firebase-functions/v2/scheduler';
-
-export const dailyCleanup = onSchedule('every day 03:00', async () => {
-  // Run daily cleanup
-});
-```
-
-### Deploy and debug
+Use Cloud Functions v2 (`firebase-functions/v2`) for backend logic alongside App Hosting. Import from `firebase-functions/v2/https`, `firebase-functions/v2/firestore`, `firebase-functions/v2/identity`, or `firebase-functions/v2/scheduler` as needed.
 
 ```bash
 firebase deploy --only functions        # Deploy all functions
 firebase deploy --only functions:api    # Deploy specific function
+firebase emulators:start --only functions,firestore,auth  # Local dev
 ```
 
-Debug with `mcp__plugin_firebase_firebase__functions_get_logs` — don't dig through the console manually.
-
-### Local development
-
-```bash
-firebase emulators:start --only functions,firestore,auth
-```
+Debug with `mcp__plugin_firebase_firebase__functions_get_logs`.
 
 ## Cloud DNS Setup
 
@@ -212,82 +162,15 @@ Deploy with:
 firebase deploy --only firestore:rules
 ```
 
-## Firebase Auth
-
-### Setup
-
-1. Enable Google sign-in in Firebase console (authorized domain: `projectname.charlies.bot`)
-2. Contact email: sudo@charlies.bot
-
-### Angular integration
-
-Use the Firebase JS SDK directly — no `@angular/fire` needed.
-
-Initialize Firebase once (e.g., in a service or `main.ts`):
-
-```typescript
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-
-const app = initializeApp({
-  apiKey: '...',
-  authDomain: '...',
-  projectId: '...',
-  // ...
-});
-```
-
-### AuthService pattern
-
-In `core/auth.service.ts`:
-
-```typescript
-import { Injectable, signal, computed, inject, DestroyRef } from '@angular/core';
-import { getAuth, onAuthStateChanged, signInWithPopup, signOut, GoogleAuthProvider, User } from 'firebase/auth';
-
-@Injectable({ providedIn: 'root' })
-export class AuthService {
-  private destroyRef = inject(DestroyRef);
-  private auth = getAuth();
-  user = signal<User | null>(null);
-  isAuthenticated = computed(() => this.user() !== null);
-
-  constructor() {
-    const unsubscribe = onAuthStateChanged(this.auth, (user) => this.user.set(user));
-    this.destroyRef.onDestroy(unsubscribe);
-  }
-
-  async signInWithGoogle(): Promise<void> {
-    await signInWithPopup(this.auth, new GoogleAuthProvider());
-  }
-
-  async signOut(): Promise<void> {
-    await signOut(this.auth);
-  }
-}
-```
-
-### Route guard pattern
-
-In `core/auth.guard.ts`:
-
-```typescript
-export const authGuard: CanActivateFn = () => {
-  const authService = inject(AuthService);
-  const router = inject(Router);
-  return authService.isAuthenticated() || router.createUrlTree(['/login']);
-};
-```
-
 ## Free Tier Reference
 
-| Service | Free tier limit |
-| --- | --- |
-| App Hosting | Git-push deploys, auto-scaling, included in Firebase plan |
-| Firestore | 1 GiB storage, 50K reads/day, 20K writes/day, 20K deletes/day |
-| Firebase Auth | 50K MAU (email/password, Google) |
-| Cloud Functions | 2M invocations/month, 400K GB-seconds, 200K GHz-seconds |
-| Cloud Storage | 5 GB storage, 1 GB/day download |
+| Service         | Free tier limit                                               |
+| --------------- | ------------------------------------------------------------- |
+| App Hosting     | Git-push deploys, auto-scaling, included in Firebase plan     |
+| Firestore       | 1 GiB storage, 50K reads/day, 20K writes/day, 20K deletes/day |
+| Firebase Auth   | 50K MAU (email/password, Google)                              |
+| Cloud Functions | 2M invocations/month, 400K GB-seconds, 200K GHz-seconds       |
+| Cloud Storage   | 5 GB storage, 1 GB/day download                               |
 
 Design for these limits. If a side project exceeds free tier, it's probably successful enough to pay for.
 

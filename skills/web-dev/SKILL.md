@@ -1,17 +1,20 @@
 ---
 name: web-dev
-description: Use for ANY Angular or Firebase work — new Angular project, add a feature/component/service, Firebase deploy, Firestore rules, Cloud Functions, subdomain setup on *.charlies.bot, CSS styling for Angular, signals patterns, zoneless setup, App Hosting config, and all web side project development.
+description: Use for ANY Angular or Firebase work — new Angular project, add a feature/component/service/route, Firebase deploy, Firestore rules, Cloud Functions, subdomain setup on *.charlies.bot, CSS styling for Angular, signals patterns, zoneless setup, App Hosting config, Vitest testing, ESLint/Prettier setup, ng generate scaffolding, and all web side project development.
 ---
 
-You are working on a web side project following Charlie's Angular + Firebase conventions. Every project deploys as a subdomain of `charlies.bot`. Read `references/DEPLOYMENT.md` for the full deployment, hosting, and infrastructure guide before making deployment or infrastructure decisions.
+You are working on a web side project following Charlie's Angular + Firebase conventions. Every project deploys as a subdomain of `charlies.bot`.
+
+- Read `references/ARCHITECTURE.md` when deciding where to place new files or creating a new feature folder.
+- Read `references/DEPLOYMENT.md` before any deploy, DNS, Cloud Functions, or Firestore rules work.
+- Read `references/AUTH.md` when adding Firebase Auth to a project for the first time.
+
 ## Core Principles
 
 Every side project is `projectname.charlies.bot`. Firebase handles everything — hosting, backend, data, auth. Free tier first. Zero setup decisions. **Firebase App Hosting** is used for all projects.
 
 ```
 All projects     → Firebase App Hosting → projectname.charlies.bot
-```
-
 Backend logic    → Cloud Functions    (API, triggers, cron)
 Data             → Firestore          (free tier)
 Auth             → Firebase Auth      (when needed)
@@ -22,11 +25,11 @@ DNS              → Cloud DNS          (*.charlies.bot)
 
 Three MCP servers cover the full workflow. Use them proactively — don't do things manually.
 
-**Angular CLI MCP** — code quality gate:
+**Angular CLI MCP** — for patterns this skill doesn't cover:
 
-- MUST call `get_best_practices` before writing ANY Angular code. No exceptions.
-- Use `find_examples` for modern Angular 21 patterns (signals, zoneless, signal forms).
-- Use `search_documentation` for the latest Angular docs.
+- Use `get_best_practices` when working with Angular APIs not covered in this skill (e.g., animations, i18n, service workers). Skip it for signals, OnPush, standalone, routing — those are already defined here.
+- Use `find_examples` when unsure about a specific modern Angular pattern.
+- Use `search_documentation` for Angular API details.
 - Use `angular-cli__list_projects` to discover workspace structure.
 
 **Firebase MCP** — project lifecycle, data, auth, hosting:
@@ -58,71 +61,95 @@ Three MCP servers cover the full workflow. Use them proactively — don't do thi
 
 ## Tech Stack
 
-| Concern         | Choice                                                           |
-| --------------- | ---------------------------------------------------------------- |
-| Framework       | Angular 21+ (Signals-first, **Zoneless**, standalone)            |
-| Hosting         | Firebase App Hosting (git-push deploys)                           |
-| Backend         | Cloud Functions for Firebase                                     |
-| Database        | Firestore (free tier focus)                                      |
-| Auth            | Firebase Auth (when needed)                                      |
-| DNS             | Cloud DNS (`*.charlies.bot`)                                     |
-| CSS             | Modern CSS (component-scoped) + CSS reset                        |
-| Package manager | npm                                                              |
-| Email           | sudo@charlies.bot (Google Workspace)                             |
-| Testing         | **Vitest** (Angular default)                                     |
-| Linting         | ESLint via `@angular-eslint`                                     |
+| Concern         | Choice                                                |
+| --------------- | ----------------------------------------------------- |
+| Framework       | Angular 21+ (Signals-first, **Zoneless**, standalone) |
+| Hosting         | Firebase App Hosting (git-push deploys)               |
+| Backend         | Cloud Functions for Firebase                          |
+| Database        | Firestore (free tier focus)                           |
+| Auth            | Firebase Auth (when needed)                           |
+| DNS             | Cloud DNS (`*.charlies.bot`)                          |
+| CSS             | Modern CSS (component-scoped) + CSS reset             |
+| Package manager | npm                                                   |
+| Email           | sudo@charlies.bot (Google Workspace)                  |
+| Testing         | **Vitest** (Angular default)                          |
+| Linting         | ESLint via `angular-eslint`                           |
+| Formatting      | Prettier                                              |
 
 ## Project Structure
 
-Use `ng generate` to create all code — it handles file placement, naming, and boilerplate. Angular 21 projects use **Zoneless** by default. Follow the Vertical Slice organization in `references/ARCHITECTURE.md`:
+Use `ng generate` to create all code — it handles file placement, naming, and boilerplate. Angular 21 projects use **Zoneless** by default and the **2025 file naming convention** (`dashboard.ts` not `dashboard.component.ts`).
 
-- **`core/`** — global singletons (Auth, Interceptors, Config). Provided in root.
-- **`features/`** — business domain slices (Dashboard, Profile). Lazy-loaded via `loadChildren`.
-- **`shared/`** — reusable UI kit, pipes, and directives (no business logic).
-- **`layout/`** — structural skeleton (Navbar, Footer).
+- **`core/`** — app-wide infrastructure (auth, layout, interceptors). Not a feature.
+- **Features at top level** — each feature is its own directory (`dashboard/`, `profile/`). Self-contained with own routes, components, and services.
+- **`ui/`** — reusable dumb components, created on demand when shared across 2+ features.
 
 ```bash
-ng generate component features/dashboard   # Smart component
-ng generate component shared/button        # Dumb UI component
+ng generate component dashboard            # Feature component
+ng generate component ui/button            # Reusable UI component
 ng generate service core/auth              # Global service
 ```
 
-**"Where should shared logic go?"**
-`core/` for app-wide services and interceptors. `shared/` for reusable presentational components, pipes, and directives. If it's a domain-specific journey, it belongs in `features/`. See `references/ARCHITECTURE.md` for full guidance.
+**"Where does this go?"**
+`core/` for infrastructure (auth, layout, interceptors). Top-level folder for features. `ui/` for components reused across features. Start in the feature, extract to `ui/` when reused.
 
 ## Component Pattern
 
-Standalone components with signals and **Signal Forms API**:
+**Inline templates for small components** (Angular best practice), external files for large ones:
 
 ```typescript
+// Small component — inline template + styles (single file)
 @Component({
-  selector: "app-dashboard",
-  templateUrl: "./dashboard.component.html",
-  styleUrl: "./dashboard.component.css",
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: "app-dashboard-stats",
+  template: `
+    <div class="stats">
+      @for (stat of stats(); track stat.label) {
+        <span>{{ stat.label }}: {{ stat.value }}</span>
+      }
+    </div>
+  `,
+  styles: `
+    .stats {
+      display: flex;
+      gap: 1rem;
+    }
+  `,
 })
-export class DashboardComponent {
-  private firestoreService = inject(FirestoreService);
-  items = signal<Item[]>([]);
-  isLoading = signal(false);
-  error = signal<string | null>(null);
-  itemCount = computed(() => this.items().length);
+export class DashboardStats {
+  readonly stats = input.required<Stat[]>();
+}
 
-  // Angular 21 Signal Forms
-  searchQuery = signal('');
+// Large component — external template + styles
+@Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: "app-dashboard",
+  templateUrl: "./dashboard.html",
+  styleUrl: "./dashboard.css",
+})
+export class Dashboard {
+  private router = inject(Router);
+
+  items = httpResource<Item[]>(() => "/api/items");
+  itemCount = computed(() => this.items.value()?.length ?? 0);
+  searchQuery = signal("");
+  selectedCategory = linkedSignal(
+    () => this.items.value()?.[0]?.category ?? "all",
+  );
 }
 ```
 
-Components use signals for all reactive state. Use built-in control flow (`@if`, `@for`, `@switch`). Angular 21 templates support **spread syntax** for function arguments and objects.
+Components use signals for all reactive state. Use built-in control flow (`@if`, `@for`, `@switch`).
 
 ## State Management
 
-**Signals by default.** Use Angular signals (`signal()`, `computed()`, `effect()`) for all component and service state. Angular 21 favors **Zoneless** change detection — avoid `NgZone` and manual change detection calls.
+**Signals by default.** Use Angular signals (`signal()`, `computed()`, `linkedSignal()`, `effect()`) for all component and service state. Use `computed()` for read-only derived state, `linkedSignal()` for writable derived state (e.g., a selection that resets when its source changes), and `effect()` sparingly as a last resort for side effects. Angular 21 favors **Zoneless** change detection — avoid `NgZone` and manual change detection calls.
 
-**Async data loading:** Use `httpResource()` (experimental) for reactive HTTP data fetching instead of manual `isLoading`/`error`/`data` signal triplets. It wraps `HttpClient` and exposes status and response as signals. For non-HTTP async data, use `resource()`.
+**Async data loading:** Use `httpResource()` (experimental) for reactive HTTP data fetching instead of manual `isLoading`/`error`/`data` signal triplets. It wraps `HttpClient` and exposes status and response as signals. For non-HTTP async data, use `resource()`. Requires `provideHttpClient()` in `app.config.ts` providers.
 
 ## CSS Conventions
 
-Component-scoped modern CSS via Angular's default `ViewEncapsulation.Emulated`. Each component gets its own `.css` file.
+Component-scoped modern CSS via Angular's default `ViewEncapsulation.Emulated`. Small components use inline `styles`; large components use external `.css` files.
 
 **Global `styles.css`** contains only:
 
@@ -150,7 +177,7 @@ When a project needs Firebase (Firestore, Auth, Cloud Functions, etc.):
 
 ## Firestore Conventions
 
-**Security rules are locked down from day one** — even for prototypes. Use the auth-owns-data pattern as default. Copy `assets/firestore.rules` for the locked-down starting point. Use `firebase_get_security_rules` to verify existing rules before deploying.
+**Security rules are locked down from day one** — even for prototypes. New projects start with `assets/firestore.rules` (deny all). As features are built, open access per-collection using the auth-owns-data pattern (see `references/DEPLOYMENT.md` for patterns). Use `firebase_get_security_rules` to verify existing rules before deploying.
 
 ## Cloud Functions
 
@@ -162,6 +189,29 @@ Use Cloud Functions for:
 - **Scheduled tasks** — cron jobs (cleanup, aggregation, notifications)
 
 Keep functions small and focused — one function per concern. Deploy with `firebase deploy --only functions`. Debug with `mcp__plugin_firebase_firebase__functions_get_logs`.
+
+## Testing
+
+**Vitest** is the default test runner (`ng test`). Tests live next to the code they test (e.g., `dashboard.spec.ts` alongside `dashboard.ts`).
+
+- Use `TestBed` for component tests with `provideHttpClient()` and `provideHttpClientTesting()`.
+- Test `httpResource` via `HttpTestingController` — flush requests and assert on signal values.
+- Test signals directly: update with `.set()` / `.update()`, assert with `()`.
+- Use `fixture.componentRef.setInput()` for signal inputs.
+
+```typescript
+TestBed.configureTestingModule({
+  providers: [provideHttpClient(), provideHttpClientTesting()],
+});
+const mockBackend = TestBed.inject(HttpTestingController);
+// ... flush requests, assert signal values
+```
+
+## Linting & Formatting
+
+**ESLint** is added via `ng add angular-eslint` (flat config, `eslint.config.js`). The scaffold script handles this. Run with `ng lint`.
+
+**Prettier** is added manually for formatting. Install with `npm install prettier --save-dev` and add a `.prettierrc` config. Use `eslint-config-prettier` to avoid rule conflicts.
 
 ## Scaffolding a New Project
 
@@ -187,4 +237,3 @@ Every project deploys as `projectname.charlies.bot`. See `references/DEPLOYMENT.
 ## Reference
 
 For the full deployment, hosting, infrastructure, and security rules guide, read `references/DEPLOYMENT.md`.
-
