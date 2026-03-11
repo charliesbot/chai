@@ -6,7 +6,7 @@ description: Use for ANY Angular or Firebase work — new Angular project, add a
 You are working on a web side project following Charlie's Angular + Firebase conventions. Every project deploys as a subdomain of `charlies.bot`.
 
 - Read `references/ARCHITECTURE.md` when deciding where to place new files or creating a new feature folder.
-- Read `references/DEPLOYMENT.md` before any deploy, DNS, Cloud Functions, or Firestore rules work.
+- Read `references/DEPLOYMENT.md` before any deploy, DNS, or Cloud Functions work.
 - Read `references/AUTH.md` when adding Firebase Auth to a project for the first time.
 
 ## Core Principles
@@ -147,6 +147,19 @@ Components use signals for all reactive state. Use built-in control flow (`@if`,
 
 **Async data loading:** Use `httpResource()` (experimental) for reactive HTTP data fetching instead of manual `isLoading`/`error`/`data` signal triplets. It wraps `HttpClient` and exposes status and response as signals. For non-HTTP async data, use `resource()`. Requires `provideHttpClient()` in `app.config.ts` providers.
 
+**Firestore real-time listeners:** Use `DestroyRef` to clean up `onSnapshot` subscriptions. This works in both components and services that aren't root singletons:
+
+```typescript
+private destroyRef = inject(DestroyRef);
+
+listen(): void {
+  const unsub = onSnapshot(query, (snapshot) => { /* update signals */ });
+  this.destroyRef.onDestroy(() => unsub());
+}
+```
+
+Root singleton services (`providedIn: 'root'`) live for the app lifetime — no cleanup needed.
+
 ## CSS Conventions
 
 Component-scoped modern CSS via Angular's default `ViewEncapsulation.Emulated`. Small components use inline `styles`; large components use external `.css` files.
@@ -177,7 +190,27 @@ When a project needs Firebase (Firestore, Auth, Cloud Functions, etc.):
 
 ## Firestore Conventions
 
-**Security rules are locked down from day one** — even for prototypes. New projects start with `assets/firestore.rules` (deny all). As features are built, open access per-collection using the auth-owns-data pattern (see `references/DEPLOYMENT.md` for patterns). Use `firebase_get_security_rules` to verify existing rules before deploying.
+**Security rules are locked down from day one** — even for prototypes. New projects start with `assets/firestore.rules` (deny all). As features are built, open access per-collection using the auth-owns-data pattern. Use `firebase_get_security_rules` to verify existing rules before deploying. Deploy with `firebase deploy --only firestore:rules`.
+
+**Auth-owns-data pattern** (default for most features):
+
+```
+match /users/{userId} {
+  allow read, write: if request.auth != null && request.auth.uid == userId;
+}
+match /users/{userId}/{subcollection=**} {
+  allow read, write: if request.auth != null && request.auth.uid == userId;
+}
+```
+
+**Public-read / authenticated-write** (for shared content):
+
+```
+match /posts/{postId} {
+  allow read: if true;
+  allow write: if request.auth != null;
+}
+```
 
 ## Cloud Functions
 
@@ -236,4 +269,4 @@ Every project deploys as `projectname.charlies.bot`. See `references/DEPLOYMENT.
 
 ## Reference
 
-For the full deployment, hosting, infrastructure, and security rules guide, read `references/DEPLOYMENT.md`.
+For deployment, hosting, and infrastructure details, read `references/DEPLOYMENT.md`.
