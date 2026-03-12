@@ -59,7 +59,7 @@ Three MCP servers cover the full workflow. Use them proactively — don't do thi
 - **No deploy without subdomain configured** — every project gets `projectname.charlies.bot`. No exceptions.
 - **No RxJS for simple state** — use signals. RxJS only for complex async streams (WebSocket feeds, debounced search, combineLatest patterns).
 - **No Firebase Hosting (classic)** — Firebase App Hosting ONLY. Do not run `firebase deploy` for hosting. App Hosting is git-push only and configured via `apphosting.yaml`.
-- **No Cloud Run unless Cloud Functions genuinely can't handle it** — Cloud Functions cover API endpoints, triggers, and cron. Cloud Run is the rare escape hatch.
+- **No Cloud Run unless Cloud Functions genuinely can't handle it** — Angular server routes handle API endpoints, Cloud Functions handle triggers and cron. Cloud Run is the rare escape hatch.
 
 ## Tech Stack
 

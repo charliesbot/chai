@@ -4,7 +4,7 @@
 
 - [Firebase App Hosting](#firebase-app-hosting)
 - [apphosting.yaml](#apphostingyaml)
-- [Cloud Functions](#cloud-functions)
+- [Backend Logic](#backend-logic)
 - [Cloud DNS Setup](#cloud-dns-setup)
 - [Free Tier Reference](#free-tier-reference)
 - [Cloud Run (Escape Hatch)](#cloud-run-escape-hatch)
@@ -141,4 +141,4 @@ gcloud run deploy <service-name> \
   --allow-unauthenticated
 ```
 
-Map to subdomain via Cloud DNS (same process as above). This should be rare — Cloud Functions cover the vast majority of backend needs.
+Map to subdomain via Cloud DNS (same process as above). This should be rare — Angular server routes and Cloud Functions cover the vast majority of backend needs.
