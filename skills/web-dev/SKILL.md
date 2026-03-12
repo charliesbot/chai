@@ -1,6 +1,6 @@
 ---
 name: web-dev
-description: Use for ANY Angular or Firebase work — new Angular project, add a feature/component/service/route, Firebase deploy, Firestore rules, Cloud Functions, subdomain setup on *.charlies.bot, CSS styling for Angular, signals patterns, zoneless setup, App Hosting config, Vitest testing, ESLint/Prettier setup, ng generate scaffolding, and all web side project development.
+description: Use this skill whenever the user wants to build, modify, deploy, or maintain ANY web app or side project — even if they don't say "Angular" or "Firebase" explicitly. Trigger on new project setup, adding features/pages/components, refactoring code to signals, Firebase deploy, Firestore rules/security, Cloud Functions, Google sign-in/auth, subdomain setup (*.charlies.bot), CSS styling, Vitest/testing, ESLint/Prettier/linting, ng lint, ng generate, ng serve, or any mention of a charlies.bot project. Also trigger when the user asks to "build an app", "start a project", "add a page", "deploy my app", "fix my tests", or "lock down rules". If in doubt and the task involves web development, use this skill.
 ---
 
 You are working on a web side project following Charlie's Angular + Firebase conventions. Every project deploys as a subdomain of `charlies.bot`.
@@ -15,7 +15,8 @@ Every side project is `projectname.charlies.bot`. Firebase handles everything �
 
 ```
 All projects     → Firebase App Hosting → projectname.charlies.bot
-Backend logic    → Cloud Functions    (API, triggers, cron)
+API endpoints    → Angular server routes (same deploy, zero extra infra)
+Triggers/cron    → Cloud Functions    (separate deploy, event-driven)
 Data             → Firestore          (free tier)
 Auth             → Firebase Auth      (when needed)
 DNS              → Cloud DNS          (*.charlies.bot)
@@ -39,6 +40,7 @@ Three MCP servers cover the full workflow. Use them proactively — don't do thi
 - Use `firebase_get_security_rules` to read existing rules.
 - Use `firebase_read_resources` to inspect any `firebase://` URLs.
 - Use `firebase_get_environment` first to understand the active project context.
+- Note: Firebase MCP does not support App Hosting backend creation. Use the CLI command `firebase apphosting:backends:create` instead. **Always tell the user before running this command** — it opens the browser for a one-time GitHub connection via Developer Connect.
 
 **gcloud MCP** — DNS and escape hatch:
 
@@ -65,7 +67,8 @@ Three MCP servers cover the full workflow. Use them proactively — don't do thi
 | --------------- | ----------------------------------------------------- |
 | Framework       | Angular 21+ (Signals-first, **Zoneless**, standalone) |
 | Hosting         | Firebase App Hosting (git-push deploys)               |
-| Backend         | Cloud Functions for Firebase                          |
+| API endpoints   | Angular server routes (on App Hosting)                |
+| Triggers/cron   | Cloud Functions for Firebase                          |
 | Database        | Firestore (free tier focus)                           |
 | Auth            | Firebase Auth (when needed)                           |
 | DNS             | Cloud DNS (`*.charlies.bot`)                          |
@@ -147,18 +150,20 @@ Components use signals for all reactive state. Use built-in control flow (`@if`,
 
 **Async data loading:** Use `httpResource()` (experimental) for reactive HTTP data fetching instead of manual `isLoading`/`error`/`data` signal triplets. It wraps `HttpClient` and exposes status and response as signals. For non-HTTP async data, use `resource()`. Requires `provideHttpClient()` in `app.config.ts` providers.
 
-**Firestore real-time listeners:** Use `DestroyRef` to clean up `onSnapshot` subscriptions. This works in both components and services that aren't root singletons:
+**Firestore real-time listeners:** Use `DestroyRef` to clean up `onSnapshot` subscriptions. Even if the store service is `providedIn: 'root'`, the **component** that starts listening should own the cleanup — otherwise navigating away and back creates duplicate listeners:
 
 ```typescript
+// In the component that starts listening
+private store = inject(BookmarkStore);
 private destroyRef = inject(DestroyRef);
 
-listen(): void {
-  const unsub = onSnapshot(query, (snapshot) => { /* update signals */ });
+ngOnInit(): void {
+  const unsub = this.store.listen();
   this.destroyRef.onDestroy(() => unsub());
 }
 ```
 
-Root singleton services (`providedIn: 'root'`) live for the app lifetime — no cleanup needed.
+The store's `listen()` method returns the unsubscribe function so the caller controls the lifecycle. Root singleton services don't need `DestroyRef` internally — they live for the app lifetime.
 
 ## CSS Conventions
 
@@ -186,7 +191,25 @@ When a project needs Firebase (Firestore, Auth, Cloud Functions, etc.):
 
 1. `npm install firebase` — install the Firebase JS SDK directly. No `@angular/fire` — it's an unnecessary abstraction with standalone components and `inject()`.
 2. Use `firebase_get_sdk_config` to get config values — never copy-paste from console.
-3. Initialize Firebase in a service via `initializeApp()`.
+3. Create a `core/firebase.ts` service that wraps `initializeApp()` and exposes `Firestore`, `Auth`, etc. as injectable singletons. All feature services inject from this wrapper — never import raw Firebase SDK in feature code.
+
+```typescript
+// core/firebase.ts — the single Firebase entry point
+import { Injectable } from "@angular/core";
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { environment } from "../../environments/environment";
+
+@Injectable({ providedIn: "root" })
+export class Firebase {
+  private app = initializeApp(environment.firebase);
+  readonly db = getFirestore(this.app);
+  readonly auth = getAuth(this.app);
+}
+```
+
+Store the config from `firebase_get_sdk_config` in `src/environments/environment.ts` under a `firebase` key.
 
 ## Firestore Conventions
 
@@ -212,14 +235,16 @@ match /posts/{postId} {
 }
 ```
 
-## Cloud Functions
+## Backend Logic
 
-Use Cloud Functions for:
+App Hosting runs Angular SSR on Node.js — so you already have a backend. Use **Angular server routes** as the default for API endpoints. They deploy with your app (zero extra infra) and share the same App Hosting instance.
 
-- **API endpoints** — HTTP callable functions for client-server communication
+Use **Cloud Functions** only when the logic needs to run independently of the app:
+
 - **Firestore triggers** — react to document creates, updates, deletes
 - **Auth triggers** — react to user creation, deletion
 - **Scheduled tasks** — cron jobs (cleanup, aggregation, notifications)
+- **Reusable services across apps** — e.g., a shared OAuth service that multiple charlies.bot apps call
 
 Keep functions small and focused — one function per concern. Deploy with `firebase deploy --only functions`. Debug with `mcp__plugin_firebase_firebase__functions_get_logs`.
 
@@ -254,18 +279,20 @@ Use the bundled script to create a lean Angular project:
 ./scripts/new-project.sh <project-name>
 ```
 
-This creates an Angular project with CSS reset, routing, SSR, and git initialized. Nothing else — Firebase, Firestore, auth, and subdomain are added on demand as the project needs them. Just `cd` in and start building with `ng serve`.
+This creates an Angular project with CSS reset, routing, SSR, and git initialized. Nothing else — don't create a Firebase project, install the Firebase SDK, set up DNS, or configure `apphosting.yaml` until the user asks for a specific feature that needs them. Just `cd` in and start building with `ng serve`.
 
 ## Deploying
 
 All projects use Firebase App Hosting with git-push deploys:
 
-1. **Connect GitHub repo** to App Hosting in Firebase console
-2. **Push to the connected branch** — App Hosting builds and deploys automatically
-3. **Backend logic** → Cloud Functions: `firebase deploy --only functions`
-4. **Custom containers (rare)** → Cloud Run via `run_gcloud_command`
+1. **Create the backend** via CLI: `firebase apphosting:backends:create --project <project-id> --backend <name> --primary-region us-central1`
+   - **Heads up: this opens your browser** for GitHub repo connection (one-time interactive step via Developer Connect). Tell the user before running the command.
+2. **Create `apphosting.yaml`** in the project root (see DEPLOYMENT.md for config)
+3. **Push to the connected branch** — App Hosting builds and deploys automatically
+4. **Triggers/cron** → Cloud Functions: `firebase deploy --only functions`
+5. **Custom containers (rare)** → Cloud Run via `run_gcloud_command`
 
-Every project deploys as `projectname.charlies.bot`. See `references/DEPLOYMENT.md` for detailed instructions.
+Every project deploys as `projectname.charlies.bot`. See `references/DEPLOYMENT.md` for DNS and detailed instructions.
 
 ## Reference
 

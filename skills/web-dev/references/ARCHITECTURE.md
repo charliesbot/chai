@@ -3,6 +3,7 @@
 Follows Angular's official style guide: **organize by feature, not by type**. For coding patterns (signals, `inject()`, `OnPush`, control flow, naming), defer to the Angular CLI MCP via `get_best_practices`.
 
 Uses the **2025 naming convention** (Angular v20+ default):
+
 - **Files:** `dashboard.ts` not `dashboard.component.ts`, `auth.ts` not `auth.service.ts`.
 - **Classes:** Drop type suffixes. `Dashboard` not `DashboardComponent`. Use role-based names for services: `Auth`, `UserApi`, `CartClient` — not `AuthService`.
 

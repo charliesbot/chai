@@ -15,8 +15,20 @@ All projects use **Firebase App Hosting** — SPA and SSR alike. Git-push deploy
 
 ### Setup
 
-1. Connect your GitHub repo to App Hosting in the Firebase console
-2. App Hosting auto-detects Angular and builds accordingly (SSR is enabled by default)
+1. Create the App Hosting backend:
+
+   ```bash
+   firebase apphosting:backends:create --project <project-id> --backend <backend-name> --primary-region us-central1
+   ```
+
+   **⚠️ This opens your browser** to connect the GitHub repo via Developer Connect (one-time step per repo). Always warn the user before running this command so they're prepared for the browser prompt. Select the repo and branch to deploy from.
+
+2. App Hosting auto-detects Angular and builds accordingly (SSR is enabled by default).
+
+3. To trigger a manual rollout (e.g., after connecting):
+   ```bash
+   firebase apphosting:rollouts:create <backend-name> --git-branch main
+   ```
 
 ### Deploy
 
@@ -60,9 +72,11 @@ env:
 - `firebase_list_apps` — list all Firebase apps in the project.
 - `firebase_get_environment` — view current Firebase project and user context.
 
-## Cloud Functions
+## Backend Logic
 
-Use Cloud Functions v2 (`firebase-functions/v2`) for backend logic alongside App Hosting. Import from `firebase-functions/v2/https`, `firebase-functions/v2/firestore`, `firebase-functions/v2/identity`, or `firebase-functions/v2/scheduler` as needed.
+**Angular server routes** are the default for API endpoints — they run on the same App Hosting Node.js server, deploy with the app, and need zero extra infrastructure.
+
+**Cloud Functions** are for logic that must run independently: Firestore triggers, auth triggers, scheduled tasks, or reusable services shared across multiple apps. Use Cloud Functions v2 (`firebase-functions/v2`). Import from `firebase-functions/v2/https`, `firebase-functions/v2/firestore`, `firebase-functions/v2/identity`, or `firebase-functions/v2/scheduler` as needed.
 
 ```bash
 firebase deploy --only functions        # Deploy all functions
