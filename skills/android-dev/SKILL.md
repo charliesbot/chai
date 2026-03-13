@@ -17,10 +17,10 @@ You are working on a multi-platform Android project following this architecture 
 
 ## Before You Write Any Code
 
-When creating a new feature or use case, **run the scaffold script first** — before creating any files, directories, or `build.gradle.kts` manually. The scripts enforce the correct module structure and save time:
+When creating a new feature or use case, **run the scaffold script first** — before creating any files, directories, or `build.gradle.kts` manually. The scripts are bundled in this skill's `scripts/` directory — do not copy them into the project. They enforce the correct module structure and save time:
 
-- **New feature:** `./scripts/scaffold-feature.sh <name> <package>` (add `--wear` for Wear OS support)
-- **New use case:** `./scripts/scaffold-usecase.sh <Name> <package> <Repository>` (add `--flow` for reactive streams)
+- **New feature:** `${CLAUDE_SKILL_DIR}/scripts/scaffold-feature.sh <name> <package>` (add `--wear` for Wear OS support)
+- **New use case:** `${CLAUDE_SKILL_DIR}/scripts/scaffold-usecase.sh <Name> <package> <Repository>` (add `--flow` for reactive streams)
 
 Then fill in the generated TODOs. Details on post-scaffold steps are in the Scaffolding sections below.
 
@@ -48,7 +48,7 @@ Features are **business capabilities** (auth, profile, cart), not individual scr
 - **Use LiveData** — the entire codebase uses StateFlow + coroutines.
 - **Skip writing tests** — follow red-green TDD. Write the failing test first.
 - **Skip `@Preview`** — every `@Composable` needs one.
-- **Manually create feature or use case boilerplate** — always use `scaffold-feature.sh` or `scaffold-usecase.sh` instead. The scripts exist to prevent structural mistakes.
+- **Manually create feature or use case boilerplate** — always use the bundled `scaffold-feature.sh` or `scaffold-usecase.sh` scripts from this skill's `scripts/` directory. They exist to prevent structural mistakes.
 
 ## Tech Stack
 
@@ -294,10 +294,10 @@ class DashboardViewModelTest {
 
 ```bash
 # Phone only
-./scripts/scaffold-feature.sh <feature-name> <base-package>
+${CLAUDE_SKILL_DIR}/scripts/scaffold-feature.sh <feature-name> <base-package>
 
 # Phone + Wear
-./scripts/scaffold-feature.sh <feature-name> <base-package> --wear
+${CLAUDE_SKILL_DIR}/scripts/scaffold-feature.sh <feature-name> <base-package> --wear
 ```
 
 This creates the full directory structure with `build.gradle.kts`, ViewModel (StateFlow), Screen (Composable + Preview), and Koin DI module for each platform submodule — even for phone-only features (they still get the `app/` submodule).
@@ -315,17 +315,17 @@ Use the bundled script to generate a use case in `:core`:
 
 ```bash
 # Suspend function returning Result<T>
-./scripts/scaffold-usecase.sh <UseCaseName> <base-package> <RepositoryName>
+${CLAUDE_SKILL_DIR}/scripts/scaffold-usecase.sh <UseCaseName> <base-package> <RepositoryName>
 
 # Flow-based (reactive, non-suspend)
-./scripts/scaffold-usecase.sh <UseCaseName> <base-package> <RepositoryName> --flow
+${CLAUDE_SKILL_DIR}/scripts/scaffold-usecase.sh <UseCaseName> <base-package> <RepositoryName> --flow
 ```
 
 Examples:
 
 ```bash
-./scripts/scaffold-usecase.sh GetArticles com.myapp FeedRepository
-./scripts/scaffold-usecase.sh ObserveAuthState com.myapp AuthRepository --flow
+${CLAUDE_SKILL_DIR}/scripts/scaffold-usecase.sh GetArticles com.myapp FeedRepository
+${CLAUDE_SKILL_DIR}/scripts/scaffold-usecase.sh ObserveAuthState com.myapp AuthRepository --flow
 ```
 
 After running the script:
