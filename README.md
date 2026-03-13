@@ -61,54 +61,8 @@ claude plugin install firebase@firebase
 gemini extensions install https://github.com/gemini-cli-extensions/firebase/
 ```
 
-### Angular CLI
+## Linking the skills
 
-Add to MCP config (see locations below):
+### Gemini
 
-```json
-{
-  "angular-cli": {
-    "command": "npx",
-    "args": ["-y", "@angular/cli", "mcp"]
-  }
-}
-```
-
-### gcloud
-
-Add to MCP config (see locations below):
-
-```json
-{
-  "gcloud": {
-    "command": "npx",
-    "args": ["-y", "@google-cloud/gcloud-mcp"]
-  }
-}
-```
-
-### MCP servers
-
-**Claude** — add via CLI or edit `~/.claude.json` under `mcpServers`:
-
-```sh
-claude mcp add --transport stdio angular-cli -- npx -y @angular/cli mcp
-claude mcp add --transport stdio gcloud -- npx -y @google-cloud/gcloud-mcp
-```
-
-**Gemini** — add to `~/.gemini/settings.json` under `mcpServers`:
-
-```json
-{
-  "mcpServers": {
-    "angular-cli": {
-      "command": "npx",
-      "args": ["-y", "@angular/cli", "mcp"]
-    },
-    "gcloud": {
-      "command": "npx",
-      "args": ["-y", "@google-cloud/gcloud-mcp"]
-    }
-  }
-}
-```
+gemini skills link /path/to/chai/skills

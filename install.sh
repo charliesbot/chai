@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 echo "Installing chai symlinks..."
 
-# In-repo symlinks (so AI tools find their config files)
-ln -sf "$SCRIPT_DIR/_AGENTS.md" "$SCRIPT_DIR/CLAUDE.md"
-ln -sf "$SCRIPT_DIR/_AGENTS.md" "$SCRIPT_DIR/GEMINI.md"
-ln -sf "$SCRIPT_DIR/_AGENTS.md" "$SCRIPT_DIR/claude/_CLAUDE.md"
-ln -sf "$SCRIPT_DIR/_AGENTS.md" "$SCRIPT_DIR/gemini/_GEMINI.md"
-echo "  Linked in-repo CLAUDE.md, GEMINI.md, claude/_CLAUDE.md, gemini/_GEMINI.md"
+# Global symlinks (so AI tools find shared config)
+ln -sf "$SCRIPT_DIR/CHAI_AGENTS.md" "$HOME/.claude/CLAUDE.md"
+ln -sf "$SCRIPT_DIR/CHAI_AGENTS.md" "$HOME/.gemini/GEMINI.md"
+echo "  Linked CHAI_AGENTS.md → ~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md"
 
-# Global Claude config
-if [ -f "$HOME/.claude/CLAUDE.md" ]; then
-  echo "  ~/.claude/CLAUDE.md already exists, skipping"
-else
-  ln -s "$SCRIPT_DIR/claude/_CLAUDE.md" "$HOME/.claude/CLAUDE.md"
-  echo "  Linked ~/.claude/CLAUDE.md"
+# Skills
+SKILLS_DIR="$SCRIPT_DIR/skills"
+if [ -d "$SKILLS_DIR" ]; then
+  for tool_skills in "$HOME/.claude/skills" "$HOME/.gemini/skills"; do
+    mkdir -p "$tool_skills"
+    for skill in "$SKILLS_DIR"/*/; do
+      skill_name="$(basename "$skill")"
+      ln -sf "$skill" "$tool_skills/$skill_name"
+    done
+  done
+  echo "  Linked $(ls "$SKILLS_DIR" | wc -l | tr -d ' ') skills to Claude and Gemini"
 fi
 
 echo "Done."

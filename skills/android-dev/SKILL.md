@@ -1,15 +1,28 @@
 ---
 name: android-dev
 description: >
-  Android multi-platform development skill (mobile, Wear OS, TV, Auto) with architecture conventions,
-  tech stack rules, and scaffolding scripts. Use whenever working on an Android project: creating features,
-  writing ViewModels/Composables, configuring Gradle, wiring Koin/Navigation/Room/Retrofit, or writing
-  tests. Also trigger on build errors (unresolved references, dependency conflicts, Gradle sync failures,
-  circular dependencies) and any question about where code belongs in a multi-module project. When in
-  doubt, use it — better to check conventions than produce inconsistent code.
+  Architecture guide for a multi-module Android project targeting phone, Wear OS, TV, and Auto from a
+  single codebase. MUST use this skill whenever the user mentions: features/ or :features: module paths,
+  :core module, :app/:wear/:widget/:complications modules, Koin DI wiring, scaffold-feature.sh or
+  scaffold-usecase.sh scripts, Wear OS support (tiles, complications, watch UI), Navigation 3 or Wear
+  Compose Navigation, StateFlow/MVVM patterns, Spotless/ktfmt formatting, or any question about where
+  code belongs across modules. Also trigger on Android build errors (unresolved references, circular
+  dependencies, Gradle sync failures) and when adding new features, use cases, widgets, or platform
+  variants. If the user is working on ANY Android code in a multi-module project — scaffolding features,
+  writing ViewModels/Composables, configuring Gradle/Room/Retrofit, running tests, or asking about
+  architecture decisions — use this skill. When in doubt, use it.
 ---
 
 You are working on a multi-platform Android project following this architecture and conventions. Read `references/ARCHITECTURE.md` for the full module structure and dependency rules before making architectural decisions.
+
+## Before You Write Any Code
+
+When creating a new feature or use case, **run the scaffold script first** — before creating any files, directories, or `build.gradle.kts` manually. The scripts enforce the correct module structure and save time:
+
+- **New feature:** `./scripts/scaffold-feature.sh <name> <package>` (add `--wear` for Wear OS support)
+- **New use case:** `./scripts/scaffold-usecase.sh <Name> <package> <Repository>` (add `--flow` for reactive streams)
+
+Then fill in the generated TODOs. Details on post-scaffold steps are in the Scaffolding sections below.
 
 ## Core Principles
 
@@ -35,6 +48,7 @@ Features are **business capabilities** (auth, profile, cart), not individual scr
 - **Use LiveData** — the entire codebase uses StateFlow + coroutines.
 - **Skip writing tests** — follow red-green TDD. Write the failing test first.
 - **Skip `@Preview`** — every `@Composable` needs one.
+- **Manually create feature or use case boilerplate** — always use `scaffold-feature.sh` or `scaffold-usecase.sh` instead. The scripts exist to prevent structural mistakes.
 
 ## Tech Stack
 
@@ -57,7 +71,7 @@ Do not add third-party dependencies without asking first — every dependency is
 
 ## Module Structure
 
-- **`:core`** — business logic, data layer (Room, Retrofit, repositories), domain models, use cases, shared UI (theme, components), and DI for core infrastructure. All UI strings live here for cross-platform reuse.
+- **`:core`** — business logic, data layer (Room, Retrofit, repositories), domain models, use cases, shared UI (theme, components), DI for core infrastructure, and all string resources (split by feature file for organization).
 - **`:features:<name>:app`** — phone presentation: ViewModel, Composable screens (Material 3), feature-scoped DI module.
 - **`:features:<name>:wear`** — wear presentation: ViewModel, Composable screens (Wear Material 3), feature-scoped DI module.
 - **`:app`**, **`:wear`**, **`:tv`**, **`:auto`** — platform shells that wire navigation and load DI modules. Each platform uses its own navigation library.
@@ -99,6 +113,71 @@ class DashboardViewModel(
 }
 ```
 
+## Use Case Pattern
+
+Use cases live in `core/domain/usecase/` and encapsulate a single business operation. They use Kotlin's built-in `Result<T>` (from `kotlin.Result`) — not a custom wrapper. One-shot operations use `suspend` + `Result<T>`. Reactive streams use `Flow`.
+
+```kotlin
+// Suspend — one-shot fetch
+class GetArticlesUseCase(
+    private val articleRepository: ArticleRepository
+) {
+    suspend operator fun invoke(): Result<List<Article>> {
+        return runCatching {
+            articleRepository.getArticles().sortedByDescending { it.date }
+        }
+    }
+}
+
+// Flow — reactive stream
+class ObserveAuthStateUseCase(
+    private val authRepository: AuthRepository
+) {
+    operator fun invoke(): Flow<AuthState> {
+        return authRepository.observeAuthState()
+    }
+}
+```
+
+Register in Koin: `factory { GetArticlesUseCase(get()) }`
+
+## Data Layer
+
+Repositories live in `core/data/repository/`, with interfaces in `core/domain/repository/`. Room entities and DAOs live in `core/data/local/`, Retrofit interfaces in `core/data/remote/`.
+
+```kotlin
+// core/domain/repository/ArticleRepository.kt
+interface ArticleRepository {
+    suspend fun getArticles(): List<Article>
+}
+
+// core/data/repository/ArticleRepositoryImpl.kt
+class ArticleRepositoryImpl(
+    private val articleDao: ArticleDao,
+    private val articleApi: ArticleApi
+) : ArticleRepository {
+    override suspend fun getArticles(): List<Article> {
+        return articleDao.getAll().map { it.toDomain() }
+    }
+}
+
+// core/data/local/ArticleDao.kt
+@Dao
+interface ArticleDao {
+    @Query("SELECT * FROM articles ORDER BY date DESC")
+    suspend fun getAll(): List<ArticleEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(articles: List<ArticleEntity>)
+}
+
+// core/data/remote/ArticleApi.kt
+interface ArticleApi {
+    @GET("articles")
+    suspend fun getArticles(): List<ArticleDto>
+}
+```
+
 ## Composable Conventions
 
 - Every `@Composable` function needs a `@Preview` — this catches layout issues early without needing to run the full app, which is especially valuable in a multi-platform project where you can't easily test every screen on every device.
@@ -110,7 +189,34 @@ class DashboardViewModel(
 
 ## Strings
 
-Every UI string must be defined in `:core` resources with both English and Spanish translations. Centralizing strings in `:core` means all platforms (phone, wear, TV) share the same copy, so translations stay in sync and you never end up with a string defined in one platform but missing in another.
+All strings live in `:core` resources with both English and Spanish translations, organized into separate files per feature. This keeps translations in sync across platforms (phone, wear, TV) without refactoring when adding a new platform — `:core` is the only module all platform submodules share.
+
+```
+core/src/main/res/
+├── values/
+│   ├── strings.xml                # App-wide: "Cancel", "OK", "Error", app name
+│   ├── strings_feed.xml           # Feed feature: "Feed", "No posts yet"
+│   ├── strings_auth.xml           # Auth feature: "Log in", "Forgot password?"
+│   └── strings_settings.xml       # Settings feature: "Dark mode", "Language"
+└── values-es/
+    ├── strings.xml
+    ├── strings_feed.xml
+    ├── strings_auth.xml
+    └── strings_settings.xml
+```
+
+Android merges all `res/values/*.xml` files at build time, so splitting by feature is transparent to the build system. Each file stays small, and deleting a feature means deleting its string file.
+
+Platform-only strings (e.g., a Wear-specific label that no other platform uses) can live in the platform submodule's own `res/values/`, but default to `:core` unless you're sure it's single-platform.
+
+## Formatting
+
+Spotless with ktfmt (Google style) enforces consistent formatting across all Kotlin and Gradle KTS files. It runs as a Gradle plugin — no IDE configuration needed.
+
+- Run `./gradlew spotlessApply` to auto-format before committing. This is non-negotiable — CI will reject unformatted code.
+- Run `./gradlew spotlessCheck` to verify formatting without modifying files (useful in CI).
+- Spotless is configured in the root `build.gradle.kts` and applies to all modules automatically. Do not add per-module Spotless configuration.
+- If Spotless reformats code you just wrote, accept the changes — do not fight the formatter.
 
 ## Testing
 
@@ -118,11 +224,73 @@ Follow red-green TDD: write failing tests first, then implement until they pass.
 
 - Use MockK for mocking.
 - Prefer module-scoped test commands (`./gradlew :features:dashboard:app:test`) over `./gradlew test` when working on a single feature — this leverages the modular architecture for faster feedback loops instead of recompiling and testing everything.
-- Run `./gradlew spotlessApply` before committing to keep formatting consistent across the codebase without manual effort.
+
+**Use case test example:**
+
+```kotlin
+class GetArticlesUseCaseTest {
+
+    private val repository: ArticleRepository = mockk()
+    private val useCase = GetArticlesUseCase(repository)
+
+    @Test
+    fun `returns articles sorted by date`() = runTest {
+        val articles = listOf(
+            Article(id = "1", title = "Old", date = LocalDateTime.of(2026, 1, 1, 0, 0)),
+            Article(id = "2", title = "New", date = LocalDateTime.of(2026, 3, 1, 0, 0)),
+        )
+        coEvery { repository.getArticles() } returns articles
+
+        val result = useCase()
+
+        assertTrue(result.isSuccess)
+        assertEquals("2", result.getOrThrow().first().id)
+    }
+
+    @Test
+    fun `returns failure when repository throws`() = runTest {
+        coEvery { repository.getArticles() } throws RuntimeException("Network error")
+
+        val result = useCase()
+
+        assertTrue(result.isFailure)
+    }
+}
+```
+
+**ViewModel test example:**
+
+```kotlin
+@OptIn(ExperimentalCoroutinesApi::class)
+class DashboardViewModelTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+    private val getDashboardUseCase: GetDashboardUseCase = mockk()
+
+    @Before
+    fun setup() { Dispatchers.setMain(testDispatcher) }
+
+    @After
+    fun tearDown() { Dispatchers.resetMain() }
+
+    @Test
+    fun `loads data on refresh`() = runTest {
+        coEvery { getDashboardUseCase() } returns Result.success(DashboardData(/* ... */))
+
+        val viewModel = DashboardViewModel(getDashboardUseCase)
+        viewModel.onRefresh()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isLoading)
+        assertNotNull(state.data)
+    }
+}
+```
 
 ## Scaffolding a New Feature
 
-Use the bundled script to generate all the boilerplate for a new feature module:
+**Always start by running the scaffold script** — do not manually create feature directories, `build.gradle.kts`, or boilerplate files. The script ensures the correct structure every time:
 
 ```bash
 # Phone only
@@ -132,13 +300,13 @@ Use the bundled script to generate all the boilerplate for a new feature module:
 ./scripts/scaffold-feature.sh <feature-name> <base-package> --wear
 ```
 
-This creates the full directory structure with `build.gradle.kts`, ViewModel (StateFlow), Screen (Composable + Preview), and Koin DI module for each platform submodule.
+This creates the full directory structure with `build.gradle.kts`, ViewModel (StateFlow), Screen (Composable + Preview), and Koin DI module for each platform submodule — even for phone-only features (they still get the `app/` submodule).
 
 After running the script:
 
 1. Register the Koin module in the platform's DI setup.
 2. Add navigation routes in the platform module.
-3. Add strings in `:core` (English + Spanish).
+3. Add strings in `:core` as `strings_<feature>.xml` (English + Spanish).
 4. Write tests first, then implement.
 
 ## Scaffolding a Use Case
