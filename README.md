@@ -1,6 +1,6 @@
 # chai
 
-Charlie's AI configuration repo — shared config for Claude and Gemini.
+Charlie's AI configuration repo: shared config for Claude and Gemini.
 
 ## Structure
 
