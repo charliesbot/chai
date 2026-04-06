@@ -6,17 +6,17 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARSE="bun run ${SCRIPT_DIR}/lib/parse.ts"
-
-ROOT="${1:-.}"
-ROOT="$(cd "$ROOT" && pwd)"
-
 if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
   echo "Usage: discover.sh [path]"
   echo "Discovers project metadata and outputs a structured markdown summary."
   exit 0
 fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PARSE=(bun run "${SCRIPT_DIR}/lib/parse.ts")
+
+ROOT="${1:-.}"
+ROOT="$(cd "$ROOT" && pwd)"
 
 echo "# Project Discovery"
 echo ""
@@ -26,7 +26,7 @@ echo ""
 # --- Stack (via onefetch JSON) ---
 echo "## Stack"
 echo ""
-onefetch "$ROOT" --no-art --output json 2>/dev/null | $PARSE onefetch - || echo "(onefetch failed)"
+onefetch "$ROOT" --no-art --output json 2>/dev/null | "${PARSE[@]}" onefetch - || echo "(onefetch failed)"
 echo ""
 
 # --- Commands (only extract project-specific ones) ---
@@ -36,8 +36,9 @@ echo ""
 has_commands=false
 
 # package.json scripts
+# parse.ts exits 2 when no scripts found — && skips the section intentionally
 if [[ -f "$ROOT/package.json" ]]; then
-  pkg_output=$($PARSE package-json "$ROOT/package.json" 2>/dev/null) && {
+  pkg_output=$("${PARSE[@]}" package-json "$ROOT/package.json" 2>/dev/null) && {
     has_commands=true
     echo "### package.json scripts"
     echo "$pkg_output"
@@ -71,7 +72,7 @@ fi
 if [[ -f "$ROOT/pyproject.toml" ]]; then
   has_commands=true
   echo "### pyproject.toml"
-  $PARSE pyproject "$ROOT/pyproject.toml" || echo "(failed to parse pyproject.toml)"
+  "${PARSE[@]}" pyproject "$ROOT/pyproject.toml" || echo "(failed to parse pyproject.toml)"
   echo ""
 fi
 
@@ -79,7 +80,7 @@ fi
 if [[ -f "$ROOT/Cargo.toml" ]]; then
   has_commands=true
   echo "### Cargo"
-  $PARSE cargo "$ROOT/Cargo.toml" || echo "(failed to parse Cargo.toml)"
+  "${PARSE[@]}" cargo "$ROOT/Cargo.toml" || echo "(failed to parse Cargo.toml)"
   echo "- build: \`cargo build\`"
   echo "- test: \`cargo test\`"
   echo "- lint: \`cargo clippy\`"
@@ -91,7 +92,10 @@ fi
 if [[ -f "$ROOT/go.mod" ]]; then
   has_commands=true
   echo "### Go"
-  $PARSE gomod "$ROOT/go.mod" || echo "(failed to parse go.mod)"
+  "${PARSE[@]}" gomod "$ROOT/go.mod" || echo "(failed to parse go.mod)"
+  echo "- build: \`go build ./...\`"
+  echo "- test: \`go test ./...\`"
+  echo "- lint: \`go vet ./...\`"
   echo ""
 fi
 
@@ -101,15 +105,17 @@ if [[ -f "$ROOT/build.gradle.kts" ]] || [[ -f "$ROOT/build.gradle" ]]; then
   echo "### Gradle"
   echo "- build: \`./gradlew build\`"
   echo "- test: \`./gradlew test\`"
-  echo "- lint: \`./gradlew lint\`"  # Android projects
-  if grep -q "spotless" "$ROOT/build.gradle.kts" 2>/dev/null; then
+  echo "- lint: \`./gradlew lint\`" # Android projects
+  gradle_file="$ROOT/build.gradle.kts"
+  [[ ! -f "$gradle_file" ]] && gradle_file="$ROOT/build.gradle"
+  if grep -q "spotless" "$gradle_file" 2>/dev/null; then
     echo "- format: \`./gradlew spotlessApply\`"
   fi
   echo ""
 fi
 
 if [[ "$has_commands" == false ]]; then
-  echo "(no recognized build system found)"
+  echo "(no recognized build system found — check project root for build files)"
   echo ""
 fi
 
@@ -148,12 +154,5 @@ check_file "$ROOT/CLAUDE.local.md" "CLAUDE.local.md"
 check_file "$ROOT/GEMINI.md" "GEMINI.md"
 check_file "$ROOT/.gemini/GEMINI.md" ".gemini/GEMINI.md"
 check_file "$ROOT/.gemini/settings.json" ".gemini/settings.json"
-
-if [[ -d "$ROOT/.claude/rules" ]]; then
-  rule_count=$(find "$ROOT/.claude/rules" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
-  echo "- .claude/rules/: $rule_count rule files"
-else
-  echo "- .claude/rules/: not found"
-fi
 
 echo ""

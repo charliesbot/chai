@@ -81,17 +81,23 @@ After writing, check the result against the assessment dimensions from step 1. C
 - No scope mixing
 - No instructions that duplicate what linters/formatters already enforce
 - Every line passes the conciseness test — if removing it wouldn't cause mistakes, cut it
+- CLAUDE.md and GEMINI.md symlinks point to AGENTS.md (step 6)
 
-### 6. Set Up Symlinks
+### 6. Set Up Symlinks — DO NOT SKIP THIS STEP
 
-The output is always `AGENTS.md`. After writing or updating it, ensure symlinks exist so both platforms read from the same source:
+Every run of this skill must end with symlinks in place. The output is always `AGENTS.md`, and both `CLAUDE.md` and `GEMINI.md` must be symlinks pointing to it. This is what makes the single-source-of-truth model work — without symlinks, one platform silently stops reading the instructions.
 
+**If CLAUDE.md or GEMINI.md already exist as symlinks:** Confirm they point to AGENTS.md. Report this to the user ("symlinks already in place").
+
+**If they don't exist:** Create them:
 ```bash
 ln -sf AGENTS.md CLAUDE.md
 ln -sf AGENTS.md GEMINI.md
 ```
 
-If the user asks for a "CLAUDE.md" or "GEMINI.md", still create AGENTS.md and symlink. If CLAUDE.md or GEMINI.md already exist as regular files (not symlinks), warn the user before replacing them — they may have platform-specific content that needs to be merged into the shared AGENTS.md first.
+**If they exist as regular files (not symlinks):** STOP and warn the user before replacing them. They may contain platform-specific content that needs to be merged into AGENTS.md first. Show the user what would be lost, get approval, then replace with symlinks.
+
+**If the user asked for a "CLAUDE.md" or "GEMINI.md":** Still create AGENTS.md as the source and symlink the requested name to it.
 
 ## What This Skill Does NOT Do
 

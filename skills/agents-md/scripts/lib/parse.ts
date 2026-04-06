@@ -24,11 +24,17 @@ if (!handler) {
   process.exit(1);
 }
 
+// All subcommands except onefetch (which accepts "-" for stdin) require a file path
+if (subcommand !== "onefetch" && !args[0]) {
+  console.error(`Missing file path for ${subcommand}`);
+  process.exit(1);
+}
+
 try {
   handler(args);
 } catch (e) {
   console.error(
-    `Failed to parse ${subcommand}: ${e instanceof Error ? e.message : e}`
+    `Failed to parse ${subcommand}: ${e instanceof Error ? e.message : e}`,
   );
   process.exit(1);
 }
@@ -39,6 +45,8 @@ function onefetch(args: string[]) {
   const input = args[0] === "-" ? readStdin() : readFileSync(args[0], "utf-8");
   const data = JSON.parse(input);
 
+  // onefetch JSON uses infoFields as an array of single-key objects (tagged union pattern).
+  // Each object has exactly one key (e.g. "ProjectInfo", "HeadInfo") mapping to its data.
   const fields: Array<{ key: string; extract: (val: any) => string | null }> = [
     {
       key: "ProjectInfo",
@@ -62,7 +70,7 @@ function onefetch(args: string[]) {
         const langs = v.languagesWithPercentage ?? [];
         if (!langs.length) return null;
         const parts = langs.map(
-          (l: any) => `${l.language} (${l.percentage.toFixed(1)}%)`
+          (l: any) => `${l.language} (${l.percentage.toFixed(1)}%)`,
         );
         return `- Languages: ${parts.join(", ")}`;
       },
@@ -93,12 +101,14 @@ function onefetch(args: string[]) {
     },
   ];
 
+  const fieldMap = new Map(fields.map((f) => [f.key, f.extract]));
+
   for (const field of data.infoFields ?? []) {
     for (const [key, val] of Object.entries(field)) {
-      const match = fields.find((f) => f.key === key);
-      if (!match) continue;
+      const extract = fieldMap.get(key);
+      if (!extract) continue;
       try {
-        const line = match.extract(val);
+        const line = extract(val);
         if (line) console.log(line);
       } catch {
         // skip malformed fields
@@ -113,7 +123,7 @@ function packageJson(args: string[]) {
   const scripts = data.scripts ?? {};
   const entries = Object.entries(scripts);
   if (!entries.length) {
-    process.exit(2); // signal "no output" to caller
+    process.exit(2); // exit 2 = no scripts found, caller skips section intentionally
   }
   for (const [k, v] of entries) {
     console.log(`- ${k}: \`${v}\``);
@@ -146,6 +156,8 @@ function pyproject(args: string[]) {
   }
 }
 
+// Emits package metadata only — conventional commands (cargo build/test/etc.)
+// are added by the bash caller since they're static and don't need parsing.
 function cargo(args: string[]) {
   const filePath = args[0];
   const raw = readFileSync(filePath, "utf-8");
@@ -175,6 +187,7 @@ function gomod(args: string[]) {
 
 // --- Helpers ---
 
+// Reads from fd 0 synchronously — Bun handles this natively.
 function readStdin(): string {
   return readFileSync(0, "utf-8");
 }
