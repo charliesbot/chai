@@ -248,9 +248,12 @@ Score the existing file on these dimensions (1-3 each):
 | **Contradictions**  | None found                             | 1-2 minor conflicts                 | Multiple or major conflicts               |
 | **Scope**           | Clean project-level only               | Minor personal leakage              | Heavily mixed                             |
 | **Signal-to-noise** | Every line passes the conciseness test | Some dead weight                    | Heavy with things the agent already knows |
+| **Completeness**    | All key sections present               | 1-2 sections missing                | 3+ sections missing                       |
 
-**Total 6-10: Patch.** The file is solid. Add what's missing, sharpen what's vague.
+**Total 7-8: Patch not needed.** The file is healthy. Report and stop.
 
-**Total 11-14: Judgment call.** Could go either way. Lean toward patching if the user's voice and organization are worth preserving.
+**Total 9-12: Patch.** The file is solid but has gaps. Add what's missing, sharpen what's vague.
 
-**Total 15-18: Refactor.** The file needs a fresh start. Preserve intent, rewrite structure.
+**Total 13-16: Judgment call.** Could go either way. Lean toward patching if the user's voice and organization are worth preserving.
+
+**Total 17-21: Refactor.** The file needs a fresh start. Preserve intent, rewrite structure.

@@ -25,7 +25,17 @@ Before proposing changes, read the target file and evaluate it against these dim
 - **Contradictions** — do any rules conflict with each other?
 - **Scope mixing** — does it blend personal preferences with project-level standards?
 - **Signal-to-noise** — does every instruction pass the conciseness test ("would removing this cause the agent to make mistakes")? Are there instructions the agent would follow anyway without being told?
-- **Completeness** — is it missing common sections that would help agents work better in this project?
+- **Completeness** — is it missing key sections (Priorities, Never/Hard Rules, Common Commands, Architecture, Workflow, Tooling)? Score: 1 = all present, 2 = 1-2 missing, 3 = 3+ missing.
+
+### 1b. Exit Gate
+
+After scoring, determine whether to proceed or stop:
+
+- **Score 7–8 (healthy):** Report the assessment, state "No changes recommended," and STOP. Do not propose a patch or refactor.
+- **Score 9–12 (minor issues):** Present findings and ask the user if they want changes. Do not propose a patch unless the user confirms.
+- **Score 13+ (needs work):** Present findings and proceed to step 2.
+
+**Override:** If the user explicitly requests changes (e.g., "improve," "fix," "update," "rewrite"), skip the exit gate and proceed to step 2 regardless of score. Present findings first, then propose.
 
 ### 2. Decide: Patch or Refactor
 
@@ -90,6 +100,7 @@ Every run of this skill must end with symlinks in place. The output is always `A
 **If CLAUDE.md or GEMINI.md already exist as symlinks:** Confirm they point to AGENTS.md. Report this to the user ("symlinks already in place").
 
 **If they don't exist:** Create them:
+
 ```bash
 ln -sf AGENTS.md CLAUDE.md
 ln -sf AGENTS.md GEMINI.md
