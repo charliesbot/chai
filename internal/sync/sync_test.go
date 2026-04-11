@@ -143,3 +143,70 @@ func TestRunWithHome_DirtyDetection(t *testing.T) {
 		t.Errorf("claude content = %q, want %q", string(got), "original")
 	}
 }
+
+func TestRunWithHome_PromptOverwrite(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
+
+	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
+
+	// First sync
+	if err := RunWithHome(cfg, home, Options{}); err != nil {
+		t.Fatalf("first sync failed: %v", err)
+	}
+
+	// Manually edit target
+	claudePath := filepath.Join(home, ".claude", "CLAUDE.md")
+	os.WriteFile(claudePath, []byte("edited"), 0644)
+
+	// Sync with prompt that says yes
+	alwaysYes := func(path string) (bool, error) { return true, nil }
+	if err := RunWithHome(cfg, home, Options{Prompt: alwaysYes}); err != nil {
+		t.Fatalf("prompt sync failed: %v", err)
+	}
+
+	got, _ := os.ReadFile(claudePath)
+	if string(got) != "original" {
+		t.Errorf("content = %q, want %q", string(got), "original")
+	}
+}
+
+func TestRunWithHome_PromptSkip(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
+
+	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
+
+	// First sync
+	if err := RunWithHome(cfg, home, Options{}); err != nil {
+		t.Fatalf("first sync failed: %v", err)
+	}
+
+	// Manually edit both targets
+	claudePath := filepath.Join(home, ".claude", "CLAUDE.md")
+	geminiPath := filepath.Join(home, ".gemini", "GEMINI.md")
+	os.WriteFile(claudePath, []byte("edited"), 0644)
+	os.WriteFile(geminiPath, []byte("edited"), 0644)
+
+	// Sync with prompt that says no
+	alwaysNo := func(path string) (bool, error) { return false, nil }
+	if err := RunWithHome(cfg, home, Options{Prompt: alwaysNo}); err != nil {
+		t.Fatalf("prompt sync failed: %v", err)
+	}
+
+	// Both should still have the edited content
+	got, _ := os.ReadFile(claudePath)
+	if string(got) != "edited" {
+		t.Errorf("claude content = %q, want %q (should have been skipped)", string(got), "edited")
+	}
+	got, _ = os.ReadFile(geminiPath)
+	if string(got) != "edited" {
+		t.Errorf("gemini content = %q, want %q (should have been skipped)", string(got), "edited")
+	}
+}

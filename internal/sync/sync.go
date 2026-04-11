@@ -14,7 +14,8 @@ import (
 
 // Options controls sync behavior.
 type Options struct {
-	Force bool
+	Force  bool
+	Prompt PromptFunc
 }
 
 // Run executes the sync: copies instructions to all platform locations.
@@ -56,27 +57,29 @@ func RunWithHome(cfg *config.Config, home string, opts Options) error {
 	}
 
 	platforms := platform.All()
-	var dirtyFiles []string
+	for _, p := range platforms {
+		dest := filepath.Join(home, p.InstructionsPath)
 
-	if !opts.Force {
-		for _, p := range platforms {
-			dest := filepath.Join(home, p.InstructionsPath)
+		if !opts.Force {
 			dirty, err := hashDB.IsDirty(dest)
 			if err != nil {
 				return err
 			}
 			if dirty {
-				dirtyFiles = append(dirtyFiles, dest)
+				if opts.Prompt == nil {
+					return &DirtyError{Files: []string{dest}}
+				}
+				overwrite, err := opts.Prompt(dest)
+				if err != nil {
+					return err
+				}
+				if !overwrite {
+					fmt.Printf("skipped %s (%s)\n", p.Name, dest)
+					continue
+				}
 			}
 		}
-	}
 
-	if len(dirtyFiles) > 0 {
-		return &DirtyError{Files: dirtyFiles}
-	}
-
-	for _, p := range platforms {
-		dest := filepath.Join(home, p.InstructionsPath)
 		if err := atomicWrite(dest, content); err != nil {
 			return fmt.Errorf("writing %s instructions to %s: %w", p.Name, dest, err)
 		}
