@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/platform"
@@ -86,6 +87,19 @@ func buildMCPServers(mcps map[string]config.MCP, home string) (map[string]mcpEnt
 			Command: m.Command,
 			Args:    m.Args,
 			Env:     m.Env,
+		}
+		// Resolve @name in args (only for args starting with @)
+		for i, arg := range entry.Args {
+			if strings.HasPrefix(arg, "@") {
+				resolved, err := resolve.PathWithHome(arg, home)
+				if err != nil {
+					continue // not a dep reference, leave as-is (e.g. @angular/cli is an npm scope)
+				}
+				// Only apply if the resolved path actually exists
+				if _, statErr := os.Stat(resolved); statErr == nil {
+					entry.Args[i] = resolved
+				}
+			}
 		}
 		if m.CWD != "" {
 			resolved, err := resolve.PathWithHome(m.CWD, home)

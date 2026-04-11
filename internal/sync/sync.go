@@ -119,7 +119,12 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	}
 
 	if !opts.DryRun {
-		fmt.Println(ui.Box("instructions", 0, claudeOk, geminiOk, []string{"AGENTS.md"}))
+		instructionItems := make([]string, 0, len(platforms)+1)
+		instructionItems = append(instructionItems, srcPath)
+		for _, p := range platforms {
+			instructionItems = append(instructionItems, "→ "+filepath.Join(home, p.InstructionsPath))
+		}
+		fmt.Println(ui.Box("instructions", 0, claudeOk, geminiOk, instructionItems))
 	}
 
 	if opts.DryRun {
