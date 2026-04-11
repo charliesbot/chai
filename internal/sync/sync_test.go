@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,7 @@ func TestRunWithHome_CopiesInstructions(t *testing.T) {
 		Instructions: "~/dotfiles/ai/agents.md",
 	}
 
-	err := RunWithHome(cfg, home)
+	err := RunWithHome(cfg, home, Options{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -56,7 +57,7 @@ func TestRunWithHome_MissingInstructionsFile(t *testing.T) {
 		Instructions: "~/nonexistent/agents.md",
 	}
 
-	err := RunWithHome(cfg, home)
+	err := RunWithHome(cfg, home, Options{})
 	if err == nil {
 		t.Fatal("expected error for missing instructions file")
 	}
@@ -70,7 +71,7 @@ func TestRunWithHome_EmptyInstructionsPath(t *testing.T) {
 
 	cfg := &config.Config{}
 
-	err := RunWithHome(cfg, home)
+	err := RunWithHome(cfg, home, Options{})
 	if err == nil {
 		t.Fatal("expected error for empty instructions path")
 	}
@@ -100,5 +101,45 @@ func TestAtomicWrite(t *testing.T) {
 	// Verify no .tmp file left behind
 	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
 		t.Error(".tmp file was not cleaned up")
+	}
+}
+
+func TestRunWithHome_DirtyDetection(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
+
+	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
+
+	// First sync: should succeed and store hashes
+	if err := RunWithHome(cfg, home, Options{}); err != nil {
+		t.Fatalf("first sync failed: %v", err)
+	}
+
+	// Manually edit a target file
+	claudePath := filepath.Join(home, ".claude", "CLAUDE.md")
+	os.WriteFile(claudePath, []byte("manually edited"), 0644)
+
+	// Second sync: should return DirtyError
+	err := RunWithHome(cfg, home, Options{})
+	var dirtyErr *DirtyError
+	if !errors.As(err, &dirtyErr) {
+		t.Fatalf("expected DirtyError, got %v", err)
+	}
+	if len(dirtyErr.Files) == 0 {
+		t.Error("DirtyError has no files")
+	}
+
+	// With --force: should succeed
+	if err := RunWithHome(cfg, home, Options{Force: true}); err != nil {
+		t.Fatalf("force sync failed: %v", err)
+	}
+
+	// Verify overwritten
+	got, _ := os.ReadFile(claudePath)
+	if string(got) != "original" {
+		t.Errorf("claude content = %q, want %q", string(got), "original")
 	}
 }
