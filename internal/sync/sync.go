@@ -143,6 +143,14 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return err
 	}
 
+	if len(cfg.Gemini.Extensions) > 0 && !opts.DryRun {
+		names := make([]string, 0, len(cfg.Gemini.Extensions))
+		for name := range cfg.Gemini.Extensions {
+			names = append(names, name)
+		}
+		fmt.Println(ui.Box("gemini extensions", len(names), ui.PlatformNA, ui.PlatformOK, names))
+	}
+
 	if opts.DryRun {
 		return nil
 	}

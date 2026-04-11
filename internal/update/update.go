@@ -15,7 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // Run executes the update with a Bubbletea TUI.
 func Run(depMap map[string]config.Dep, extensions map[string]string) error {
@@ -33,67 +33,41 @@ func RunWithHome(depMap map[string]config.Dep, extensions map[string]string, hom
 		return nil
 	}
 
-	if len(depMap) > 0 {
-		m := newModel(depMap, home)
-		p := tea.NewProgram(m)
-		final, err := p.Run()
-		if err != nil {
-			return fmt.Errorf("running update UI: %w", err)
-		}
-		result := final.(model)
-		if result.err != nil {
-			return result.err
-		}
+	m := newModel(depMap, extensions, home)
+	p := tea.NewProgram(m)
+	final, err := p.Run()
+	if err != nil {
+		return fmt.Errorf("running update UI: %w", err)
 	}
 
-	if len(extensions) > 0 {
-		if err := updateGeminiExtensions(extensions, home); err != nil {
-			return err
-		}
+	result := final.(model)
+	if result.err != nil {
+		return result.err
 	}
 
 	return nil
 }
 
-// updateGeminiExtensions installs missing Gemini extensions.
-func updateGeminiExtensions(extensions map[string]string, home string) error {
-	extDir := filepath.Join(home, ".gemini", "extensions")
+// itemKind distinguishes deps from extensions.
+type itemKind int
 
-	fmt.Println(ui.Title.Render("gemini extensions") + "\n")
+const (
+	kindDep itemKind = iota
+	kindExtension
+)
 
-	for name, url := range extensions {
-		installed := filepath.Join(extDir, name)
-		if _, err := os.Stat(installed); err == nil {
-			fmt.Printf("  %s %s %s\n", ui.Check(), ui.Bold.Render(name), ui.Muted.Render("installed"))
-			continue
-		}
-
-		fmt.Printf("  %s %s %s\n", spinnerStyle.Render("⠋"), ui.Bold.Render(name), ui.Muted.Render("installing..."))
-		cmd := exec.Command("gemini", "extensions", "install", url, "--consent")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("installing gemini extension %q: %w", name, err)
-		}
-		fmt.Printf("  %s %s %s\n", ui.Check(), ui.Bold.Render(name), ui.Success.Render("installed"))
-	}
-
-	fmt.Println()
-	return nil
-}
-
-var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-
-// dep tracks the state of a single dependency during update.
-type dep struct {
+// item tracks the state of a single dep or extension during update.
+type item struct {
 	name   string
-	cfgDep config.Dep
-	status string // "waiting", "updating", "building", "done", "error"
-	result *deps.Result
+	url    string
+	kind   itemKind
+	dep    *config.Dep // only for deps
+	status string      // "waiting", "updating", "done", "error"
+	action string      // result description
 }
 
 type model struct {
-	deps    []dep
+	items   []item
 	home    string
 	current int
 	frame   int
@@ -102,33 +76,52 @@ type model struct {
 }
 
 type tickMsg struct{}
-type depDoneMsg struct {
+type itemDoneMsg struct {
 	index  int
-	result deps.Result
+	action string
+	err    error
 }
 
-func newModel(depMap map[string]config.Dep, home string) model {
-	names := make([]string, 0, len(depMap))
-	for name := range depMap {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+func newModel(depMap map[string]config.Dep, extensions map[string]string, home string) model {
+	var items []item
 
-	d := make([]dep, len(names))
-	for i, name := range names {
-		status := "waiting"
-		if i == 0 {
-			status = "updating"
-		}
-		d[i] = dep{name: name, cfgDep: depMap[name], status: status}
+	// Add deps first
+	depNames := sortedKeys(depMap)
+	for _, name := range depNames {
+		dep := depMap[name]
+		items = append(items, item{
+			name:   name,
+			url:    dep.URL,
+			kind:   kindDep,
+			dep:    &dep,
+			status: "waiting",
+		})
 	}
 
-	return model{deps: d, home: home, current: 0}
+	// Add extensions
+	extNames := sortedStringKeys(extensions)
+	for _, name := range extNames {
+		items = append(items, item{
+			name:   name,
+			url:    extensions[name],
+			kind:   kindExtension,
+			status: "waiting",
+		})
+	}
+
+	if len(items) > 0 {
+		items[0].status = "updating"
+	}
+
+	return model{items: items, home: home, current: 0}
 }
 
 func (m model) Init() tea.Cmd {
+	if len(m.items) == 0 {
+		return tea.Quit
+	}
 	return tea.Batch(
-		m.startUpdate(0),
+		m.startItem(0),
 		m.tick(),
 	)
 }
@@ -147,22 +140,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.tick()
 		}
 
-	case depDoneMsg:
-		m.deps[msg.index].result = &msg.result
-		if msg.result.Err != nil {
-			m.deps[msg.index].status = "error"
-			m.err = fmt.Errorf("%s: %w", msg.result.Name, msg.result.Err)
+	case itemDoneMsg:
+		if msg.err != nil {
+			m.items[msg.index].status = "error"
+			m.items[msg.index].action = "error"
+			m.err = fmt.Errorf("%s: %w", m.items[msg.index].name, msg.err)
 			m.done = true
 			return m, tea.Quit
 		}
-		m.deps[msg.index].status = "done"
+		m.items[msg.index].status = "done"
+		m.items[msg.index].action = msg.action
 
-		// Start next dep
+		// Start next item
 		next := msg.index + 1
-		if next < len(m.deps) {
+		if next < len(m.items) {
 			m.current = next
-			m.deps[next].status = "updating"
-			return m, m.startUpdate(next)
+			m.items[next].status = "updating"
+			return m, m.startItem(next)
 		}
 
 		m.done = true
@@ -173,29 +167,61 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	s := ui.Title.Render("updating deps") + "\n\n"
-
-	for _, d := range m.deps {
-		icon := m.statusIcon(d.status)
-		name := ui.Bold.Render(d.name)
-		url := ui.Muted.Render(d.cfgDep.URL)
-
-		switch d.status {
-		case "done":
-			action := actionStyle(d.result)
-			s += fmt.Sprintf("  %s %s %s %s\n", icon, name, url, action)
-		case "error":
-			s += fmt.Sprintf("  %s %s %s %s\n", icon, name, url, ui.Warning.Render("error"))
-		default:
-			s += fmt.Sprintf("  %s %s %s\n", icon, name, url)
+	// Check if we have deps and/or extensions
+	hasDeps := false
+	hasExts := false
+	for _, it := range m.items {
+		if it.kind == kindDep {
+			hasDeps = true
+		} else {
+			hasExts = true
 		}
 	}
 
-	if m.done {
+	s := ""
+
+	if hasDeps {
+		s += ui.Title.Render("deps") + "\n\n"
+		for _, it := range m.items {
+			if it.kind != kindDep {
+				continue
+			}
+			s += m.renderItem(it)
+		}
+		s += "\n"
+	}
+
+	if hasExts {
+		s += ui.Title.Render("gemini extensions") + "\n\n"
+		for _, it := range m.items {
+			if it.kind != kindExtension {
+				continue
+			}
+			s += m.renderItem(it)
+		}
 		s += "\n"
 	}
 
 	return s
+}
+
+func (m model) renderItem(it item) string {
+	icon := m.statusIcon(it.status)
+	name := ui.Bold.Render(it.name)
+	url := ui.Muted.Render(it.url)
+
+	switch it.status {
+	case "done":
+		action := ui.Success.Render(it.action)
+		if it.action == "up to date" || it.action == "installed" {
+			action = ui.Muted.Render(it.action)
+		}
+		return fmt.Sprintf("  %s %s %s %s\n", icon, name, url, action)
+	case "error":
+		return fmt.Sprintf("  %s %s %s %s\n", icon, name, url, ui.Warning.Render("error"))
+	default:
+		return fmt.Sprintf("  %s %s %s\n", icon, name, url)
+	}
 }
 
 func (m model) statusIcon(status string) string {
@@ -205,30 +231,44 @@ func (m model) statusIcon(status string) string {
 	case "error":
 		return ui.Warning.Render("✗")
 	case "updating":
-		frame := m.frame % len(spinner)
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Render(spinner[frame])
-	default: // waiting
+		frame := m.frame % len(spinnerFrames)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Render(spinnerFrames[frame])
+	default:
 		return ui.Muted.Render("○")
 	}
 }
 
-func actionStyle(r *deps.Result) string {
-	action := ui.Success.Render(string(r.Action))
-	if r.Action == deps.ActionCurrent {
-		action = ui.Muted.Render(string(r.Action))
-	}
-	if r.Built {
-		action += " + " + ui.Success.Render("built")
-	}
-	return action
-}
-
-func (m model) startUpdate(index int) tea.Cmd {
-	d := m.deps[index]
+func (m model) startItem(index int) tea.Cmd {
+	it := m.items[index]
 	home := m.home
 	return func() tea.Msg {
-		result := deps.SyncOne(d.name, d.cfgDep, home)
-		return depDoneMsg{index: index, result: result}
+		switch it.kind {
+		case kindDep:
+			result := deps.SyncOne(it.name, *it.dep, home)
+			if result.Err != nil {
+				return itemDoneMsg{index: index, err: result.Err}
+			}
+			action := string(result.Action)
+			if result.Built {
+				action += " + built"
+			}
+			return itemDoneMsg{index: index, action: action}
+
+		case kindExtension:
+			extDir := filepath.Join(home, ".gemini", "extensions")
+			installed := filepath.Join(extDir, it.name)
+			if _, err := os.Stat(installed); err == nil {
+				return itemDoneMsg{index: index, action: "installed"}
+			}
+			cmd := exec.Command("gemini", "extensions", "install", it.url, "--consent")
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				return itemDoneMsg{index: index, err: fmt.Errorf("%s", string(out))}
+			}
+			return itemDoneMsg{index: index, action: "installed"}
+		}
+
+		return itemDoneMsg{index: index, err: fmt.Errorf("unknown item kind")}
 	}
 }
 
@@ -236,4 +276,22 @@ func (m model) tick() tea.Cmd {
 	return tea.Tick(80*time.Millisecond, func(_ time.Time) tea.Msg {
 		return tickMsg{}
 	})
+}
+
+func sortedKeys(m map[string]config.Dep) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedStringKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
