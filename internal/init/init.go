@@ -12,7 +12,7 @@ import (
 
 const defaultPath = "~/dotfiles/ai"
 
-const tomlTemplate = `instructions = "%s/AGENTS.md"
+const tomlTemplate = `instructions = "%s/instructions/AGENTS.md"
 
 [deps]
 
@@ -82,7 +82,12 @@ func Scaffold(home, rawPath string) error {
 		return fmt.Errorf("creating directory %s: %w", expandedPath, err)
 	}
 
-	agentsPath := filepath.Join(expandedPath, "AGENTS.md")
+	instructionsDir := filepath.Join(expandedPath, "instructions")
+	if err := os.MkdirAll(instructionsDir, 0755); err != nil {
+		return fmt.Errorf("creating directory %s: %w", instructionsDir, err)
+	}
+
+	agentsPath := filepath.Join(instructionsDir, "AGENTS.md")
 	if _, err := os.Stat(agentsPath); os.IsNotExist(err) {
 		if err := os.WriteFile(agentsPath, []byte(agentsTemplate), 0644); err != nil {
 			return fmt.Errorf("writing %s: %w", agentsPath, err)
