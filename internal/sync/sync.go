@@ -47,6 +47,10 @@ func RunWithHome(cfg *config.Config, home string) error {
 		fmt.Printf("synced instructions → %s (%s)\n", p.Name, dest)
 	}
 
+	if err := syncMCP(cfg, home); err != nil {
+		return err
+	}
+
 	return nil
 }
 
