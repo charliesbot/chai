@@ -19,8 +19,8 @@ const tomlTemplate = `instructions = "%s/instructions/AGENTS.md"
 [skills]
 paths = ["%s/skills"]
 
-[agents]
-paths = ["%s/agents"]
+[subagents]
+paths = ["%s/subagents"]
 `
 
 const agentsTemplate = `# AI Agent Instructions
@@ -82,7 +82,7 @@ func Scaffold(home, rawPath string) error {
 		return fmt.Errorf("creating directory %s: %w", expandedPath, err)
 	}
 
-	for _, dir := range []string{"instructions", "skills", "agents"} {
+	for _, dir := range []string{"instructions", "skills", "subagents"} {
 		d := filepath.Join(expandedPath, dir)
 		if err := os.MkdirAll(d, 0755); err != nil {
 			return fmt.Errorf("creating directory %s: %w", d, err)

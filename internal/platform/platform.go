@@ -27,7 +27,7 @@ func All() []Platform {
 			Name:             "Gemini",
 			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
 			SkillsDir:        filepath.Join(".gemini", "skills"),
-			AgentsDir:        filepath.Join(".gemini", "subagents"),
+			AgentsDir:        filepath.Join(".gemini", "agents"),
 			MCPConfigPath:    filepath.Join(".gemini", "settings.json"),
 			MCPKey:           "mcpServers",
 		},

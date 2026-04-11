@@ -11,7 +11,7 @@ type Config struct {
 	Instructions string            `toml:"instructions"`
 	Deps         map[string]string `toml:"deps"`
 	Skills       Skills            `toml:"skills"`
-	Agents       Agents            `toml:"agents"`
+	Subagents    Subagents         `toml:"subagents"`
 	MCP          map[string]MCP    `toml:"mcp"`
 }
 
@@ -19,7 +19,7 @@ type Skills struct {
 	Paths []string `toml:"paths"`
 }
 
-type Agents struct {
+type Subagents struct {
 	Paths []string `toml:"paths"`
 }
 

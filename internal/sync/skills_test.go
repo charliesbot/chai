@@ -156,12 +156,12 @@ func TestSyncSkillsAndAgents_SeparateDirectories(t *testing.T) {
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
 	os.MkdirAll(filepath.Join(skillsDir, "web-dev"), 0755)
 
-	agentsDir := filepath.Join(home, "dotfiles", "ai", "agents")
+	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
 	os.MkdirAll(filepath.Join(agentsDir, "reviewer"), 0755)
 
 	err := syncSkillsAndAgents(
 		[]string{"~/dotfiles/ai/skills"},
-		[]string{"~/dotfiles/ai/agents"},
+		[]string{"~/dotfiles/ai/subagents"},
 		home, false,
 	)
 	if err != nil {
@@ -188,11 +188,11 @@ func TestSyncSkillsAndAgents_EmptyAgents(t *testing.T) {
 	os.MkdirAll(filepath.Join(skillsDir, "web-dev"), 0755)
 
 	// Empty agents dir
-	os.MkdirAll(filepath.Join(home, "dotfiles", "ai", "agents"), 0755)
+	os.MkdirAll(filepath.Join(home, "dotfiles", "ai", "subagents"), 0755)
 
 	err := syncSkillsAndAgents(
 		[]string{"~/dotfiles/ai/skills"},
-		[]string{"~/dotfiles/ai/agents"},
+		[]string{"~/dotfiles/ai/subagents"},
 		home, false,
 	)
 	if err != nil {

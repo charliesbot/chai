@@ -20,8 +20,8 @@ paths = [
   "@angular-skills/skills/*"
 ]
 
-[agents]
-paths = ["~/dotfiles/ai/agents/*"]
+[subagents]
+paths = ["~/dotfiles/ai/subagents/*"]
 
 [mcp.context7]
 command = "npx"
@@ -57,8 +57,8 @@ func TestLoad_Full(t *testing.T) {
 		t.Errorf("skills paths count = %d, want 3", len(cfg.Skills.Paths))
 	}
 
-	if len(cfg.Agents.Paths) != 1 {
-		t.Errorf("agents paths count = %d, want 1", len(cfg.Agents.Paths))
+	if len(cfg.Subagents.Paths) != 1 {
+		t.Errorf("agents paths count = %d, want 1", len(cfg.Subagents.Paths))
 	}
 
 	if len(cfg.MCP) != 2 {
