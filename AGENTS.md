@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project Overview
 
-chai is a Go CLI that keeps AI coding agent configs in sync. It reads a single TOML manifest (`~/chai.toml`) and an `agents.md` file, then distributes them to the right locations for each AI platform (Claude, Gemini). It copies files (not symlinks) and uses hash-based dirty detection to avoid overwriting manual edits.
+chai is a Go CLI that keeps AI coding agent configs in sync. It reads a single TOML manifest (`~/chai.toml`) and an `AGENTS.md` file, then distributes them to the right locations for each AI platform (Claude, Gemini). Instructions are copied (with hash-based dirty detection), while skills and agents are symlinked (read-only from the agent's perspective).
 
 chai is deliberately minimal — it syncs config files, not manages workflows.
 
@@ -38,15 +38,19 @@ go test -run TestHashDB ./internal/hash  # single test
 
 ## Architecture
 
-The CLI has two commands: `chai init` (scaffold config) and `chai sync` (distribute files to platforms).
+The CLI has three commands: `chai init` (scaffold config), `chai sync` (distribute files to platforms), and `chai update` (clone/pull deps).
 
 ### Sync Flow
 
 1. Read `~/chai.toml`
-2. Clone/pull all `[deps]` to `~/.chai/deps/`
-3. Resolve paths (`~`, `@name` for deps) and expand globs
-4. Hash target files and compare against `~/.chai/hashes.json` for dirty detection
-5. Write files: copy instructions to platform locations, replace `mcpServers` key in platform configs
+2. Resolve paths (`~`, `@name` for deps) and expand globs
+3. Hash target instructions files and compare against `~/.chai/hashes.json` for dirty detection
+4. Copy instructions to platform locations (with dirty detection prompts)
+5. Symlink skills and agents to platform directories
+6. Replace `mcpServers` key in platform configs
+7. Update hash DB
+
+Deps are managed separately via `chai update` (clone missing, pull existing).
 
 All file writes must be atomic (write to `.tmp`, then `os.Rename`).
 
@@ -54,17 +58,18 @@ All file writes must be atomic (write to `.tmp`, then `os.Rename`).
 
 Built into source code (not user-configured). Each platform specifies:
 
-| Platform | Instructions target      | MCP config file           | MCP strategy  |
-|----------|--------------------------|---------------------------|---------------|
-| Claude   | `~/.claude/CLAUDE.md`    | `~/.claude.json`          | replace key   |
-| Gemini   | `~/.gemini/GEMINI.md`    | `~/.gemini/settings.json` | replace key   |
+| Platform | Instructions target      | Skills directory      | MCP config file           | MCP strategy  |
+|----------|--------------------------|----------------------|---------------------------|---------------|
+| Claude   | `~/.claude/CLAUDE.md`    | `~/.claude/skills/`  | `~/.claude.json`          | replace key   |
+| Gemini   | `~/.gemini/GEMINI.md`    | `~/.gemini/skills/`  | `~/.gemini/settings.json` | replace key   |
 
 ### Key Design Decisions
 
-- **Copy, not symlink** — portable and allows per-platform transformation in the future.
-- **Hash-based dirty detection** — only applies to instructions files. Skills and MCPs are fully owned by chai and replaced on every sync.
+- **Copy for instructions, symlink for skills** — Instructions are two-way (agents may edit them), so copies with dirty detection. Skills and agents are read-only from the agent's perspective, so symlinks give one source of truth with no duplication.
+- **Hash-based dirty detection** — only applies to instructions files. Skills, agents, and MCPs are fully owned by chai and replaced on every sync.
 - **`mcpServers` ownership** — chai owns the entire `mcpServers` key in platform config files. It replaces the key wholesale but preserves all other keys.
 - **Deps are clone-only** — chai clones repos to `~/.chai/deps/<name>/` but does not parse or inspect their contents.
+- **Sync doesn't touch deps** — `chai sync` is fast and predictable. `chai update` handles cloning/pulling deps explicitly.
 - **Path resolution** — `~` expands to home dir, `@name` resolves to `~/.chai/deps/<name>/`.
 - **Atomic writes** — all file writes go through a temp file + `os.Rename` to prevent partial writes.
 
