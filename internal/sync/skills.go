@@ -35,7 +35,7 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, dry
 			}
 		}
 		if len(agents) > 0 {
-			fmt.Println(ui.Label.Render("agents"))
+			fmt.Println(ui.Label.Render("subagents"))
 			for _, src := range agents {
 				fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), src)
 			}
@@ -43,8 +43,12 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, dry
 	}
 
 	platforms := platform.All()
-	for _, p := range platforms {
-		if len(skills) > 0 {
+
+	// Skills
+	if len(skills) > 0 {
+		claudeOk := true
+		geminiOk := true
+		for _, p := range platforms {
 			destDir := filepath.Join(home, p.SkillsDir)
 			if dryRun {
 				for _, src := range skills {
@@ -53,16 +57,29 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, dry
 				}
 			} else {
 				if err := syncSymlinks(skills, destDir); err != nil {
-					return fmt.Errorf("syncing skills to %s: %w", p.Name, err)
-				}
-				for _, src := range skills {
-					name := filepath.Base(src)
-					fmt.Println(ui.SyncedLine(p.Name, filepath.Join(destDir, name)))
+					if p.Name == "Claude" {
+						claudeOk = false
+					} else {
+						geminiOk = false
+					}
 				}
 			}
 		}
+		if !dryRun {
+			names := make([]string, len(skills))
+			for i, s := range skills {
+				names[i] = filepath.Base(s)
+			}
+			fmt.Println(ui.Section("skills", len(skills), claudeOk, geminiOk))
+			fmt.Println(ui.ItemList(names))
+		}
+	}
 
-		if len(agents) > 0 {
+	// Subagents
+	if len(agents) > 0 {
+		claudeOk := true
+		geminiOk := true
+		for _, p := range platforms {
 			destDir := filepath.Join(home, p.AgentsDir)
 			if dryRun {
 				for _, src := range agents {
@@ -71,13 +88,21 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, dry
 				}
 			} else {
 				if err := syncSymlinks(agents, destDir); err != nil {
-					return fmt.Errorf("syncing agents to %s: %w", p.Name, err)
-				}
-				for _, src := range agents {
-					name := filepath.Base(src)
-					fmt.Println(ui.SyncedLine(p.Name, filepath.Join(destDir, name)))
+					if p.Name == "Claude" {
+						claudeOk = false
+					} else {
+						geminiOk = false
+					}
 				}
 			}
+		}
+		if !dryRun {
+			names := make([]string, len(agents))
+			for i, s := range agents {
+				names[i] = filepath.Base(s)
+			}
+			fmt.Println(ui.Section("subagents", len(agents), claudeOk, geminiOk))
+			fmt.Println(ui.ItemList(names))
 		}
 	}
 

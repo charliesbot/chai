@@ -64,6 +64,9 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	}
 
 	platforms := platform.All()
+	claudeOk := true
+	geminiOk := true
+
 	for _, p := range platforms {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("sync interrupted: %w", err)
@@ -85,7 +88,11 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 					return err
 				}
 				if !overwrite {
-					fmt.Println(ui.SkippedLine(p.Name, dest))
+					if p.Name == "Claude" {
+						claudeOk = false
+					} else {
+						geminiOk = false
+					}
 					continue
 				}
 			}
@@ -109,7 +116,10 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 			return fmt.Errorf("writing %s instructions to %s: %w", p.Name, dest, err)
 		}
 		hashDB[dest] = hash.Sum(content)
-		fmt.Println(ui.SyncedLine(p.Name, dest))
+	}
+
+	if !opts.DryRun {
+		fmt.Println(ui.Section("instructions", 0, claudeOk, geminiOk))
 	}
 
 	if opts.DryRun {

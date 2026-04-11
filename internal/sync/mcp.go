@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/platform"
@@ -51,14 +52,29 @@ func syncMCP(cfg *config.Config, home string, dryRun bool) error {
 		return nil
 	}
 
+	claudeOk := true
+	geminiOk := true
 	platforms := platform.All()
 	for _, p := range platforms {
 		dest := filepath.Join(home, p.MCPConfigPath)
 		if err := mergeMCPIntoFile(dest, p.MCPKey, servers); err != nil {
-			return fmt.Errorf("writing MCP config for %s to %s: %w", p.Name, dest, err)
+			if p.Name == "Claude" {
+				claudeOk = false
+			} else {
+				geminiOk = false
+			}
 		}
-		fmt.Println(ui.SyncedLine(p.Name, dest))
 	}
+
+	// Collect server names
+	names := make([]string, 0, len(servers))
+	for name := range servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	fmt.Println(ui.Section("mcpServers", len(servers), claudeOk, geminiOk))
+	fmt.Println(ui.ItemList(names))
 
 	return nil
 }
