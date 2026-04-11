@@ -214,7 +214,7 @@ func (m model) renderItem(it item) string {
 	case "done":
 		action := ui.Success.Render(it.action)
 		if it.action == "up to date" {
-			action = ui.Muted.Render("· " + it.action)
+			action = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true).Render(it.action)
 		}
 		return fmt.Sprintf("  %s %s  %s\n    %s\n", icon, name, action, url)
 	case "error":
