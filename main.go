@@ -5,8 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
+	"github.com/charliesbot/chai/internal/config"
 	chaiinit "github.com/charliesbot/chai/internal/init"
+	chaisync "github.com/charliesbot/chai/internal/sync"
 	"github.com/peterbourgon/ff/v3/ffcli"
 )
 
@@ -25,8 +28,15 @@ func main() {
 		ShortUsage: "chai sync",
 		ShortHelp:  "Distribute config to all platforms",
 		Exec: func(ctx context.Context, args []string) error {
-			fmt.Println("chai sync: not implemented yet")
-			return nil
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			cfg, err := config.Load(filepath.Join(home, "chai.toml"))
+			if err != nil {
+				return err
+			}
+			return chaisync.Run(cfg)
 		},
 	}
 
