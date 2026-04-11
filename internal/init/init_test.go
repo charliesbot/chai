@@ -25,6 +25,12 @@ func TestScaffold_CreatesFiles(t *testing.T) {
 	if !strings.Contains(tomlContent, `instructions = "~/dotfiles/ai/instructions/AGENTS.md"`) {
 		t.Errorf("chai.toml missing instructions line, got:\n%s", tomlContent)
 	}
+	if !strings.Contains(tomlContent, `"~/dotfiles/ai/skills/*"`) {
+		t.Errorf("chai.toml missing skills path, got:\n%s", tomlContent)
+	}
+	if !strings.Contains(tomlContent, `"~/dotfiles/ai/agents/*"`) {
+		t.Errorf("chai.toml missing agents path, got:\n%s", tomlContent)
+	}
 
 	// Check AGENTS.md exists
 	agentsPath := filepath.Join(home, "dotfiles", "ai", "instructions", "AGENTS.md")

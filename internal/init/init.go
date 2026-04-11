@@ -17,10 +17,10 @@ const tomlTemplate = `instructions = "%s/instructions/AGENTS.md"
 [deps]
 
 [skills]
-paths = []
+paths = ["%s/skills/*"]
 
 [agents]
-paths = []
+paths = ["%s/agents/*"]
 `
 
 const agentsTemplate = `# AI Agent Instructions
@@ -82,12 +82,14 @@ func Scaffold(home, rawPath string) error {
 		return fmt.Errorf("creating directory %s: %w", expandedPath, err)
 	}
 
-	instructionsDir := filepath.Join(expandedPath, "instructions")
-	if err := os.MkdirAll(instructionsDir, 0755); err != nil {
-		return fmt.Errorf("creating directory %s: %w", instructionsDir, err)
+	for _, dir := range []string{"instructions", "skills", "agents"} {
+		d := filepath.Join(expandedPath, dir)
+		if err := os.MkdirAll(d, 0755); err != nil {
+			return fmt.Errorf("creating directory %s: %w", d, err)
+		}
 	}
 
-	agentsPath := filepath.Join(instructionsDir, "AGENTS.md")
+	agentsPath := filepath.Join(expandedPath, "instructions", "AGENTS.md")
 	if _, err := os.Stat(agentsPath); os.IsNotExist(err) {
 		if err := os.WriteFile(agentsPath, []byte(agentsTemplate), 0644); err != nil {
 			return fmt.Errorf("writing %s: %w", agentsPath, err)
@@ -100,7 +102,7 @@ func Scaffold(home, rawPath string) error {
 	if tomlExists {
 		fmt.Printf("skipped %s (already exists)\n", tomlPath)
 	} else {
-		tomlContent := fmt.Sprintf(tomlTemplate, rawPath)
+		tomlContent := fmt.Sprintf(tomlTemplate, rawPath, rawPath, rawPath)
 		if err := os.WriteFile(tomlPath, []byte(tomlContent), 0644); err != nil {
 			return fmt.Errorf("writing %s: %w", tomlPath, err)
 		}
