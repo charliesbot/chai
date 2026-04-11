@@ -61,16 +61,37 @@ func GeminiIcon() string {
 	return GeminiStyle.Render("◆")
 }
 
-func PlatformIcons(claudeOk, geminiOk bool) string {
-	c := ClaudeIcon()
-	if !claudeOk {
-		c = Warning.Render("✗")
-	}
-	g := GeminiIcon()
-	if !geminiOk {
-		g = Warning.Render("✗")
-	}
+// PlatformState represents whether a platform was synced, failed, or not applicable.
+type PlatformState int
+
+const (
+	PlatformOK PlatformState = iota
+	PlatformFailed
+	PlatformNA // not applicable
+)
+
+func PlatformIcons(claude, gemini PlatformState) string {
+	c := renderPlatformState(ClaudeIcon(), claude)
+	g := renderPlatformState(GeminiIcon(), gemini)
 	return c + " " + g
+}
+
+func BoolState(ok bool) PlatformState {
+	if ok {
+		return PlatformOK
+	}
+	return PlatformFailed
+}
+
+func renderPlatformState(icon string, state PlatformState) string {
+	switch state {
+	case PlatformFailed:
+		return Warning.Render("✗")
+	case PlatformNA:
+		return Muted.Render("·")
+	default:
+		return icon
+	}
 }
 
 func DryRunTag() string {
@@ -95,8 +116,8 @@ func Skip() string {
 //	│ agents-md  android-dev  slidev
 //	│ web-dev  angular-developer
 //	└
-func Box(name string, count int, claudeOk, geminiOk bool, items []string) string {
-	icons := PlatformIcons(claudeOk, geminiOk)
+func Box(name string, count int, claude, gemini PlatformState, items []string) string {
+	icons := PlatformIcons(claude, gemini)
 
 	// Build header: ┌ name (count) ─── ● ◆
 	header := Label.Render(name)
@@ -172,12 +193,12 @@ func renderItemLine(items []string) string {
 }
 
 // Section is kept for backward compat with dry-run output.
-func Section(name string, count int, claudeOk, geminiOk bool) string {
+func Section(name string, count int, claude, gemini PlatformState) string {
 	countStr := ""
 	if count > 0 {
 		countStr = " " + Muted.Render(fmt.Sprintf("(%d)", count))
 	}
-	return fmt.Sprintf("%s%s  %s", Label.Render(name), countStr, PlatformIcons(claudeOk, geminiOk))
+	return fmt.Sprintf("%s%s  %s", Label.Render(name), countStr, PlatformIcons(claude, gemini))
 }
 
 // ItemList is kept for backward compat with dry-run output.

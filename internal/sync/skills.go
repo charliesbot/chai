@@ -70,7 +70,7 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, dry
 			for i, s := range skills {
 				names[i] = filepath.Base(s)
 			}
-			fmt.Println(ui.Box("skills", len(skills), claudeOk, geminiOk, names))
+			fmt.Println(ui.Box("skills", len(skills), ui.BoolState(claudeOk), ui.BoolState(geminiOk), names))
 		}
 	}
 
@@ -100,7 +100,7 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, dry
 			for i, s := range agents {
 				names[i] = filepath.Base(s)
 			}
-			fmt.Println(ui.Box("subagents", len(agents), claudeOk, geminiOk, names))
+			fmt.Println(ui.Box("subagents", len(agents), ui.BoolState(claudeOk), ui.BoolState(geminiOk), names))
 		}
 	}
 

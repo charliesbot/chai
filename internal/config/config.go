@@ -13,6 +13,11 @@ type Config struct {
 	Skills       Skills         `toml:"skills"`
 	Subagents    Subagents      `toml:"subagents"`
 	MCP          map[string]MCP `toml:"mcp"`
+	Gemini       GeminiConfig   `toml:"gemini"`
+}
+
+type GeminiConfig struct {
+	Extensions map[string]string `toml:"extensions"`
 }
 
 // Dep represents a dependency — either a simple URL string or a table with url + build.
@@ -43,6 +48,7 @@ type rawConfig struct {
 	Skills       Skills         `toml:"skills"`
 	Subagents    Subagents      `toml:"subagents"`
 	MCP          map[string]MCP `toml:"mcp"`
+	Gemini       GeminiConfig   `toml:"gemini"`
 }
 
 func Load(path string) (*Config, error) {
@@ -70,6 +76,7 @@ func Load(path string) (*Config, error) {
 		Skills:       raw.Skills,
 		Subagents:    raw.Subagents,
 		MCP:          raw.MCP,
+		Gemini:       raw.Gemini,
 	}
 
 	return cfg, nil

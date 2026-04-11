@@ -124,7 +124,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		for _, p := range platforms {
 			instructionItems = append(instructionItems, "→ "+filepath.Join(home, p.InstructionsPath))
 		}
-		fmt.Println(ui.Box("instructions", 0, claudeOk, geminiOk, instructionItems))
+		fmt.Println(ui.Box("instructions", 0, ui.BoolState(claudeOk), ui.BoolState(geminiOk), instructionItems))
 	}
 
 	if opts.DryRun {
@@ -140,6 +140,10 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	}
 
 	if err := syncMCP(cfg, home, opts.DryRun); err != nil {
+		return err
+	}
+
+	if err := syncGeminiExtensions(cfg.Gemini.Extensions, home, opts.DryRun); err != nil {
 		return err
 	}
 

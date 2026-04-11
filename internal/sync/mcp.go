@@ -74,7 +74,7 @@ func syncMCP(cfg *config.Config, home string, dryRun bool) error {
 	}
 	sort.Strings(names)
 
-	fmt.Println(ui.Box("mcpServers", len(servers), claudeOk, geminiOk, names))
+	fmt.Println(ui.Box("mcpServers", len(servers), ui.BoolState(claudeOk), ui.BoolState(geminiOk), names))
 
 	return nil
 }
