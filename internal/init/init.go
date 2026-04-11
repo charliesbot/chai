@@ -37,7 +37,8 @@ func Run() error {
 
 	tomlPath := filepath.Join(home, "chai.toml")
 	if _, err := os.Stat(tomlPath); err == nil {
-		return fmt.Errorf("%s already exists — remove it first to re-initialize", tomlPath)
+		fmt.Printf("skipped %s (already exists)\n", tomlPath)
+		return nil
 	}
 
 	m := newModel()
@@ -65,8 +66,9 @@ func Run() error {
 // rawPath may contain ~ which is expanded using home.
 func Scaffold(home, rawPath string) error {
 	tomlPath := filepath.Join(home, "chai.toml")
+	tomlExists := false
 	if _, err := os.Stat(tomlPath); err == nil {
-		return fmt.Errorf("%s already exists — remove it first to re-initialize", tomlPath)
+		tomlExists = true
 	}
 
 	expandedPath := rawPath
@@ -90,12 +92,15 @@ func Scaffold(home, rawPath string) error {
 		fmt.Printf("skipped %s (already exists)\n", agentsPath)
 	}
 
-	tomlContent := fmt.Sprintf(tomlTemplate, rawPath)
-	if err := os.WriteFile(tomlPath, []byte(tomlContent), 0644); err != nil {
-		return fmt.Errorf("writing %s: %w", tomlPath, err)
+	if tomlExists {
+		fmt.Printf("skipped %s (already exists)\n", tomlPath)
+	} else {
+		tomlContent := fmt.Sprintf(tomlTemplate, rawPath)
+		if err := os.WriteFile(tomlPath, []byte(tomlContent), 0644); err != nil {
+			return fmt.Errorf("writing %s: %w", tomlPath, err)
+		}
+		fmt.Printf("created %s\n", tomlPath)
 	}
-
-	fmt.Printf("created %s\n", tomlPath)
 
 	return nil
 }

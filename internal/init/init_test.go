@@ -48,7 +48,7 @@ func TestScaffold_AbsolutePath(t *testing.T) {
 	}
 }
 
-func TestScaffold_AlreadyExists(t *testing.T) {
+func TestScaffold_TomlAlreadyExists(t *testing.T) {
 	home := t.TempDir()
 
 	// Create existing chai.toml
@@ -58,11 +58,14 @@ func TestScaffold_AlreadyExists(t *testing.T) {
 	}
 
 	err := Scaffold(home, "~/dotfiles/ai")
-	if err == nil {
-		t.Fatal("expected error when chai.toml already exists")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "already exists") {
-		t.Errorf("error = %q, want it to contain 'already exists'", err.Error())
+
+	// chai.toml should not have been overwritten
+	got, _ := os.ReadFile(tomlPath)
+	if string(got) != "existing" {
+		t.Errorf("chai.toml was overwritten, got %q", string(got))
 	}
 }
 
