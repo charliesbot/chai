@@ -12,7 +12,7 @@ Each AI coding agent expects config in different locations and formats. Keeping 
 
 ## Solution
 
-chai is a CLI tool that reads a single TOML manifest + an `agents.md` file, and distributes them to the right locations per platform. It copies files (not symlinks) and uses hash-based dirty detection to avoid overwriting manual edits.
+chai is a CLI tool that reads a single TOML manifest + an `AGENTS.md` file, and distributes them to the right locations per platform. Instructions are copied (with hash-based dirty detection), while skills and agents are symlinked since they're read-only from the agent's perspective.
 
 ## Core Principle
 
@@ -21,8 +21,10 @@ Minimal first. Nail the basics, then think about complexity.
 ## Core Concepts
 
 - **Manifest** (`~/chai.toml`) — global config file that lives at `~`. Declares instructions path, deps, skills, agents, and MCP servers. All paths are absolute or use `~` / `@name`.
-- **Instructions** (`agents.md`) — single source of truth for agent instructions (persistent instructions). Copied to each platform's expected file.
-- **Dependencies** — external repos that chai clones to `~/.chai/deps/`. Referenced in paths via `@name` prefix. Deps are clone-only — no magic, no manifest parsing.
+- **Instructions** (`AGENTS.md`) — single source of truth for agent instructions (persistent instructions). Copied to each platform's expected file. Agents may edit their platform copy, so dirty detection protects manual changes.
+- **Skills** — read-only prompt files that agents consume but never modify. Symlinked (not copied) to each platform's skills directory. Chai owns these symlinks completely.
+- **Agents** — subagent definitions. Same symlink strategy as skills.
+- **Dependencies** — external repos that chai clones to `~/.chai/deps/`. Referenced in paths via `@name` prefix. Deps are clone-only — no magic, no manifest parsing. Updated explicitly via `chai update`, not during `chai sync`.
 - **Platform definitions** — built into chai. Each definition describes where a platform expects its files. Users don't configure this.
 - **Hash DB** — stores hashes of last-synced content per target file. Enables dirty detection before overwriting.
 
@@ -36,7 +38,8 @@ Minimal first. Nail the basics, then think about complexity.
 ```
 ~/chai.toml                  <- global config, always at ~
 ~/dotfiles/ai/               <- user's AI config (example)
-├── agents.md
+├── instructions/
+│   └── AGENTS.md
 ├── skills/
 │   ├── web-dev/
 │   ├── android-dev/
@@ -58,7 +61,7 @@ Dependencies are cloned to:
 ## TOML Schema
 
 ```toml
-instructions = "~/dotfiles/ai/agents.md"
+instructions = "~/dotfiles/ai/instructions/AGENTS.md"
 
 [deps]
 workspace = "https://github.com/gemini-cli-extensions/workspace"
@@ -96,11 +99,11 @@ command = "/Applications/Pencil.app/Contents/Resources/app.asar.unpacked/out/mcp
 args = ["--app", "desktop"]
 ```
 
-- `instructions` — path to the agents.md file. Copied to each platform's expected location.
-- `[deps]` — external repos to clone. `name = "url"`. Cloned to `~/.chai/deps/<name>/`. Deps are clone-only — chai doesn't read or parse their contents.
-- `[skills]` — skill directories. Supports globs, external paths (`~/`), and dep references (`@name/`).
-- `[agents]` — subagent definitions. Same path resolution as skills.
-- `[mcp.<name>]` — MCP server definitions. `command`, `args`, optional `env` and `cwd`. The section name becomes the key in the platform's `mcpServers` object. Use `@name` in `cwd` to reference a dep's local path.
+- `instructions` — path to AGENTS.md. Copied to each platform's expected location.
+- `[deps]` — external repos to clone. `name = "url"`. Cloned to `~/.chai/deps/<name>/`. Deps are clone-only — chai doesn't read or parse their contents. Only cloned/pulled via `chai update`, not during `chai sync`.
+- `[skills]` — skill directories. Supports globs, external paths (`~/`), and dep references (`@name/`). Symlinked to each platform's skills directory.
+- `[agents]` — subagent definitions. Same path resolution and symlink strategy as skills.
+- `[mcp.<name>]` — MCP server definitions. `command`, `args`, optional `env` and `cwd`. The section name becomes the key in the platform's `mcpServers` object. Use `@name` in `cwd` to reference a dep's local path. NPX-based MCPs don't need a `[deps]` entry.
 
 ### Path Resolution
 
@@ -113,12 +116,14 @@ args = ["--app", "desktop"]
 
 Defined in chai's source code, not by the user. Each platform specifies where files go and how MCP servers are registered.
 
-| Platform | Instructions destination | MCP config file              | MCP key        | MCP strategy |
-|----------|--------------------------|------------------------------|----------------|--------------|
-| Claude   | `~/.claude/CLAUDE.md`    | `~/.claude.json`             | `mcpServers`   | replace key  |
-| Gemini   | `~/.gemini/GEMINI.md`    | `~/.gemini/settings.json`    | `mcpServers`   | replace key  |
+| Platform | Instructions destination | Skills directory      | MCP config file              | MCP key        | MCP strategy |
+|----------|--------------------------|----------------------|------------------------------|----------------|--------------|
+| Claude   | `~/.claude/CLAUDE.md`    | `~/.claude/skills/`  | `~/.claude.json`             | `mcpServers`   | replace key  |
+| Gemini   | `~/.gemini/GEMINI.md`    | `~/.gemini/skills/`  | `~/.gemini/settings.json`    | `mcpServers`   | replace key  |
 
-Both platforms use the same `mcpServers` structure (`command`, `args`, `env`), so chai writes the same MCP data to both — no transformation needed.
+- Instructions are **copied** (agents may edit their platform copy — dirty detection protects manual changes).
+- Skills and agents are **symlinked** (read-only from the agent's perspective — one source of truth, no duplication).
+- MCPs use the same `mcpServers` structure (`command`, `args`, `env`) on both platforms — no transformation needed.
 
 ### MCP Write Strategy
 
@@ -133,20 +138,29 @@ Chai owns the `mcpServers` key completely. The TOML is the source of truth.
 
 ### `chai init`
 
-Scaffolds a `~/chai.toml` and an AI folder with `agents.md` in the specified path.
+Scaffolds a `~/chai.toml` and an AI folder with `instructions/AGENTS.md`, `skills/`, and `agents/` directories. Skips any files or directories that already exist.
 
 ### `chai sync`
 
+Distributes config to all platforms. Does **not** touch deps — uses whatever is already cloned.
+
 1. Read `~/chai.toml`.
-2. Clone or pull all `[deps]` to `~/.chai/deps/`.
-3. Resolve all paths and expand globs for skills, agents, MCPs.
-4. For each target file: hash the content that would be written.
-5. Compare against stored hash from last sync.
-6. If target hash != stored hash, the file was manually edited — warn the user.
-7. Delete existing target files.
-8. Copy fresh files to target paths.
-9. Replace `mcpServers` key in platform config files.
-10. Update hash DB.
+2. Resolve all paths and expand globs for skills, agents, MCPs.
+3. Hash target instructions files and compare against stored hashes for dirty detection.
+4. Copy instructions to platform locations (with dirty detection prompts).
+5. Symlink skills and agents to platform directories (remove stale symlinks first).
+6. Replace `mcpServers` key in platform config files.
+7. Update hash DB.
+
+Flags: `--force` (skip dirty checks), `--dry-run` (preview without writing).
+
+### `chai update`
+
+Clones missing deps and pulls existing ones. Shows Bubbletea progress UI with per-dep status.
+
+1. Read `[deps]` from `~/chai.toml`.
+2. For each dep: clone if missing, pull if already cloned.
+3. Display progress bars and status per dependency.
 
 ## Sync Flow
 
@@ -155,28 +169,42 @@ Scaffolds a `~/chai.toml` and an AI folder with `agents.md` in the specified pat
      |
      v
 +-----------+
-|   deps    |  clone/pull repos to ~/.chai/deps/
-+-----+-----+
-     |
-     v
-+-----------+
 |   parse   |  read TOML, resolve paths, expand globs
 +-----+-----+
      |
      v
 +-----------+
-|   hash    |  compare source hash vs stored hash per target
+|   hash    |  compare source hash vs stored hash for instructions
 +-----+-----+
      |
      v
 +-----------+
-|   write   |  delete old files, copy fresh, replace mcpServers, update hash DB
+|   write   |  copy instructions, symlink skills/agents, replace mcpServers
++-----+-----+
+     |
+     v
 +-----------+
+|   save    |  update hash DB
++-----------+
+```
+
+## Update Flow
+
+```
+~/chai.toml
+     |
+     v
++-----------+
+|   deps    |  clone missing, pull existing → ~/.chai/deps/
++-----------+
+     |
+     v
+  progress UI (Bubbletea)
 ```
 
 ## Hash / Dirty Detection
 
-- Dirty detection applies only to instructions (`agents.md` → `CLAUDE.md` / `GEMINI.md`). Skills and MCPs are fully owned by chai and replaced on every sync.
+- Dirty detection applies only to instructions (`AGENTS.md` → `CLAUDE.md` / `GEMINI.md`). Skills, agents, and MCPs are fully owned by chai and replaced on every sync.
 - On every sync, chai hashes the `instructions` file (MD5) and stores it in `~/.chai/hashes.json`.
 - Before writing, chai hashes each target file on disk (`CLAUDE.md`, `GEMINI.md`) and compares against the stored hash.
 - Match = file untouched since last sync, safe to overwrite.
@@ -191,12 +219,16 @@ Scaffolds a `~/chai.toml` and an AI folder with `agents.md` in the specified pat
 - TOML for config (`pelletier/go-toml`)
 - Distributed as a single binary (Homebrew, GitHub releases)
 
+## Resolved Questions
+
+- **How do skills map to platforms?** — Symlinked to `~/.claude/skills/<name>` and `~/.gemini/skills/<name>`. Agents use the same pattern.
+- **Why symlinks for skills but copies for instructions?** — Instructions are two-way: agents may edit their platform copy (e.g., Claude edits CLAUDE.md based on project context). Skills are read-only from the agent's perspective — they consume them but never modify them. Symlinks give one source of truth with no duplication.
+- **Why separate `chai sync` from `chai update`?** — Sync should be fast and predictable. Pulling git repos is slow and network-dependent. Users update deps explicitly when they want to.
+- **Do NPX-based MCPs need deps?** — No. NPX fetches the package on the fly. `[deps]` is only needed when you need actual files on disk (for skills, agents, or MCPs that run from a local path).
+
 ## Open Questions
 
-- How exactly do skills map to each platform's expected directory structure?
-- Where do skills get copied to per platform? (`~/.claude/skills/`? `~/.gemini/skills/`?)
-
-- Should `chai sync` run `npm install` or setup steps for deps that need it (e.g., workspace extension uses `node scripts/start.js`)?
+- Should `chai update` support pinning deps to a specific commit/tag?
 
 ## Future Features
 
