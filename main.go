@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	chaiinit "github.com/charliesbot/chai/internal/init"
 	"github.com/peterbourgon/ff/v3/ffcli"
 )
 
@@ -15,8 +16,7 @@ func main() {
 		ShortUsage: "chai init",
 		ShortHelp:  "Scaffold a ~/chai.toml and agents.md",
 		Exec: func(ctx context.Context, args []string) error {
-			fmt.Println("chai init: not implemented yet")
-			return nil
+			return chaiinit.Run()
 		},
 	}
 
