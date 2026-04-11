@@ -1,17 +1,25 @@
 # AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents when working with code in this repository.
 
 ## Project Overview
 
-chai is a Go CLI that reads a single TOML manifest (`~/chai.toml`) and an `agents.md` file, then distributes them to the right locations for each AI platform (Claude, Gemini). It copies files (not symlinks) and uses hash-based dirty detection to avoid overwriting manual edits.
+chai is a Go CLI that keeps AI coding agent configs in sync. It reads a single TOML manifest (`~/chai.toml`) and an `agents.md` file, then distributes them to the right locations for each AI platform (Claude, Gemini). It copies files (not symlinks) and uses hash-based dirty detection to avoid overwriting manual edits.
+
+chai is deliberately minimal — it syncs config files, not manages workflows.
 
 ## Tech Stack
 
-- Go
-- Bubbletea for TUI (dirty detection prompts, sync output)
-- TOML config parsing (`pelletier/go-toml`)
-- Distributed as a single binary
+- **Go** — single binary distribution
+- **ffcli** (`github.com/peterbourgon/ff/v3/ffcli`) — CLI framework, uses stdlib `flag` for arg parsing
+- **Bubbletea** (`github.com/charmbracelet/bubbletea`) — TUI for interactive prompts (dirty detection, sync output)
+- **go-toml** (`github.com/pelletier/go-toml`) — TOML config parsing
+
+### Why ffcli over Cobra/Kong
+
+chai only has two commands (`init`, `sync`) and a few flags. ffcli wraps stdlib `flag` with minimal abstraction — no codegen, no hidden behavior, easy to read the entire command wiring at a glance. Bubbletea is launched from within ffcli's `Exec` functions for interactive parts.
+
+Reference project for ffcli patterns: https://github.com/rudrankriyam/App-Store-Connect-CLI
 
 ## Build & Run
 
@@ -40,6 +48,8 @@ The CLI has two commands: `chai init` (scaffold config) and `chai sync` (distrib
 4. Hash target files and compare against `~/.chai/hashes.json` for dirty detection
 5. Write files: copy instructions to platform locations, replace `mcpServers` key in platform configs
 
+All file writes must be atomic (write to `.tmp`, then `os.Rename`).
+
 ### Platform Definitions
 
 Built into source code (not user-configured). Each platform specifies:
@@ -56,6 +66,32 @@ Built into source code (not user-configured). Each platform specifies:
 - **`mcpServers` ownership** — chai owns the entire `mcpServers` key in platform config files. It replaces the key wholesale but preserves all other keys.
 - **Deps are clone-only** — chai clones repos to `~/.chai/deps/<name>/` but does not parse or inspect their contents.
 - **Path resolution** — `~` expands to home dir, `@name` resolves to `~/.chai/deps/<name>/`.
+- **Atomic writes** — all file writes go through a temp file + `os.Rename` to prevent partial writes.
+
+## Implementation Phases
+
+Work is tracked in GitHub issues. Build in this order — each phase produces something that works:
+
+### Phase 1 — Foundation
+- #1 Project scaffolding (Go module, ffcli, main.go)
+- #2 TOML config parsing
+- #3 Path resolution (~, @name, globs)
+
+### Phase 2 — Core Sync
+- #4 `chai init` (scaffold config + agents.md)
+- #5 Instructions sync (copy agents.md to platform locations)
+- #6 MCP sync (write mcpServers to platform config files)
+
+### Phase 3 — Dependencies
+- #7 Deps clone/pull
+
+### Phase 4 — Dirty Detection
+- #8 Hash DB and dirty detection
+- #9 TUI prompts for conflicts (Bubbletea)
+
+### Phase 5 — Fast Follows
+- #10 `--dry-run` flag
+- #11 SIGINT cleanup
 
 ## Design Doc
 

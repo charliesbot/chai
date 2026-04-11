@@ -1,8 +1,14 @@
 # chai — design doc
 
+## Goal
+
+Keep AI coding agent configs in sync across tools. One manifest, distributed to every platform that needs it. Nothing more.
+
+chai is deliberately minimal — it syncs config files, not manages workflows. It does one thing well and stays out of the way.
+
 ## Problem
 
-AI coding agents (Claude, Gemini, etc.) each expect config in different locations and formats. Maintaining parallel files manually is tedious and error-prone. Symlinks are fragile, non-portable, and can't transform content per platform.
+Each AI coding agent expects config in different locations and formats. Keeping instructions, MCP servers, and skills consistent across all of them means editing multiple files every time something changes. Symlinks are fragile, non-portable, and can't transform content per platform.
 
 ## Solution
 
@@ -196,4 +202,11 @@ Scaffolds a `~/chai.toml` and an AI folder with `agents.md` in the specified pat
 
 - **`dep = "@name"` shorthand for MCPs** — read dep manifests and extract MCP definitions automatically instead of manual inline config.
 - **Hooks** — `[claude.hooks]` and `[gemini.hooks]` sections that write to each platform's `settings.json` under the `hooks` key. Same replace-key strategy as MCPs. Event names differ per platform (`PreToolUse` vs `BeforeTool`, etc.) so no abstraction — platform-specific sections.
-- **Project-level config** — a `chai.project.toml` in a project root for project-scoped instructions, skills, and MCPs. `chai sync --project` from within a project directory generates `.mcp.json` (Claude), `.gemini/settings.json` (Gemini), project-level `CLAUDE.md` / `GEMINI.md`, and `.claude/skills/` per project.
+- **Project-level config** — a `chai.toml` in a project root for project-scoped instructions, skills, and MCPs. Running `chai sync` from within a project directory detects the local `chai.toml` and generates platform-specific files:
+
+  | Platform | Instructions         | MCP config          | Notes                                      |
+  |----------|----------------------|---------------------|--------------------------------------------|
+  | Claude   | `CLAUDE.md`          | `.mcp.json`         | Both supported at project level             |
+  | Gemini   | `GEMINI.md`          | `.gemini/settings.json` | Needs verification — project-level MCP support unclear |
+
+  The project `chai.toml` uses the same schema as the global one. Global config (`~/chai.toml`) is not merged — project config is standalone.
