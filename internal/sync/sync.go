@@ -143,10 +143,6 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return err
 	}
 
-	if err := syncGeminiExtensions(cfg.Gemini.Extensions, home, opts.DryRun); err != nil {
-		return err
-	}
-
 	if opts.DryRun {
 		return nil
 	}

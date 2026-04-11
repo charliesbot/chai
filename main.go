@@ -64,7 +64,7 @@ func main() {
 			if err != nil {
 				return err
 			}
-			return update.Run(cfg.Deps)
+			return update.Run(cfg.Deps, cfg.Gemini.Extensions)
 		},
 	}
 

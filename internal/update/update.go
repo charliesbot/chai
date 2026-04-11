@@ -3,6 +3,8 @@ package update
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -16,35 +18,71 @@ import (
 var spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // Run executes the update with a Bubbletea TUI.
-func Run(depMap map[string]config.Dep) error {
+func Run(depMap map[string]config.Dep, extensions map[string]string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("getting home directory: %w", err)
 	}
-	return RunWithHome(depMap, home)
+	return RunWithHome(depMap, extensions, home)
 }
 
 // RunWithHome executes the update with a Bubbletea TUI using the given home directory.
-func RunWithHome(depMap map[string]config.Dep, home string) error {
-	if len(depMap) == 0 {
-		fmt.Println(ui.Muted.Render("no deps configured"))
+func RunWithHome(depMap map[string]config.Dep, extensions map[string]string, home string) error {
+	if len(depMap) == 0 && len(extensions) == 0 {
+		fmt.Println(ui.Muted.Render("nothing to update"))
 		return nil
 	}
 
-	m := newModel(depMap, home)
-	p := tea.NewProgram(m)
-	final, err := p.Run()
-	if err != nil {
-		return fmt.Errorf("running update UI: %w", err)
+	if len(depMap) > 0 {
+		m := newModel(depMap, home)
+		p := tea.NewProgram(m)
+		final, err := p.Run()
+		if err != nil {
+			return fmt.Errorf("running update UI: %w", err)
+		}
+		result := final.(model)
+		if result.err != nil {
+			return result.err
+		}
 	}
 
-	result := final.(model)
-	if result.err != nil {
-		return result.err
+	if len(extensions) > 0 {
+		if err := updateGeminiExtensions(extensions, home); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
+
+// updateGeminiExtensions installs missing Gemini extensions.
+func updateGeminiExtensions(extensions map[string]string, home string) error {
+	extDir := filepath.Join(home, ".gemini", "extensions")
+
+	fmt.Println(ui.Title.Render("gemini extensions") + "\n")
+
+	for name, url := range extensions {
+		installed := filepath.Join(extDir, name)
+		if _, err := os.Stat(installed); err == nil {
+			fmt.Printf("  %s %s %s\n", ui.Check(), ui.Bold.Render(name), ui.Muted.Render("installed"))
+			continue
+		}
+
+		fmt.Printf("  %s %s %s\n", spinnerStyle.Render("⠋"), ui.Bold.Render(name), ui.Muted.Render("installing..."))
+		cmd := exec.Command("gemini", "extensions", "install", url)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("installing gemini extension %q: %w", name, err)
+		}
+		fmt.Printf("  %s %s %s\n", ui.Check(), ui.Bold.Render(name), ui.Success.Render("installed"))
+	}
+
+	fmt.Println()
+	return nil
+}
+
+var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
 
 // dep tracks the state of a single dependency during update.
 type dep struct {
