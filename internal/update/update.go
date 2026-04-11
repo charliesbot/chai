@@ -260,7 +260,7 @@ func (m model) startItem(index int) tea.Cmd {
 			if err != nil {
 				// "already installed" is not a real error
 				if strings.Contains(string(out), "already installed") {
-					return itemDoneMsg{index: index, action: "installed"}
+					return itemDoneMsg{index: index, action: "up to date"}
 				}
 				return itemDoneMsg{index: index, err: fmt.Errorf("%s", string(out))}
 			}
