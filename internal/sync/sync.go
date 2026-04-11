@@ -119,7 +119,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	}
 
 	if !opts.DryRun {
-		fmt.Println(ui.Section("instructions", 0, claudeOk, geminiOk))
+		fmt.Println(ui.Box("instructions", 0, claudeOk, geminiOk, []string{"AGENTS.md"}))
 	}
 
 	if opts.DryRun {
