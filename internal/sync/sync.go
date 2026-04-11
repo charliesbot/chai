@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/charliesbot/chai/internal/config"
+	"github.com/charliesbot/chai/internal/deps"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
 )
@@ -21,6 +22,11 @@ func Run(cfg *config.Config) error {
 
 // RunWithHome executes the sync using the given home directory.
 func RunWithHome(cfg *config.Config, home string) error {
+	// Clone/pull deps before resolving paths
+	if err := deps.SyncWithHome(cfg.Deps, home); err != nil {
+		return err
+	}
+
 	if cfg.Instructions == "" {
 		return fmt.Errorf("no instructions path set in config")
 	}
