@@ -212,15 +212,32 @@ func (m model) renderItem(it item) string {
 
 	switch it.status {
 	case "done":
-		action := ui.Success.Render(it.action)
-		if it.action == "up to date" {
-			action = lipgloss.NewStyle().Foreground(lipgloss.Color("cyan")).Italic(true).Render(it.action)
-		}
+		action := statusStyle(it.action)
 		return fmt.Sprintf("  %s %s  %s\n    %s\n", icon, name, action, url)
 	case "error":
 		return fmt.Sprintf("  %s %s  %s\n    %s\n", icon, name, ui.Warning.Render("error"), url)
 	default:
 		return fmt.Sprintf("  %s %s\n    %s\n", icon, name, url)
+	}
+}
+
+var (
+	statusGreen  = lipgloss.NewStyle().Foreground(lipgloss.Color("120")) // pastel green
+	statusYellow = lipgloss.NewStyle().Foreground(lipgloss.Color("222")) // pastel yellow
+	statusPink   = lipgloss.NewStyle().Foreground(lipgloss.Color("212")) // pastel pink
+)
+
+func statusStyle(action string) string {
+	switch action {
+	case "cloned", "installed":
+		return statusGreen.Render(action)
+	case "pulled":
+		return statusYellow.Render(action)
+	case "up to date":
+		return statusPink.Render(action)
+	default:
+		// "cloned + built" etc
+		return statusGreen.Render(action)
 	}
 }
 
