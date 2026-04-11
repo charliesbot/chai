@@ -18,7 +18,7 @@ func main() {
 	initCmd := &ffcli.Command{
 		Name:       "init",
 		ShortUsage: "chai init",
-		ShortHelp:  "Scaffold a ~/chai.toml and agents.md",
+		ShortHelp:  "Scaffold a ~/chai.toml and AGENTS.md",
 		Exec: func(ctx context.Context, args []string) error {
 			return chaiinit.Run()
 		},

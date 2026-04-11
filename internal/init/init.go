@@ -12,7 +12,7 @@ import (
 
 const defaultPath = "~/dotfiles/ai"
 
-const tomlTemplate = `instructions = "%s/agents.md"
+const tomlTemplate = `instructions = "%s/AGENTS.md"
 
 [deps]
 
@@ -61,7 +61,7 @@ func Run() error {
 	return Scaffold(home, rawPath)
 }
 
-// Scaffold creates the chai.toml and agents.md files.
+// Scaffold creates the chai.toml and AGENTS.md files.
 // rawPath may contain ~ which is expanded using home.
 func Scaffold(home, rawPath string) error {
 	tomlPath := filepath.Join(home, "chai.toml")
@@ -80,9 +80,14 @@ func Scaffold(home, rawPath string) error {
 		return fmt.Errorf("creating directory %s: %w", expandedPath, err)
 	}
 
-	agentsPath := filepath.Join(expandedPath, "agents.md")
-	if err := os.WriteFile(agentsPath, []byte(agentsTemplate), 0644); err != nil {
-		return fmt.Errorf("writing %s: %w", agentsPath, err)
+	agentsPath := filepath.Join(expandedPath, "AGENTS.md")
+	if _, err := os.Stat(agentsPath); os.IsNotExist(err) {
+		if err := os.WriteFile(agentsPath, []byte(agentsTemplate), 0644); err != nil {
+			return fmt.Errorf("writing %s: %w", agentsPath, err)
+		}
+		fmt.Printf("created %s\n", agentsPath)
+	} else {
+		fmt.Printf("skipped %s (already exists)\n", agentsPath)
 	}
 
 	tomlContent := fmt.Sprintf(tomlTemplate, rawPath)
@@ -91,7 +96,6 @@ func Scaffold(home, rawPath string) error {
 	}
 
 	fmt.Printf("created %s\n", tomlPath)
-	fmt.Printf("created %s\n", agentsPath)
 
 	return nil
 }
