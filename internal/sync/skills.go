@@ -11,22 +11,36 @@ import (
 	"github.com/charliesbot/chai/internal/ui"
 )
 
-// syncSkills symlinks skill directories to each platform's skills directory.
-func syncSkills(patterns []string, home string, dryRun bool) error {
-	if len(patterns) == 0 {
-		return nil
+// syncSkillsAndAgents resolves skills and agents patterns, then symlinks
+// all of them to each platform's skills directory in a single pass.
+func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, dryRun bool) error {
+	skills, err := resolvePatterns(skillPatterns, home)
+	if err != nil {
+		return err
 	}
-
-	sources, err := resolvePatterns(patterns, home)
+	agents, err := resolvePatterns(agentPatterns, home)
 	if err != nil {
 		return err
 	}
 
-	if dryRun && len(sources) > 0 {
-		fmt.Println(ui.Label.Render("skills"))
-		for _, src := range sources {
-			fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), src)
+	if dryRun {
+		if len(skills) > 0 {
+			fmt.Println(ui.Label.Render("skills"))
+			for _, src := range skills {
+				fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), src)
+			}
 		}
+		if len(agents) > 0 {
+			fmt.Println(ui.Label.Render("agents"))
+			for _, src := range agents {
+				fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), src)
+			}
+		}
+	}
+
+	allSources := append(skills, agents...)
+	if len(allSources) == 0 {
+		return nil
 	}
 
 	platforms := platform.All()
@@ -34,7 +48,7 @@ func syncSkills(patterns []string, home string, dryRun bool) error {
 		destDir := filepath.Join(home, p.SkillsDir)
 
 		if dryRun {
-			for _, src := range sources {
+			for _, src := range allSources {
 				name := filepath.Base(src)
 				dest := filepath.Join(destDir, name)
 				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(dest), ui.Muted.Render("→ "+src))
@@ -42,64 +56,16 @@ func syncSkills(patterns []string, home string, dryRun bool) error {
 			continue
 		}
 
-		if err := syncSymlinks(sources, destDir); err != nil {
-			return fmt.Errorf("syncing skills to %s: %w", p.Name, err)
+		if err := syncSymlinks(allSources, destDir); err != nil {
+			return fmt.Errorf("syncing to %s: %w", p.Name, err)
 		}
-		for _, src := range sources {
+		for _, src := range allSources {
 			name := filepath.Base(src)
 			fmt.Println(ui.SyncedLine(p.Name, filepath.Join(destDir, name)))
 		}
 	}
 
-	if dryRun && len(sources) > 0 {
-		fmt.Println()
-	}
-
-	return nil
-}
-
-// syncAgents symlinks agent directories to each platform's skills directory.
-// Agents go in the same skills directory as skills.
-func syncAgents(patterns []string, home string, dryRun bool) error {
-	if len(patterns) == 0 {
-		return nil
-	}
-
-	sources, err := resolvePatterns(patterns, home)
-	if err != nil {
-		return err
-	}
-
-	if dryRun && len(sources) > 0 {
-		fmt.Println(ui.Label.Render("agents"))
-		for _, src := range sources {
-			fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), src)
-		}
-	}
-
-	platforms := platform.All()
-	for _, p := range platforms {
-		destDir := filepath.Join(home, p.SkillsDir)
-
-		if dryRun {
-			for _, src := range sources {
-				name := filepath.Base(src)
-				dest := filepath.Join(destDir, name)
-				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(dest), ui.Muted.Render("→ "+src))
-			}
-			continue
-		}
-
-		if err := syncSymlinks(sources, destDir); err != nil {
-			return fmt.Errorf("syncing agents to %s: %w", p.Name, err)
-		}
-		for _, src := range sources {
-			name := filepath.Base(src)
-			fmt.Println(ui.SyncedLine(p.Name, filepath.Join(destDir, name)))
-		}
-	}
-
-	if dryRun && len(sources) > 0 {
+	if dryRun && len(allSources) > 0 {
 		fmt.Println()
 	}
 
@@ -146,8 +112,7 @@ func resolvePatterns(patterns []string, home string) ([]string, error) {
 }
 
 // syncSymlinks creates symlinks in destDir for each source directory.
-// Removes existing symlinks in destDir that were managed by chai (are symlinks)
-// before creating new ones.
+// Removes stale symlinks (managed by chai) before creating new ones.
 func syncSymlinks(sources []string, destDir string) error {
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("creating directory %s: %w", destDir, err)

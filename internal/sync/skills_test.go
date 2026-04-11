@@ -9,7 +9,6 @@ import (
 func TestSyncSymlinks_CreatesLinks(t *testing.T) {
 	home := t.TempDir()
 
-	// Create source skill directories
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
 	for _, name := range []string{"web-dev", "android-dev"} {
 		os.MkdirAll(filepath.Join(skillsDir, name), 0755)
@@ -27,7 +26,6 @@ func TestSyncSymlinks_CreatesLinks(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify symlinks exist and point to correct targets
 	for _, name := range []string{"web-dev", "android-dev"} {
 		link := filepath.Join(destDir, name)
 		target, err := os.Readlink(link)
@@ -51,7 +49,6 @@ func TestSyncSymlinks_RemovesStale(t *testing.T) {
 
 	destDir := filepath.Join(home, ".claude", "skills")
 
-	// First sync with two skills
 	err := syncSymlinks([]string{
 		filepath.Join(skillsDir, "web-dev"),
 		filepath.Join(skillsDir, "old-skill"),
@@ -60,7 +57,6 @@ func TestSyncSymlinks_RemovesStale(t *testing.T) {
 		t.Fatalf("first sync: %v", err)
 	}
 
-	// Second sync with only one skill — old-skill should be removed
 	err = syncSymlinks([]string{
 		filepath.Join(skillsDir, "web-dev"),
 	}, destDir)
@@ -76,16 +72,13 @@ func TestSyncSymlinks_RemovesStale(t *testing.T) {
 	}
 }
 
-func TestSyncSymlinks_ReplacesbrokenLinks(t *testing.T) {
+func TestSyncSymlinks_ReplacesBrokenLinks(t *testing.T) {
 	home := t.TempDir()
 
 	destDir := filepath.Join(home, ".claude", "skills")
 	os.MkdirAll(destDir, 0755)
-
-	// Create a broken symlink
 	os.Symlink("/nonexistent/old-path", filepath.Join(destDir, "web-dev"))
 
-	// Create the real source
 	src := filepath.Join(home, "skills", "web-dev")
 	os.MkdirAll(src, 0755)
 
@@ -107,7 +100,6 @@ func TestSyncSymlinks_RefusesToOverwriteNonSymlink(t *testing.T) {
 	home := t.TempDir()
 
 	destDir := filepath.Join(home, ".claude", "skills")
-	// Create a real directory (not a symlink) at the target
 	os.MkdirAll(filepath.Join(destDir, "web-dev"), 0755)
 
 	src := filepath.Join(home, "skills", "web-dev")
@@ -126,7 +118,6 @@ func TestResolvePatterns(t *testing.T) {
 	for _, name := range []string{"web-dev", "android-dev", "slidev"} {
 		os.MkdirAll(filepath.Join(skillsDir, name), 0755)
 	}
-	// Create a file (not a dir) — should be filtered out
 	os.WriteFile(filepath.Join(skillsDir, "README.md"), []byte("hi"), 0644)
 
 	patterns := []string{"~/dotfiles/ai/skills/*"}
@@ -148,7 +139,6 @@ func TestResolvePatterns_DirectoryPath(t *testing.T) {
 		os.MkdirAll(filepath.Join(skillsDir, name), 0755)
 	}
 
-	// Pass directory without glob — should auto-expand
 	patterns := []string{"~/dotfiles/ai/skills"}
 	results, err := resolvePatterns(patterns, home)
 	if err != nil {
@@ -157,5 +147,61 @@ func TestResolvePatterns_DirectoryPath(t *testing.T) {
 
 	if len(results) != 2 {
 		t.Errorf("got %d results, want 2: %v", len(results), results)
+	}
+}
+
+func TestSyncSkillsAndAgents_SharedDirectory(t *testing.T) {
+	home := t.TempDir()
+
+	// Create skills
+	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
+	os.MkdirAll(filepath.Join(skillsDir, "web-dev"), 0755)
+
+	// Create agents
+	agentsDir := filepath.Join(home, "dotfiles", "ai", "agents")
+	os.MkdirAll(filepath.Join(agentsDir, "reviewer"), 0755)
+
+	err := syncSkillsAndAgents(
+		[]string{"~/dotfiles/ai/skills"},
+		[]string{"~/dotfiles/ai/agents"},
+		home, false,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Both should exist in the same skills dir
+	claudeSkills := filepath.Join(home, ".claude", "skills")
+	if _, err := os.Lstat(filepath.Join(claudeSkills, "web-dev")); err != nil {
+		t.Error("web-dev symlink missing")
+	}
+	if _, err := os.Lstat(filepath.Join(claudeSkills, "reviewer")); err != nil {
+		t.Error("reviewer symlink missing")
+	}
+}
+
+func TestSyncSkillsAndAgents_EmptyAgents(t *testing.T) {
+	home := t.TempDir()
+
+	// Create skills
+	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
+	os.MkdirAll(filepath.Join(skillsDir, "web-dev"), 0755)
+
+	// Empty agents dir
+	os.MkdirAll(filepath.Join(home, "dotfiles", "ai", "agents"), 0755)
+
+	err := syncSkillsAndAgents(
+		[]string{"~/dotfiles/ai/skills"},
+		[]string{"~/dotfiles/ai/agents"},
+		home, false,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Skill should still exist
+	claudeSkills := filepath.Join(home, ".claude", "skills")
+	if _, err := os.Lstat(filepath.Join(claudeSkills, "web-dev")); err != nil {
+		t.Error("web-dev symlink missing — empty agents removed it")
 	}
 }
