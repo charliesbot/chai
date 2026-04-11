@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,23 +16,30 @@ import (
 // Options controls sync behavior.
 type Options struct {
 	Force  bool
+	DryRun bool
 	Prompt PromptFunc
 }
 
 // Run executes the sync: copies instructions to all platform locations.
-func Run(cfg *config.Config, opts Options) error {
+func Run(ctx context.Context, cfg *config.Config, opts Options) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("getting home directory: %w", err)
 	}
-	return RunWithHome(cfg, home, opts)
+	return RunWithHome(ctx, cfg, home, opts)
 }
 
 // RunWithHome executes the sync using the given home directory.
-func RunWithHome(cfg *config.Config, home string, opts Options) error {
-	// Clone/pull deps before resolving paths
-	if err := deps.SyncWithHome(cfg.Deps, home); err != nil {
-		return err
+func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Options) error {
+	// Clone/pull deps before resolving paths (skip in dry-run)
+	if !opts.DryRun {
+		if err := deps.SyncWithHome(cfg.Deps, home); err != nil {
+			return err
+		}
+	} else if len(cfg.Deps) > 0 {
+		for name, url := range cfg.Deps {
+			fmt.Printf("[dry-run] would clone/pull dep %s from %s\n", name, url)
+		}
 	}
 
 	if cfg.Instructions == "" {
@@ -58,6 +66,10 @@ func RunWithHome(cfg *config.Config, home string, opts Options) error {
 
 	platforms := platform.All()
 	for _, p := range platforms {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("sync interrupted: %w", err)
+		}
+
 		dest := filepath.Join(home, p.InstructionsPath)
 
 		if !opts.Force {
@@ -80,6 +92,11 @@ func RunWithHome(cfg *config.Config, home string, opts Options) error {
 			}
 		}
 
+		if opts.DryRun {
+			fmt.Printf("[dry-run] would sync instructions → %s (%s)\n", p.Name, dest)
+			continue
+		}
+
 		if err := atomicWrite(dest, content); err != nil {
 			return fmt.Errorf("writing %s instructions to %s: %w", p.Name, dest, err)
 		}
@@ -87,8 +104,16 @@ func RunWithHome(cfg *config.Config, home string, opts Options) error {
 		fmt.Printf("synced instructions → %s (%s)\n", p.Name, dest)
 	}
 
-	if err := syncMCP(cfg, home); err != nil {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("sync interrupted: %w", err)
+	}
+
+	if err := syncMCP(cfg, home, opts.DryRun); err != nil {
 		return err
+	}
+
+	if opts.DryRun {
+		return nil
 	}
 
 	if err := hashDB.Save(home); err != nil {

@@ -143,7 +143,7 @@ func TestSyncMCP_NoMCPs(t *testing.T) {
 	cfg := &config.Config{}
 
 	// Should be a no-op, no error
-	err := syncMCP(cfg, home)
+	err := syncMCP(cfg, home, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -20,7 +20,7 @@ type mcpEntry struct {
 }
 
 // syncMCP writes mcpServers to each platform's config file.
-func syncMCP(cfg *config.Config, home string) error {
+func syncMCP(cfg *config.Config, home string, dryRun bool) error {
 	if len(cfg.MCP) == 0 {
 		return nil
 	}
@@ -33,6 +33,10 @@ func syncMCP(cfg *config.Config, home string) error {
 	platforms := platform.All()
 	for _, p := range platforms {
 		dest := filepath.Join(home, p.MCPConfigPath)
+		if dryRun {
+			fmt.Printf("[dry-run] would sync mcpServers → %s (%s)\n", p.Name, dest)
+			continue
+		}
 		if err := mergeMCPIntoFile(dest, p.MCPKey, servers); err != nil {
 			return fmt.Errorf("writing MCP config for %s to %s: %w", p.Name, dest, err)
 		}
