@@ -213,14 +213,14 @@ func (m model) renderItem(it item) string {
 	switch it.status {
 	case "done":
 		action := ui.Success.Render(it.action)
-		if it.action == "up to date" || it.action == "installed" {
-			action = ui.Muted.Render(it.action)
+		if it.action == "up to date" {
+			action = ui.Muted.Render("· " + it.action)
 		}
-		return fmt.Sprintf("  %s %s %s %s\n", icon, name, url, action)
+		return fmt.Sprintf("  %s %s  %s\n    %s\n", icon, name, action, url)
 	case "error":
-		return fmt.Sprintf("  %s %s %s %s\n", icon, name, url, ui.Warning.Render("error"))
+		return fmt.Sprintf("  %s %s  %s\n    %s\n", icon, name, ui.Warning.Render("error"), url)
 	default:
-		return fmt.Sprintf("  %s %s %s\n", icon, name, url)
+		return fmt.Sprintf("  %s %s\n    %s\n", icon, name, url)
 	}
 }
 
