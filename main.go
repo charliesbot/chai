@@ -40,7 +40,11 @@ func main() {
 			if err != nil {
 				return err
 			}
-			return chaisync.Run(cfg, chaisync.Options{Force: *force})
+			opts := chaisync.Options{Force: *force}
+			if !*force {
+				opts.Prompt = chaisync.InteractivePrompt()
+			}
+			return chaisync.Run(cfg, opts)
 		},
 	}
 
