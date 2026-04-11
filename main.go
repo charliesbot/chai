@@ -11,6 +11,7 @@ import (
 	"github.com/charliesbot/chai/internal/config"
 	chaiinit "github.com/charliesbot/chai/internal/init"
 	chaisync "github.com/charliesbot/chai/internal/sync"
+	"github.com/charliesbot/chai/internal/update"
 	"github.com/peterbourgon/ff/v3/ffcli"
 )
 
@@ -50,13 +51,30 @@ func main() {
 		},
 	}
 
+	updateCmd := &ffcli.Command{
+		Name:       "update",
+		ShortUsage: "chai update",
+		ShortHelp:  "Clone or pull dependencies",
+		Exec: func(ctx context.Context, args []string) error {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			cfg, err := config.Load(filepath.Join(home, "chai.toml"))
+			if err != nil {
+				return err
+			}
+			return update.Run(cfg.Deps)
+		},
+	}
+
 	root := &ffcli.Command{
 		ShortUsage:  "chai <command> [flags]",
 		ShortHelp:   "Keep AI coding agent configs in sync",
 		FlagSet:     flag.NewFlagSet("chai", flag.ExitOnError),
-		Subcommands: []*ffcli.Command{initCmd, syncCmd},
+		Subcommands: []*ffcli.Command{initCmd, syncCmd, updateCmd},
 		Exec: func(ctx context.Context, args []string) error {
-			fmt.Println("chai — run 'chai init' or 'chai sync'")
+			fmt.Println("chai — run 'chai init', 'chai sync', or 'chai update'")
 			return nil
 		},
 	}

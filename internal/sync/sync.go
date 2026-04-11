@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 
 	"github.com/charliesbot/chai/internal/config"
-	"github.com/charliesbot/chai/internal/deps"
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
@@ -34,19 +33,6 @@ func Run(ctx context.Context, cfg *config.Config, opts Options) error {
 func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Options) error {
 	if opts.DryRun {
 		fmt.Println(ui.DryRunTag() + " " + ui.Muted.Render("previewing sync — no files will be written"))
-		fmt.Println()
-	}
-
-	// Clone/pull deps before resolving paths (skip in dry-run)
-	if !opts.DryRun {
-		if err := deps.SyncWithHome(cfg.Deps, home); err != nil {
-			return err
-		}
-	} else if len(cfg.Deps) > 0 {
-		fmt.Println(ui.Label.Render("deps"))
-		for name, url := range cfg.Deps {
-			fmt.Printf("  %s %s %s\n", ui.Arrow(), ui.Bold.Render(name), ui.Muted.Render(url))
-		}
 		fmt.Println()
 	}
 

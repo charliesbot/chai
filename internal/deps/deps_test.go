@@ -71,8 +71,8 @@ func TestSyncWithHome_InvalidURL(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid URL")
 	}
-	if !strings.Contains(err.Error(), "cloning dep") {
-		t.Errorf("error = %q, want it to contain 'cloning dep'", err.Error())
+	if !strings.Contains(err.Error(), "cloning") {
+		t.Errorf("error = %q, want it to contain 'cloning'", err.Error())
 	}
 }
 

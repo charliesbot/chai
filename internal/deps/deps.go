@@ -9,16 +9,61 @@ import (
 
 const depsDir = ".chai/deps"
 
-// Sync clones or pulls all dependencies.
-func Sync(depMap map[string]string) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("getting home directory: %w", err)
-	}
-	return SyncWithHome(depMap, home)
+// Action describes what happened to a dep.
+type Action string
+
+const (
+	ActionCloned  Action = "cloned"
+	ActionPulled  Action = "pulled"
+	ActionCurrent Action = "up to date"
+)
+
+// Result holds the outcome of syncing a single dep.
+type Result struct {
+	Name   string
+	URL    string
+	Action Action
+	Err    error
 }
 
-// SyncWithHome clones or pulls all dependencies using the given home directory.
+// SyncOne clones or pulls a single dependency and returns the result.
+func SyncOne(name, url, home string) Result {
+	base := filepath.Join(home, depsDir)
+	dest := filepath.Join(base, name)
+
+	if err := os.MkdirAll(base, 0755); err != nil {
+		return Result{Name: name, URL: url, Err: fmt.Errorf("creating deps directory: %w", err)}
+	}
+
+	if _, err := os.Stat(filepath.Join(dest, ".git")); err == nil {
+		return pullDep(name, url, dest)
+	}
+	return cloneDep(name, url, dest)
+}
+
+func cloneDep(name, url, dest string) Result {
+	cmd := exec.Command("git", "clone", "--quiet", url, dest)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return Result{Name: name, URL: url, Err: fmt.Errorf("cloning: %s", string(out))}
+	}
+	return Result{Name: name, URL: url, Action: ActionCloned}
+}
+
+func pullDep(name, url, dest string) Result {
+	cmd := exec.Command("git", "pull", "--quiet")
+	cmd.Dir = dest
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return Result{Name: name, URL: url, Err: fmt.Errorf("pulling: %s", string(out))}
+	}
+	output := string(out)
+	if output == "" || output == "Already up to date.\n" {
+		return Result{Name: name, URL: url, Action: ActionCurrent}
+	}
+	return Result{Name: name, URL: url, Action: ActionPulled}
+}
+
+// SyncWithHome clones or pulls all dependencies (non-interactive, for tests).
 func SyncWithHome(depMap map[string]string, home string) error {
 	if len(depMap) == 0 {
 		return nil
@@ -28,47 +73,12 @@ func SyncWithHome(depMap map[string]string, home string) error {
 		return fmt.Errorf("git is required but not found in PATH")
 	}
 
-	base := filepath.Join(home, depsDir)
-	if err := os.MkdirAll(base, 0755); err != nil {
-		return fmt.Errorf("creating deps directory: %w", err)
-	}
-
 	for name, url := range depMap {
-		dest := filepath.Join(base, name)
-		if err := syncOne(name, url, dest); err != nil {
-			return err
+		r := SyncOne(name, url, home)
+		if r.Err != nil {
+			return fmt.Errorf("dep %q: %w", name, r.Err)
 		}
 	}
 
-	return nil
-}
-
-func syncOne(name, url, dest string) error {
-	if _, err := os.Stat(filepath.Join(dest, ".git")); err == nil {
-		return pull(name, dest)
-	}
-	return clone(name, url, dest)
-}
-
-func clone(name, url, dest string) error {
-	fmt.Printf("cloning %s ...\n", name)
-	cmd := exec.Command("git", "clone", url, dest)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("cloning dep %q from %s: %w", name, url, err)
-	}
-	return nil
-}
-
-func pull(name, dest string) error {
-	fmt.Printf("pulling %s ...\n", name)
-	cmd := exec.Command("git", "pull")
-	cmd.Dir = dest
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("pulling dep %q in %s: %w", name, dest, err)
-	}
 	return nil
 }
