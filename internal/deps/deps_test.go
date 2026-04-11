@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/charliesbot/chai/internal/config"
 )
 
 func TestSyncWithHome_CloneAndPull(t *testing.T) {
@@ -15,11 +17,9 @@ func TestSyncWithHome_CloneAndPull(t *testing.T) {
 
 	home := t.TempDir()
 
-	// Create a bare repo to clone from
 	bareRepo := filepath.Join(t.TempDir(), "bare.git")
 	run(t, "", "git", "init", "--bare", bareRepo)
 
-	// Add a commit to the bare repo via a temp working copy
 	tmp := filepath.Join(t.TempDir(), "work")
 	run(t, "", "git", "clone", bareRepo, tmp)
 	os.WriteFile(filepath.Join(tmp, "README.md"), []byte("hello"), 0644)
@@ -27,8 +27,8 @@ func TestSyncWithHome_CloneAndPull(t *testing.T) {
 	run(t, tmp, "git", "-c", "user.name=test", "-c", "user.email=test@test.com", "commit", "-m", "init")
 	run(t, tmp, "git", "push")
 
-	depMap := map[string]string{
-		"myrepo": bareRepo,
+	depMap := map[string]config.Dep{
+		"myrepo": {URL: bareRepo},
 	}
 
 	// First sync: should clone
@@ -63,8 +63,8 @@ func TestSyncWithHome_InvalidURL(t *testing.T) {
 	}
 
 	home := t.TempDir()
-	depMap := map[string]string{
-		"bad": "https://invalid.example.com/nonexistent.git",
+	depMap := map[string]config.Dep{
+		"bad": {URL: "https://invalid.example.com/nonexistent.git"},
 	}
 
 	err := SyncWithHome(depMap, home)
@@ -73,6 +73,52 @@ func TestSyncWithHome_InvalidURL(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "cloning") {
 		t.Errorf("error = %q, want it to contain 'cloning'", err.Error())
+	}
+}
+
+func TestSyncOne_WithBuild(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
+	}
+
+	home := t.TempDir()
+
+	bareRepo := filepath.Join(t.TempDir(), "bare.git")
+	run(t, "", "git", "init", "--bare", bareRepo)
+
+	tmp := filepath.Join(t.TempDir(), "work")
+	run(t, "", "git", "clone", bareRepo, tmp)
+	os.WriteFile(filepath.Join(tmp, "README.md"), []byte("hello"), 0644)
+	run(t, tmp, "git", "add", ".")
+	run(t, tmp, "git", "-c", "user.name=test", "-c", "user.email=test@test.com", "commit", "-m", "init")
+	run(t, tmp, "git", "push")
+
+	dep := config.Dep{URL: bareRepo, Build: "touch built.txt"}
+
+	// First clone: should run build
+	result := SyncOne("myrepo", dep, home)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+	if result.Action != ActionCloned {
+		t.Errorf("action = %q, want %q", result.Action, ActionCloned)
+	}
+	if !result.Built {
+		t.Error("expected Built = true on first clone")
+	}
+
+	builtFile := filepath.Join(home, ".chai", "deps", "myrepo", "built.txt")
+	if _, err := os.Stat(builtFile); err != nil {
+		t.Error("built.txt not found — build command didn't run")
+	}
+
+	// Second sync (pull): should NOT run build
+	result = SyncOne("myrepo", dep, home)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+	if result.Built {
+		t.Error("build should not run on pull")
 	}
 }
 

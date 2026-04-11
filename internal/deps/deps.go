@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/charliesbot/chai/internal/config"
 )
 
 const depsDir = ".chai/deps"
@@ -16,6 +18,7 @@ const (
 	ActionCloned  Action = "cloned"
 	ActionPulled  Action = "pulled"
 	ActionCurrent Action = "up to date"
+	ActionBuilt   Action = "built"
 )
 
 // Result holds the outcome of syncing a single dep.
@@ -23,22 +26,40 @@ type Result struct {
 	Name   string
 	URL    string
 	Action Action
+	Built  bool
 	Err    error
 }
 
 // SyncOne clones or pulls a single dependency and returns the result.
-func SyncOne(name, url, home string) Result {
+func SyncOne(name string, dep config.Dep, home string) Result {
 	base := filepath.Join(home, depsDir)
 	dest := filepath.Join(base, name)
 
 	if err := os.MkdirAll(base, 0755); err != nil {
-		return Result{Name: name, URL: url, Err: fmt.Errorf("creating deps directory: %w", err)}
+		return Result{Name: name, URL: dep.URL, Err: fmt.Errorf("creating deps directory: %w", err)}
 	}
 
+	var result Result
 	if _, err := os.Stat(filepath.Join(dest, ".git")); err == nil {
-		return pullDep(name, url, dest)
+		result = pullDep(name, dep.URL, dest)
+	} else {
+		result = cloneDep(name, dep.URL, dest)
 	}
-	return cloneDep(name, url, dest)
+
+	if result.Err != nil {
+		return result
+	}
+
+	// Run build on first clone only
+	if dep.Build != "" && result.Action == ActionCloned {
+		if err := runBuild(dep.Build, dest); err != nil {
+			result.Err = fmt.Errorf("build failed: %w", err)
+			return result
+		}
+		result.Built = true
+	}
+
+	return result
 }
 
 func cloneDep(name, url, dest string) Result {
@@ -63,8 +84,16 @@ func pullDep(name, url, dest string) Result {
 	return Result{Name: name, URL: url, Action: ActionPulled}
 }
 
+func runBuild(buildCmd, dir string) error {
+	cmd := exec.Command("sh", "-c", buildCmd)
+	cmd.Dir = dir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // SyncWithHome clones or pulls all dependencies (non-interactive, for tests).
-func SyncWithHome(depMap map[string]string, home string) error {
+func SyncWithHome(depMap map[string]config.Dep, home string) error {
 	if len(depMap) == 0 {
 		return nil
 	}
@@ -73,8 +102,8 @@ func SyncWithHome(depMap map[string]string, home string) error {
 		return fmt.Errorf("git is required but not found in PATH")
 	}
 
-	for name, url := range depMap {
-		r := SyncOne(name, url, home)
+	for name, dep := range depMap {
+		r := SyncOne(name, dep, home)
 		if r.Err != nil {
 			return fmt.Errorf("dep %q: %w", name, r.Err)
 		}

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/deps"
 	"github.com/charliesbot/chai/internal/ui"
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,7 +16,7 @@ import (
 var spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // Run executes the update with a Bubbletea TUI.
-func Run(depMap map[string]string) error {
+func Run(depMap map[string]config.Dep) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("getting home directory: %w", err)
@@ -24,7 +25,7 @@ func Run(depMap map[string]string) error {
 }
 
 // RunWithHome executes the update with a Bubbletea TUI using the given home directory.
-func RunWithHome(depMap map[string]string, home string) error {
+func RunWithHome(depMap map[string]config.Dep, home string) error {
 	if len(depMap) == 0 {
 		fmt.Println(ui.Muted.Render("no deps configured"))
 		return nil
@@ -48,8 +49,8 @@ func RunWithHome(depMap map[string]string, home string) error {
 // dep tracks the state of a single dependency during update.
 type dep struct {
 	name   string
-	url    string
-	status string // "waiting", "updating", "done", "error"
+	cfgDep config.Dep
+	status string // "waiting", "updating", "building", "done", "error"
 	result *deps.Result
 }
 
@@ -68,8 +69,7 @@ type depDoneMsg struct {
 	result deps.Result
 }
 
-func newModel(depMap map[string]string, home string) model {
-	// Sort dep names for deterministic order
+func newModel(depMap map[string]config.Dep, home string) model {
 	names := make([]string, 0, len(depMap))
 	for name := range depMap {
 		names = append(names, name)
@@ -82,7 +82,7 @@ func newModel(depMap map[string]string, home string) model {
 		if i == 0 {
 			status = "updating"
 		}
-		d[i] = dep{name: name, url: depMap[name], status: status}
+		d[i] = dep{name: name, cfgDep: depMap[name], status: status}
 	}
 
 	return model{deps: d, home: home, current: 0}
@@ -140,11 +140,11 @@ func (m model) View() string {
 	for _, d := range m.deps {
 		icon := m.statusIcon(d.status)
 		name := ui.Bold.Render(d.name)
-		url := ui.Muted.Render(d.url)
+		url := ui.Muted.Render(d.cfgDep.URL)
 
 		switch d.status {
 		case "done":
-			action := actionStyle(d.result.Action)
+			action := actionStyle(d.result)
 			s += fmt.Sprintf("  %s %s %s %s\n", icon, name, url, action)
 		case "error":
 			s += fmt.Sprintf("  %s %s %s %s\n", icon, name, url, ui.Warning.Render("error"))
@@ -174,24 +174,22 @@ func (m model) statusIcon(status string) string {
 	}
 }
 
-func actionStyle(action deps.Action) string {
-	switch action {
-	case deps.ActionCloned:
-		return ui.Success.Render("cloned")
-	case deps.ActionPulled:
-		return ui.Success.Render("pulled")
-	case deps.ActionCurrent:
-		return ui.Muted.Render("up to date")
-	default:
-		return ""
+func actionStyle(r *deps.Result) string {
+	action := ui.Success.Render(string(r.Action))
+	if r.Action == deps.ActionCurrent {
+		action = ui.Muted.Render(string(r.Action))
 	}
+	if r.Built {
+		action += " + " + ui.Success.Render("built")
+	}
+	return action
 }
 
 func (m model) startUpdate(index int) tea.Cmd {
 	d := m.deps[index]
 	home := m.home
 	return func() tea.Msg {
-		result := deps.SyncOne(d.name, d.url, home)
+		result := deps.SyncOne(d.name, d.cfgDep, home)
 		return depDoneMsg{index: index, result: result}
 	}
 }

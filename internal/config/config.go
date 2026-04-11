@@ -8,11 +8,17 @@ import (
 )
 
 type Config struct {
-	Instructions string            `toml:"instructions"`
-	Deps         map[string]string `toml:"deps"`
-	Skills       Skills            `toml:"skills"`
-	Subagents    Subagents         `toml:"subagents"`
-	MCP          map[string]MCP    `toml:"mcp"`
+	Instructions string         `toml:"instructions"`
+	Deps         map[string]Dep `toml:"-"`
+	Skills       Skills         `toml:"skills"`
+	Subagents    Subagents      `toml:"subagents"`
+	MCP          map[string]MCP `toml:"mcp"`
+}
+
+// Dep represents a dependency — either a simple URL string or a table with url + build.
+type Dep struct {
+	URL   string
+	Build string
 }
 
 type Skills struct {
@@ -30,6 +36,15 @@ type MCP struct {
 	CWD     string            `toml:"cwd"`
 }
 
+// rawConfig is the intermediate TOML representation.
+type rawConfig struct {
+	Instructions string         `toml:"instructions"`
+	Deps         map[string]any `toml:"deps"`
+	Skills       Skills         `toml:"skills"`
+	Subagents    Subagents      `toml:"subagents"`
+	MCP          map[string]MCP `toml:"mcp"`
+}
+
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -39,10 +54,52 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
 
-	var cfg Config
-	if err := toml.Unmarshal(data, &cfg); err != nil {
+	var raw rawConfig
+	if err := toml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
 
-	return &cfg, nil
+	deps, err := parseDeps(raw.Deps)
+	if err != nil {
+		return nil, fmt.Errorf("parsing deps in %s: %w", path, err)
+	}
+
+	cfg := &Config{
+		Instructions: raw.Instructions,
+		Deps:         deps,
+		Skills:       raw.Skills,
+		Subagents:    raw.Subagents,
+		MCP:          raw.MCP,
+	}
+
+	return cfg, nil
+}
+
+func parseDeps(raw map[string]any) (map[string]Dep, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+
+	deps := make(map[string]Dep, len(raw))
+	for name, v := range raw {
+		switch val := v.(type) {
+		case string:
+			deps[name] = Dep{URL: val}
+		case map[string]any:
+			d := Dep{}
+			if url, ok := val["url"].(string); ok {
+				d.URL = url
+			} else {
+				return nil, fmt.Errorf("dep %q: table requires a 'url' field", name)
+			}
+			if build, ok := val["build"].(string); ok {
+				d.Build = build
+			}
+			deps[name] = d
+		default:
+			return nil, fmt.Errorf("dep %q: must be a string or table, got %T", name, v)
+		}
+	}
+
+	return deps, nil
 }

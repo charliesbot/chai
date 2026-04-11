@@ -10,8 +10,11 @@ const fullTOML = `
 instructions = "~/dotfiles/ai/agents.md"
 
 [deps]
-workspace = "https://github.com/gemini-cli-extensions/workspace"
 angular-skills = "https://github.com/angular/skills"
+
+[deps.workspace]
+url = "https://github.com/gemini-cli-extensions/workspace"
+build = "npm install"
 
 [skills]
 paths = [
@@ -49,8 +52,19 @@ func TestLoad_Full(t *testing.T) {
 	if len(cfg.Deps) != 2 {
 		t.Errorf("deps count = %d, want 2", len(cfg.Deps))
 	}
-	if cfg.Deps["workspace"] != "https://github.com/gemini-cli-extensions/workspace" {
-		t.Errorf("deps[workspace] = %q", cfg.Deps["workspace"])
+	ws := cfg.Deps["workspace"]
+	if ws.URL != "https://github.com/gemini-cli-extensions/workspace" {
+		t.Errorf("deps[workspace].url = %q", ws.URL)
+	}
+	if ws.Build != "npm install" {
+		t.Errorf("deps[workspace].build = %q, want %q", ws.Build, "npm install")
+	}
+	as := cfg.Deps["angular-skills"]
+	if as.URL != "https://github.com/angular/skills" {
+		t.Errorf("deps[angular-skills].url = %q", as.URL)
+	}
+	if as.Build != "" {
+		t.Errorf("deps[angular-skills].build = %q, want empty", as.Build)
 	}
 
 	if len(cfg.Skills.Paths) != 3 {
