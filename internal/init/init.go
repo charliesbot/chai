@@ -17,10 +17,10 @@ const tomlTemplate = `instructions = "%s/instructions/AGENTS.md"
 [deps]
 
 [skills]
-paths = ["%s/skills/*"]
+paths = ["%s/skills"]
 
 [agents]
-paths = ["%s/agents/*"]
+paths = ["%s/agents"]
 `
 
 const agentsTemplate = `# AI Agent Instructions

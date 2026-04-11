@@ -139,3 +139,23 @@ func TestResolvePatterns(t *testing.T) {
 		t.Errorf("got %d results, want 3: %v", len(results), results)
 	}
 }
+
+func TestResolvePatterns_DirectoryPath(t *testing.T) {
+	home := t.TempDir()
+
+	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
+	for _, name := range []string{"web-dev", "android-dev"} {
+		os.MkdirAll(filepath.Join(skillsDir, name), 0755)
+	}
+
+	// Pass directory without glob — should auto-expand
+	patterns := []string{"~/dotfiles/ai/skills"}
+	results, err := resolvePatterns(patterns, home)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Errorf("got %d results, want 2: %v", len(results), results)
+	}
+}
