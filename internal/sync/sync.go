@@ -7,21 +7,27 @@ import (
 
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/deps"
+	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
 )
 
+// Options controls sync behavior.
+type Options struct {
+	Force bool
+}
+
 // Run executes the sync: copies instructions to all platform locations.
-func Run(cfg *config.Config) error {
+func Run(cfg *config.Config, opts Options) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("getting home directory: %w", err)
 	}
-	return RunWithHome(cfg, home)
+	return RunWithHome(cfg, home, opts)
 }
 
 // RunWithHome executes the sync using the given home directory.
-func RunWithHome(cfg *config.Config, home string) error {
+func RunWithHome(cfg *config.Config, home string, opts Options) error {
 	// Clone/pull deps before resolving paths
 	if err := deps.SyncWithHome(cfg.Deps, home); err != nil {
 		return err
@@ -44,12 +50,37 @@ func RunWithHome(cfg *config.Config, home string) error {
 		return fmt.Errorf("reading instructions: %w", err)
 	}
 
+	hashDB, err := hash.Load(home)
+	if err != nil {
+		return err
+	}
+
 	platforms := platform.All()
+	var dirtyFiles []string
+
+	if !opts.Force {
+		for _, p := range platforms {
+			dest := filepath.Join(home, p.InstructionsPath)
+			dirty, err := hashDB.IsDirty(dest)
+			if err != nil {
+				return err
+			}
+			if dirty {
+				dirtyFiles = append(dirtyFiles, dest)
+			}
+		}
+	}
+
+	if len(dirtyFiles) > 0 {
+		return &DirtyError{Files: dirtyFiles}
+	}
+
 	for _, p := range platforms {
 		dest := filepath.Join(home, p.InstructionsPath)
 		if err := atomicWrite(dest, content); err != nil {
 			return fmt.Errorf("writing %s instructions to %s: %w", p.Name, dest, err)
 		}
+		hashDB[dest] = hash.Sum(content)
 		fmt.Printf("synced instructions → %s (%s)\n", p.Name, dest)
 	}
 
@@ -57,7 +88,25 @@ func RunWithHome(cfg *config.Config, home string) error {
 		return err
 	}
 
+	if err := hashDB.Save(home); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// DirtyError is returned when target files have been manually edited since the last sync.
+type DirtyError struct {
+	Files []string
+}
+
+func (e *DirtyError) Error() string {
+	msg := "the following files were modified since last sync:\n"
+	for _, f := range e.Files {
+		msg += fmt.Sprintf("  - %s\n", f)
+	}
+	msg += "run with --force to overwrite"
+	return msg
 }
 
 // atomicWrite writes data to a temp file then renames it to the target path.

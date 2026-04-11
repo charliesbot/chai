@@ -23,10 +23,14 @@ func main() {
 		},
 	}
 
+	syncFlags := flag.NewFlagSet("chai sync", flag.ExitOnError)
+	force := syncFlags.Bool("force", false, "overwrite files even if manually edited")
+
 	syncCmd := &ffcli.Command{
 		Name:       "sync",
-		ShortUsage: "chai sync",
+		ShortUsage: "chai sync [--force]",
 		ShortHelp:  "Distribute config to all platforms",
+		FlagSet:    syncFlags,
 		Exec: func(ctx context.Context, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
@@ -36,7 +40,7 @@ func main() {
 			if err != nil {
 				return err
 			}
-			return chaisync.Run(cfg)
+			return chaisync.Run(cfg, chaisync.Options{Force: *force})
 		},
 	}
 
