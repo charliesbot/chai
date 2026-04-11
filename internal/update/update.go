@@ -69,7 +69,7 @@ func updateGeminiExtensions(extensions map[string]string, home string) error {
 		}
 
 		fmt.Printf("  %s %s %s\n", spinnerStyle.Render("⠋"), ui.Bold.Render(name), ui.Muted.Render("installing..."))
-		cmd := exec.Command("gemini", "extensions", "install", url)
+		cmd := exec.Command("gemini", "extensions", "install", url, "--consent")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
