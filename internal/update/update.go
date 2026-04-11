@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -256,12 +255,13 @@ func (m model) startItem(index int) tea.Cmd {
 			return itemDoneMsg{index: index, action: action}
 
 		case kindExtension:
-			if isExtensionInstalled(home, it.url) {
-				return itemDoneMsg{index: index, action: "installed"}
-			}
 			cmd := exec.Command("gemini", "extensions", "install", it.url, "--consent")
 			out, err := cmd.CombinedOutput()
 			if err != nil {
+				// "already installed" is not a real error
+				if strings.Contains(string(out), "already installed") {
+					return itemDoneMsg{index: index, action: "installed"}
+				}
 				return itemDoneMsg{index: index, err: fmt.Errorf("%s", string(out))}
 			}
 			return itemDoneMsg{index: index, action: "installed"}
@@ -275,33 +275,6 @@ func (m model) tick() tea.Cmd {
 	return tea.Tick(80*time.Millisecond, func(_ time.Time) tea.Msg {
 		return tickMsg{}
 	})
-}
-
-// isExtensionInstalled checks if an extension with the given URL is already
-// installed by checking git remotes in ~/.gemini/extensions/*/.
-func isExtensionInstalled(home, url string) bool {
-	extDir := filepath.Join(home, ".gemini", "extensions")
-	entries, err := os.ReadDir(extDir)
-	if err != nil {
-		return false
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		dir := filepath.Join(extDir, entry.Name())
-		cmd := exec.Command("git", "remote", "get-url", "origin")
-		cmd.Dir = dir
-		out, err := cmd.Output()
-		if err != nil {
-			continue
-		}
-		remote := strings.TrimSpace(string(out))
-		if remote == url || remote == url+".git" || remote+".git" == url {
-			return true
-		}
-	}
-	return false
 }
 
 func sortedKeys(m map[string]config.Dep) []string {
