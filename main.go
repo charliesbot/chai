@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 
 	"github.com/charliesbot/chai/internal/config"
@@ -25,10 +26,11 @@ func main() {
 
 	syncFlags := flag.NewFlagSet("chai sync", flag.ExitOnError)
 	force := syncFlags.Bool("force", false, "overwrite files even if manually edited")
+	dryRun := syncFlags.Bool("dry-run", false, "preview sync without writing files")
 
 	syncCmd := &ffcli.Command{
 		Name:       "sync",
-		ShortUsage: "chai sync [--force]",
+		ShortUsage: "chai sync [--force] [--dry-run]",
 		ShortHelp:  "Distribute config to all platforms",
 		FlagSet:    syncFlags,
 		Exec: func(ctx context.Context, args []string) error {
@@ -40,11 +42,11 @@ func main() {
 			if err != nil {
 				return err
 			}
-			opts := chaisync.Options{Force: *force}
-			if !*force {
+			opts := chaisync.Options{Force: *force, DryRun: *dryRun}
+			if !*force && !*dryRun {
 				opts.Prompt = chaisync.InteractivePrompt()
 			}
-			return chaisync.Run(cfg, opts)
+			return chaisync.Run(ctx, cfg, opts)
 		},
 	}
 
@@ -59,7 +61,10 @@ func main() {
 		},
 	}
 
-	if err := root.ParseAndRun(context.Background(), os.Args[1:]); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	if err := root.ParseAndRun(ctx, os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

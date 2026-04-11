@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -24,7 +25,7 @@ func TestRunWithHome_CopiesInstructions(t *testing.T) {
 		Instructions: "~/dotfiles/ai/agents.md",
 	}
 
-	err := RunWithHome(cfg, home, Options{})
+	err := RunWithHome(context.Background(), cfg, home, Options{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -57,7 +58,7 @@ func TestRunWithHome_MissingInstructionsFile(t *testing.T) {
 		Instructions: "~/nonexistent/agents.md",
 	}
 
-	err := RunWithHome(cfg, home, Options{})
+	err := RunWithHome(context.Background(), cfg, home, Options{})
 	if err == nil {
 		t.Fatal("expected error for missing instructions file")
 	}
@@ -71,7 +72,7 @@ func TestRunWithHome_EmptyInstructionsPath(t *testing.T) {
 
 	cfg := &config.Config{}
 
-	err := RunWithHome(cfg, home, Options{})
+	err := RunWithHome(context.Background(), cfg, home, Options{})
 	if err == nil {
 		t.Fatal("expected error for empty instructions path")
 	}
@@ -114,7 +115,7 @@ func TestRunWithHome_DirtyDetection(t *testing.T) {
 	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
 
 	// First sync: should succeed and store hashes
-	if err := RunWithHome(cfg, home, Options{}); err != nil {
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
 		t.Fatalf("first sync failed: %v", err)
 	}
 
@@ -123,7 +124,7 @@ func TestRunWithHome_DirtyDetection(t *testing.T) {
 	os.WriteFile(claudePath, []byte("manually edited"), 0644)
 
 	// Second sync: should return DirtyError
-	err := RunWithHome(cfg, home, Options{})
+	err := RunWithHome(context.Background(), cfg, home, Options{})
 	var dirtyErr *DirtyError
 	if !errors.As(err, &dirtyErr) {
 		t.Fatalf("expected DirtyError, got %v", err)
@@ -133,7 +134,7 @@ func TestRunWithHome_DirtyDetection(t *testing.T) {
 	}
 
 	// With --force: should succeed
-	if err := RunWithHome(cfg, home, Options{Force: true}); err != nil {
+	if err := RunWithHome(context.Background(), cfg, home, Options{Force: true}); err != nil {
 		t.Fatalf("force sync failed: %v", err)
 	}
 
@@ -154,7 +155,7 @@ func TestRunWithHome_PromptOverwrite(t *testing.T) {
 	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
 
 	// First sync
-	if err := RunWithHome(cfg, home, Options{}); err != nil {
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
 		t.Fatalf("first sync failed: %v", err)
 	}
 
@@ -164,7 +165,7 @@ func TestRunWithHome_PromptOverwrite(t *testing.T) {
 
 	// Sync with prompt that says yes
 	alwaysYes := func(path string) (bool, error) { return true, nil }
-	if err := RunWithHome(cfg, home, Options{Prompt: alwaysYes}); err != nil {
+	if err := RunWithHome(context.Background(), cfg, home, Options{Prompt: alwaysYes}); err != nil {
 		t.Fatalf("prompt sync failed: %v", err)
 	}
 
@@ -184,7 +185,7 @@ func TestRunWithHome_PromptSkip(t *testing.T) {
 	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
 
 	// First sync
-	if err := RunWithHome(cfg, home, Options{}); err != nil {
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
 		t.Fatalf("first sync failed: %v", err)
 	}
 
@@ -196,7 +197,7 @@ func TestRunWithHome_PromptSkip(t *testing.T) {
 
 	// Sync with prompt that says no
 	alwaysNo := func(path string) (bool, error) { return false, nil }
-	if err := RunWithHome(cfg, home, Options{Prompt: alwaysNo}); err != nil {
+	if err := RunWithHome(context.Background(), cfg, home, Options{Prompt: alwaysNo}); err != nil {
 		t.Fatalf("prompt sync failed: %v", err)
 	}
 
@@ -208,5 +209,59 @@ func TestRunWithHome_PromptSkip(t *testing.T) {
 	got, _ = os.ReadFile(geminiPath)
 	if string(got) != "edited" {
 		t.Errorf("gemini content = %q, want %q (should have been skipped)", string(got), "edited")
+	}
+}
+
+func TestRunWithHome_CancelledContext(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("content"), 0644)
+
+	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	err := RunWithHome(ctx, cfg, home, Options{})
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+	if !strings.Contains(err.Error(), "interrupted") {
+		t.Errorf("error = %q, want it to contain 'interrupted'", err.Error())
+	}
+
+	// No files should have been written
+	claudePath := filepath.Join(home, ".claude", "CLAUDE.md")
+	if _, err := os.Stat(claudePath); !os.IsNotExist(err) {
+		t.Error("CLAUDE.md should not exist after cancelled sync")
+	}
+}
+
+func TestRunWithHome_DryRun(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("content"), 0644)
+
+	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
+
+	err := RunWithHome(context.Background(), cfg, home, Options{DryRun: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// No files should have been written
+	claudePath := filepath.Join(home, ".claude", "CLAUDE.md")
+	if _, err := os.Stat(claudePath); !os.IsNotExist(err) {
+		t.Error("CLAUDE.md should not exist after dry run")
+	}
+
+	// No hash DB should exist
+	hashPath := filepath.Join(home, ".chai", "hashes.json")
+	if _, err := os.Stat(hashPath); !os.IsNotExist(err) {
+		t.Error("hashes.json should not exist after dry run")
 	}
 }
