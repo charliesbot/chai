@@ -16,7 +16,10 @@ go install github.com/charliesbot/chai@latest
 # Scaffold config
 chai init
 
-# Edit ~/chai.toml to your liking, then:
+# Clone deps and install extensions
+chai update
+
+# Distribute config to all platforms
 chai sync
 ```
 
@@ -32,12 +35,12 @@ instructions = "~/dotfiles/ai/instructions/AGENTS.md"
 [deps]
 angular-skills = "https://github.com/angular/skills"
 
-[deps.google-workspace]
-url = "https://github.com/gemini-cli-extensions/workspace"
+[deps.some-tool]
+url = "https://github.com/example/tool"
 build = "npm install"
 
 [skills]
-paths = ["~/dotfiles/ai/skills", "@angular-skills", "@google-workspace/skills"]
+paths = ["~/dotfiles/ai/skills", "@angular-skills"]
 
 [subagents]
 paths = ["~/dotfiles/ai/subagents"]
@@ -50,21 +53,20 @@ args = ["-y", "@angular/cli", "mcp"]
 command = "npx"
 args = ["-y", "@google-cloud/gcloud-mcp"]
 
-[mcp.google-workspace]
-command = "node"
-args = ["scripts/start.js"]
-cwd = "@google-workspace"
+[gemini.extensions]
+workspace = "https://github.com/gemini-cli-extensions/workspace"
 ```
 
 ### Sections
 
-| Section        | What it does                                                                       |
-| -------------- | ---------------------------------------------------------------------------------- |
-| `instructions` | Path to your AGENTS.md. Copied to `~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md`. |
-| `[deps]`       | Git repos cloned to `~/.chai/deps/`. Referenced as `@name` in other paths.         |
-| `[skills]`     | Directories symlinked to each platform's skills folder.                            |
-| `[subagents]`  | Directories symlinked to `~/.claude/subagents/` and `~/.gemini/agents/`.           |
-| `[mcp.*]`      | MCP server definitions written to each platform's config file.                     |
+| Section              | What it does                                                                       |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `instructions`       | Path to your AGENTS.md. Copied to `~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md`. |
+| `[deps]`             | Git repos cloned to `~/.chai/deps/`. Referenced as `@name` in other paths.         |
+| `[skills]`           | Directories symlinked to each platform's skills folder.                            |
+| `[subagents]`        | Directories symlinked to `~/.claude/subagents/` and `~/.gemini/agents/`.           |
+| `[mcp.*]`            | MCP server definitions written to each platform's config file.                     |
+| `[gemini.extensions]`| Gemini CLI extensions installed via `gemini extensions install`.                    |
 
 ### Deps
 
@@ -78,17 +80,28 @@ angular-skills = "https://github.com/angular/skills"
 Deps that need a build step use a table:
 
 ```toml
-[deps.google-workspace]
-url = "https://github.com/gemini-cli-extensions/workspace"
+[deps.some-tool]
+url = "https://github.com/example/tool"
 build = "npm install"
 ```
 
 The `build` command runs once on first clone (not on subsequent pulls). Reference any dep in other paths with `@name`.
 
+### Gemini extensions
+
+Some tools only work as Gemini extensions (e.g., they rely on Gemini's OAuth). Declare them under `[gemini.extensions]`:
+
+```toml
+[gemini.extensions]
+workspace = "https://github.com/gemini-cli-extensions/workspace"
+```
+
+`chai update` installs them via `gemini extensions install`. They appear in `chai sync` output with `· ◆` (Gemini-only).
+
 ### Path resolution
 
 - `~` expands to your home directory
-- `@name` resolves to `~/.chai/deps/<name>/`
+- `@name` resolves to `~/.chai/deps/<name>/` — works in skill paths, subagent paths, and MCP `args`/`cwd`
 - Pointing to a directory auto-expands to its contents (no trailing `/*` needed)
 
 ## Commands
@@ -103,14 +116,24 @@ Distributes everything to Claude and Gemini:
 
 ```
 $ chai sync
-instructions  ● ◆
-skills (6)  ● ◆
-  agents-md, android-dev, slidev, web-dev, angular-developer, angular-new-app
-mcpServers (3)  ● ◆
-  angular-cli, gcloud, pencil
+ ┌ instructions ──────────────────────────── ● ◆
+ │ ~/dotfiles/ai/instructions/AGENTS.md
+ │ → ~/.claude/CLAUDE.md
+ │ → ~/.gemini/GEMINI.md
+ └
+ ┌ skills (6) ────────────────────────────── ● ◆
+ │ agents-md  android-dev  slidev  web-dev
+ │ angular-developer  angular-new-app
+ └
+ ┌ mcpServers (3) ────────────────────────── ● ◆
+ │ angular-cli  gcloud  pencil
+ └
+ ┌ gemini extensions (1) ─────────────────── · ◆
+ │ workspace
+ └
 ```
 
-`●` = Claude, `◆` = Gemini.
+`●` = Claude, `◆` = Gemini, `·` = not applicable.
 
 | Flag        | Description                                     |
 | ----------- | ----------------------------------------------- |
@@ -119,24 +142,30 @@ mcpServers (3)  ● ◆
 
 ### `chai update`
 
-Clones new deps and pulls existing ones with a progress UI:
+Clones deps, runs builds, and installs Gemini extensions:
 
 ```
 $ chai update
-updating deps
+deps
 
   ✓ angular-skills  cloned
-  ✓ google-workspace  cloned + built
+    https://github.com/angular/skills
+
+gemini extensions
+
+  ✓ workspace  installed
+    https://github.com/gemini-cli-extensions/workspace
 ```
 
 ## How it works
 
-| What         | Strategy                         | Why                                               |
-| ------------ | -------------------------------- | ------------------------------------------------- |
-| Instructions | **Copy** with dirty detection    | Agents may edit their platform copy               |
-| Skills       | **Symlink**                      | Read-only from the agent's perspective            |
-| Subagents    | **Symlink**                      | Read-only from the agent's perspective            |
-| MCP servers  | **Replace key** in platform JSON | chai owns `mcpServers`, preserves everything else |
+| What              | Strategy                         | Why                                               |
+| ----------------- | -------------------------------- | ------------------------------------------------- |
+| Instructions      | **Copy** with dirty detection    | Agents may edit their platform copy               |
+| Skills            | **Symlink**                      | Read-only from the agent's perspective            |
+| Subagents         | **Symlink**                      | Read-only from the agent's perspective            |
+| MCP servers       | **Replace key** in platform JSON | chai owns `mcpServers`, preserves everything else |
+| Gemini extensions | **gemini extensions install**    | Gemini-only, uses Gemini's own auth and runtime   |
 
 ### Platform targets
 
@@ -161,7 +190,6 @@ updating deps
   hashes.json                        <- dirty detection
   deps/
     angular-skills/                  <- cloned repo
-    google-workspace/                <- cloned repo (with npm install)
 ```
 
 ## License
