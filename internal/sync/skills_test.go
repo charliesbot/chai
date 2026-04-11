@@ -150,14 +150,12 @@ func TestResolvePatterns_DirectoryPath(t *testing.T) {
 	}
 }
 
-func TestSyncSkillsAndAgents_SharedDirectory(t *testing.T) {
+func TestSyncSkillsAndAgents_SeparateDirectories(t *testing.T) {
 	home := t.TempDir()
 
-	// Create skills
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
 	os.MkdirAll(filepath.Join(skillsDir, "web-dev"), 0755)
 
-	// Create agents
 	agentsDir := filepath.Join(home, "dotfiles", "ai", "agents")
 	os.MkdirAll(filepath.Join(agentsDir, "reviewer"), 0755)
 
@@ -170,20 +168,22 @@ func TestSyncSkillsAndAgents_SharedDirectory(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Both should exist in the same skills dir
+	// Skills go to skills dir
 	claudeSkills := filepath.Join(home, ".claude", "skills")
 	if _, err := os.Lstat(filepath.Join(claudeSkills, "web-dev")); err != nil {
-		t.Error("web-dev symlink missing")
+		t.Error("web-dev symlink missing from skills dir")
 	}
-	if _, err := os.Lstat(filepath.Join(claudeSkills, "reviewer")); err != nil {
-		t.Error("reviewer symlink missing")
+
+	// Agents go to subagents dir
+	claudeAgents := filepath.Join(home, ".claude", "subagents")
+	if _, err := os.Lstat(filepath.Join(claudeAgents, "reviewer")); err != nil {
+		t.Error("reviewer symlink missing from subagents dir")
 	}
 }
 
 func TestSyncSkillsAndAgents_EmptyAgents(t *testing.T) {
 	home := t.TempDir()
 
-	// Create skills
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
 	os.MkdirAll(filepath.Join(skillsDir, "web-dev"), 0755)
 
@@ -199,9 +199,8 @@ func TestSyncSkillsAndAgents_EmptyAgents(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Skill should still exist
 	claudeSkills := filepath.Join(home, ".claude", "skills")
 	if _, err := os.Lstat(filepath.Join(claudeSkills, "web-dev")); err != nil {
-		t.Error("web-dev symlink missing — empty agents removed it")
+		t.Error("web-dev symlink missing — empty agents should not affect skills")
 	}
 }

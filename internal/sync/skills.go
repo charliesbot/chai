@@ -12,7 +12,7 @@ import (
 )
 
 // syncSkillsAndAgents resolves skills and agents patterns, then symlinks
-// all of them to each platform's skills directory in a single pass.
+// them to each platform's respective directories.
 func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, dryRun bool) error {
 	skills, err := resolvePatterns(skillPatterns, home)
 	if err != nil {
@@ -21,6 +21,10 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, dry
 	agents, err := resolvePatterns(agentPatterns, home)
 	if err != nil {
 		return err
+	}
+
+	if len(skills) == 0 && len(agents) == 0 {
+		return nil
 	}
 
 	if dryRun {
@@ -38,34 +42,46 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, dry
 		}
 	}
 
-	allSources := append(skills, agents...)
-	if len(allSources) == 0 {
-		return nil
-	}
-
 	platforms := platform.All()
 	for _, p := range platforms {
-		destDir := filepath.Join(home, p.SkillsDir)
-
-		if dryRun {
-			for _, src := range allSources {
-				name := filepath.Base(src)
-				dest := filepath.Join(destDir, name)
-				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(dest), ui.Muted.Render("→ "+src))
+		if len(skills) > 0 {
+			destDir := filepath.Join(home, p.SkillsDir)
+			if dryRun {
+				for _, src := range skills {
+					name := filepath.Base(src)
+					fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, name)), ui.Muted.Render("→ "+src))
+				}
+			} else {
+				if err := syncSymlinks(skills, destDir); err != nil {
+					return fmt.Errorf("syncing skills to %s: %w", p.Name, err)
+				}
+				for _, src := range skills {
+					name := filepath.Base(src)
+					fmt.Println(ui.SyncedLine(p.Name, filepath.Join(destDir, name)))
+				}
 			}
-			continue
 		}
 
-		if err := syncSymlinks(allSources, destDir); err != nil {
-			return fmt.Errorf("syncing to %s: %w", p.Name, err)
-		}
-		for _, src := range allSources {
-			name := filepath.Base(src)
-			fmt.Println(ui.SyncedLine(p.Name, filepath.Join(destDir, name)))
+		if len(agents) > 0 {
+			destDir := filepath.Join(home, p.AgentsDir)
+			if dryRun {
+				for _, src := range agents {
+					name := filepath.Base(src)
+					fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, name)), ui.Muted.Render("→ "+src))
+				}
+			} else {
+				if err := syncSymlinks(agents, destDir); err != nil {
+					return fmt.Errorf("syncing agents to %s: %w", p.Name, err)
+				}
+				for _, src := range agents {
+					name := filepath.Base(src)
+					fmt.Println(ui.SyncedLine(p.Name, filepath.Join(destDir, name)))
+				}
+			}
 		}
 	}
 
-	if dryRun && len(allSources) > 0 {
+	if dryRun && (len(skills) > 0 || len(agents) > 0) {
 		fmt.Println()
 	}
 
