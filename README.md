@@ -58,13 +58,13 @@ cwd = "@google-workspace"
 
 ### Sections
 
-| Section | What it does |
-|---------|-------------|
+| Section        | What it does                                                                       |
+| -------------- | ---------------------------------------------------------------------------------- |
 | `instructions` | Path to your AGENTS.md. Copied to `~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md`. |
-| `[deps]` | Git repos cloned to `~/.chai/deps/`. Referenced as `@name` in other paths. |
-| `[skills]` | Directories symlinked to each platform's skills folder. |
-| `[subagents]` | Directories symlinked to `~/.claude/subagents/` and `~/.gemini/agents/`. |
-| `[mcp.*]` | MCP server definitions written to each platform's config file. |
+| `[deps]`       | Git repos cloned to `~/.chai/deps/`. Referenced as `@name` in other paths.         |
+| `[skills]`     | Directories symlinked to each platform's skills folder.                            |
+| `[subagents]`  | Directories symlinked to `~/.claude/subagents/` and `~/.gemini/agents/`.           |
+| `[mcp.*]`      | MCP server definitions written to each platform's config file.                     |
 
 ### Deps
 
@@ -112,10 +112,10 @@ mcpServers (3)  ● ◆
 
 `●` = Claude, `◆` = Gemini.
 
-| Flag | Description |
-|------|-------------|
+| Flag        | Description                                     |
+| ----------- | ----------------------------------------------- |
 | `--dry-run` | Preview what would happen without writing files |
-| `--force` | Skip dirty detection and overwrite everything |
+| `--force`   | Skip dirty detection and overwrite everything   |
 
 ### `chai update`
 
@@ -131,19 +131,19 @@ updating deps
 
 ## How it works
 
-| What | Strategy | Why |
-|------|----------|-----|
-| Instructions | **Copy** with dirty detection | Agents may edit their platform copy |
-| Skills | **Symlink** | Read-only from the agent's perspective |
-| Subagents | **Symlink** | Read-only from the agent's perspective |
-| MCP servers | **Replace key** in platform JSON | chai owns `mcpServers`, preserves everything else |
+| What         | Strategy                         | Why                                               |
+| ------------ | -------------------------------- | ------------------------------------------------- |
+| Instructions | **Copy** with dirty detection    | Agents may edit their platform copy               |
+| Skills       | **Symlink**                      | Read-only from the agent's perspective            |
+| Subagents    | **Symlink**                      | Read-only from the agent's perspective            |
+| MCP servers  | **Replace key** in platform JSON | chai owns `mcpServers`, preserves everything else |
 
 ### Platform targets
 
-| | Instructions | Skills | Subagents | MCP config |
-|--|-------------|--------|-----------|------------|
-| Claude | `~/.claude/CLAUDE.md` | `~/.claude/skills/` | `~/.claude/subagents/` | `~/.claude.json` |
-| Gemini | `~/.gemini/GEMINI.md` | `~/.gemini/skills/` | `~/.gemini/agents/` | `~/.gemini/settings.json` |
+|        | Instructions          | Skills              | Subagents              | MCP config                |
+| ------ | --------------------- | ------------------- | ---------------------- | ------------------------- |
+| Claude | `~/.claude/CLAUDE.md` | `~/.claude/skills/` | `~/.claude/subagents/` | `~/.claude.json`          |
+| Gemini | `~/.gemini/GEMINI.md` | `~/.gemini/skills/` | `~/.gemini/agents/`    | `~/.gemini/settings.json` |
 
 ## File structure
 
