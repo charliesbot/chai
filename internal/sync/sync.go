@@ -11,6 +11,7 @@ import (
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
+	"github.com/charliesbot/chai/internal/ui"
 )
 
 // Options controls sync behavior.
@@ -31,15 +32,22 @@ func Run(ctx context.Context, cfg *config.Config, opts Options) error {
 
 // RunWithHome executes the sync using the given home directory.
 func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Options) error {
+	if opts.DryRun {
+		fmt.Println(ui.DryRunTag() + " " + ui.Muted.Render("previewing sync — no files will be written"))
+		fmt.Println()
+	}
+
 	// Clone/pull deps before resolving paths (skip in dry-run)
 	if !opts.DryRun {
 		if err := deps.SyncWithHome(cfg.Deps, home); err != nil {
 			return err
 		}
 	} else if len(cfg.Deps) > 0 {
+		fmt.Println(ui.Label.Render("deps"))
 		for name, url := range cfg.Deps {
-			fmt.Printf("[dry-run] would clone/pull dep %s from %s\n", name, url)
+			fmt.Printf("  %s %s %s\n", ui.Arrow(), ui.Bold.Render(name), ui.Muted.Render(url))
 		}
+		fmt.Println()
 	}
 
 	if cfg.Instructions == "" {
@@ -64,6 +72,11 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return err
 	}
 
+	if opts.DryRun {
+		fmt.Println(ui.Label.Render("instructions"))
+		fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), srcPath)
+	}
+
 	platforms := platform.All()
 	for _, p := range platforms {
 		if err := ctx.Err(); err != nil {
@@ -72,7 +85,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 
 		dest := filepath.Join(home, p.InstructionsPath)
 
-		if !opts.Force {
+		if !opts.Force && !opts.DryRun {
 			dirty, err := hashDB.IsDirty(dest)
 			if err != nil {
 				return err
@@ -86,14 +99,23 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 					return err
 				}
 				if !overwrite {
-					fmt.Printf("skipped %s (%s)\n", p.Name, dest)
+					fmt.Println(ui.SkippedLine(p.Name, dest))
 					continue
 				}
 			}
 		}
 
 		if opts.DryRun {
-			fmt.Printf("[dry-run] would sync instructions → %s (%s)\n", p.Name, dest)
+			status := ui.Muted.Render("first sync")
+			if _, ok := hashDB[dest]; ok {
+				dirty, _ := hashDB.IsDirty(dest)
+				if dirty {
+					status = ui.Warning.Render("modified — will prompt")
+				} else {
+					status = ui.Muted.Render("unchanged")
+				}
+			}
+			fmt.Printf("  %s %s %s (%s)\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(dest), status)
 			continue
 		}
 
@@ -101,7 +123,11 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 			return fmt.Errorf("writing %s instructions to %s: %w", p.Name, dest, err)
 		}
 		hashDB[dest] = hash.Sum(content)
-		fmt.Printf("synced instructions → %s (%s)\n", p.Name, dest)
+		fmt.Println(ui.SyncedLine(p.Name, dest))
+	}
+
+	if opts.DryRun {
+		fmt.Println()
 	}
 
 	if err := ctx.Err(); err != nil {

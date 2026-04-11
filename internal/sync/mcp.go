@@ -9,6 +9,7 @@ import (
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
+	"github.com/charliesbot/chai/internal/ui"
 )
 
 // mcpEntry is the JSON structure written per MCP server.
@@ -30,17 +31,33 @@ func syncMCP(cfg *config.Config, home string, dryRun bool) error {
 		return err
 	}
 
+	if dryRun {
+		fmt.Println(ui.Label.Render("mcpServers"))
+
+		mcpJSON, err := json.MarshalIndent(map[string]any{"mcpServers": servers}, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshaling MCP preview: %w", err)
+		}
+		fmt.Println(ui.JSONBlock.Render(string(mcpJSON)))
+		fmt.Println()
+
+		fmt.Println(ui.Label.Render("  targets"))
+		platforms := platform.All()
+		for _, p := range platforms {
+			dest := filepath.Join(home, p.MCPConfigPath)
+			fmt.Printf("  %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(dest))
+		}
+		fmt.Println()
+		return nil
+	}
+
 	platforms := platform.All()
 	for _, p := range platforms {
 		dest := filepath.Join(home, p.MCPConfigPath)
-		if dryRun {
-			fmt.Printf("[dry-run] would sync mcpServers → %s (%s)\n", p.Name, dest)
-			continue
-		}
 		if err := mergeMCPIntoFile(dest, p.MCPKey, servers); err != nil {
 			return fmt.Errorf("writing MCP config for %s to %s: %w", p.Name, dest, err)
 		}
-		fmt.Printf("synced mcpServers → %s (%s)\n", p.Name, dest)
+		fmt.Println(ui.SyncedLine(p.Name, dest))
 	}
 
 	return nil
