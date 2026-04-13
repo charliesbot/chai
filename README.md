@@ -6,6 +6,18 @@ chai reads a single TOML file (`~/chai.toml`) and distributes instructions, skil
 
 ## Install
 
+### Homebrew (macOS and Linux)
+
+```bash
+brew install charliesbot/tap/chai
+```
+
+### Download binary
+
+Grab the latest binary from [GitHub Releases](https://github.com/charliesbot/chai/releases/latest) for macOS (arm64, amd64) or Linux (arm64, amd64).
+
+### From source
+
 ```bash
 go install github.com/charliesbot/chai@latest
 ```
