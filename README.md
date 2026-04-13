@@ -2,207 +2,70 @@
 
 Keep AI coding agent configs in sync. One manifest, distributed to every platform.
 
-chai reads a single TOML file (`~/chai.toml`) and distributes instructions, skills, subagents, and MCP servers to Claude and Gemini. It copies what needs copying, symlinks what doesn't, and stays out of the way.
-
 ## Install
 
-### Homebrew (macOS and Linux)
-
 ```bash
-brew install charliesbot/tap/chai
+brew install charliesbot/tap/chai        # Homebrew (macOS and Linux)
+go install github.com/charliesbot/chai@latest  # From source
 ```
 
-### Download binary
+Or grab a binary from [GitHub Releases](https://github.com/charliesbot/chai/releases/latest).
 
-Grab the latest binary from [GitHub Releases](https://github.com/charliesbot/chai/releases/latest) for macOS (arm64, amd64) or Linux (arm64, amd64).
-
-### From source
+## Usage
 
 ```bash
-go install github.com/charliesbot/chai@latest
+chai init    # Scaffold ~/chai.toml
+chai update  # Clone deps and install extensions
+chai sync    # Distribute config to all platforms
 ```
 
-## Quick start
-
-```bash
-# Scaffold config
-chai init
-
-# Clone deps and install extensions
-chai update
-
-# Distribute config to all platforms
-chai sync
-```
-
-`chai init` creates `~/chai.toml` with a starter config. It doesn't create any directories — the paths in the TOML are resolved at sync time.
+`chai sync` supports `--dry-run` to preview changes and `--force` to skip dirty detection.
 
 ## Config
 
 Everything lives in `~/chai.toml`:
 
 ```toml
+# Which platforms to sync to. Only these get touched.
+platforms = ["claude", "gemini"]
+
+# Your shared instructions file. Copied to each platform with dirty detection.
 instructions = "~/dotfiles/ai/instructions/AGENTS.md"
 
 [deps]
+# Git repos cloned to ~/.chai/deps/. Reference as @name in other paths.
 angular-skills = "https://github.com/angular/skills"
 
+# Deps that need a build step use a table. Build runs once on first clone.
 [deps.some-tool]
 url = "https://github.com/example/tool"
 build = "npm install"
 
 [skills]
+# Directories symlinked to each platform's skills folder.
 paths = ["~/dotfiles/ai/skills", "@angular-skills"]
 
 [subagents]
+# Directories symlinked to each platform's agents folder.
 paths = ["~/dotfiles/ai/subagents"]
 
 [mcp.angular-cli]
+# MCP server definitions written to each platform's config file.
 command = "npx"
 args = ["-y", "@angular/cli", "mcp"]
 
-[mcp.gcloud]
-command = "npx"
-args = ["-y", "@google-cloud/gcloud-mcp"]
-
 [gemini.extensions]
+# Gemini-only extensions installed via 'gemini extensions install'.
 workspace = "https://github.com/gemini-cli-extensions/workspace"
 ```
 
-### Sections
+Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>/`).
 
-| Section              | What it does                                                                       |
-| -------------------- | ---------------------------------------------------------------------------------- |
-| `instructions`       | Path to your AGENTS.md. Copied to `~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md`. |
-| `[deps]`             | Git repos cloned to `~/.chai/deps/`. Referenced as `@name` in other paths.         |
-| `[skills]`           | Directories symlinked to each platform's skills folder.                            |
-| `[subagents]`        | Directories symlinked to `~/.claude/subagents/` and `~/.gemini/agents/`.           |
-| `[mcp.*]`            | MCP server definitions written to each platform's config file.                     |
-| `[gemini.extensions]`| Gemini CLI extensions installed via `gemini extensions install`.                    |
+## Sync strategy
 
-### Deps
-
-Simple deps are just a URL:
-
-```toml
-[deps]
-angular-skills = "https://github.com/angular/skills"
-```
-
-Deps that need a build step use a table:
-
-```toml
-[deps.some-tool]
-url = "https://github.com/example/tool"
-build = "npm install"
-```
-
-The `build` command runs once on first clone (not on subsequent pulls). Reference any dep in other paths with `@name`.
-
-### Gemini extensions
-
-Some tools only work as Gemini extensions (e.g., they rely on Gemini's OAuth). Declare them under `[gemini.extensions]`:
-
-```toml
-[gemini.extensions]
-workspace = "https://github.com/gemini-cli-extensions/workspace"
-```
-
-`chai update` installs them via `gemini extensions install`. They appear in `chai sync` output with `· ◆` (Gemini-only).
-
-### Path resolution
-
-- `~` expands to your home directory
-- `@name` resolves to `~/.chai/deps/<name>/` — works in skill paths, subagent paths, and MCP `args`/`cwd`
-- Pointing to a directory auto-expands to its contents (no trailing `/*` needed)
-
-## Commands
-
-### `chai init`
-
-Creates `~/chai.toml` with a starter config. Skips if it already exists.
-
-### `chai sync`
-
-Distributes everything to Claude and Gemini:
-
-```
-$ chai sync
- ┌ instructions ──────────────────────────── ● ◆
- │ ~/dotfiles/ai/instructions/AGENTS.md
- │ → ~/.claude/CLAUDE.md
- │ → ~/.gemini/GEMINI.md
- └
- ┌ skills (6) ────────────────────────────── ● ◆
- │ agents-md  android-dev  slidev  web-dev
- │ angular-developer  angular-new-app
- └
- ┌ mcpServers (3) ────────────────────────── ● ◆
- │ angular-cli  gcloud  pencil
- └
- ┌ gemini extensions (1) ─────────────────── · ◆
- │ workspace
- └
-```
-
-`●` = Claude, `◆` = Gemini, `·` = not applicable.
-
-| Flag        | Description                                     |
-| ----------- | ----------------------------------------------- |
-| `--dry-run` | Preview what would happen without writing files |
-| `--force`   | Skip dirty detection and overwrite everything   |
-
-### `chai update`
-
-Clones deps, runs builds, and installs Gemini extensions:
-
-```
-$ chai update
-deps
-
-  ✓ angular-skills  cloned
-    https://github.com/angular/skills
-
-gemini extensions
-
-  ✓ workspace  installed
-    https://github.com/gemini-cli-extensions/workspace
-```
-
-## How it works
-
-| What              | Strategy                         | Why                                               |
-| ----------------- | -------------------------------- | ------------------------------------------------- |
-| Instructions      | **Copy** with dirty detection    | Agents may edit their platform copy               |
-| Skills            | **Symlink**                      | Read-only from the agent's perspective            |
-| Subagents         | **Symlink**                      | Read-only from the agent's perspective            |
-| MCP servers       | **Replace key** in platform JSON | chai owns `mcpServers`, preserves everything else |
-| Gemini extensions | **gemini extensions install**    | Gemini-only, uses Gemini's own auth and runtime   |
-
-### Platform targets
-
-|        | Instructions          | Skills              | Subagents              | MCP config                |
-| ------ | --------------------- | ------------------- | ---------------------- | ------------------------- |
-| Claude | `~/.claude/CLAUDE.md` | `~/.claude/skills/` | `~/.claude/subagents/` | `~/.claude.json`          |
-| Gemini | `~/.gemini/GEMINI.md` | `~/.gemini/skills/` | `~/.gemini/agents/`    | `~/.gemini/settings.json` |
-
-## File structure
-
-```
-~/chai.toml                          <- your config
-~/dotfiles/ai/                       <- your AI config (example)
-  instructions/AGENTS.md
-  skills/
-    web-dev/
-    android-dev/
-  subagents/
-    code-reviewer/
-
-~/.chai/                             <- managed by chai
-  hashes.json                        <- dirty detection
-  deps/
-    angular-skills/                  <- cloned repo
-```
+- **Instructions** are **copied** with hash-based dirty detection. Agents may edit their copy. _chai_ detects changes and prompts before overwriting.
+- **Skills and subagents** are **symlinked**. One source of truth, read only from the agent's perspective.
+- **MCP servers** are **merged** into platform config files. chai owns the `mcpServers` key and preserves everything else.AA
 
 ## License
 
