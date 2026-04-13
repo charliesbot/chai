@@ -26,6 +26,7 @@ brews:
   - repository:
       owner: charliesbot
       name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/charliesbot/chai
     description: Keep AI coding agent configs in sync
     license: MIT
