@@ -1,6 +1,9 @@
 package platform
 
-import "path/filepath"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // Platform describes where a specific AI tool expects its config files.
 type Platform struct {
@@ -32,4 +35,32 @@ func All() []Platform {
 			MCPKey:           "mcpServers",
 		},
 	}
+}
+
+// ForNames returns only the platforms whose names match the given list (case-insensitive).
+func ForNames(names []string) []Platform {
+	allowed := make(map[string]bool, len(names))
+	for _, n := range names {
+		allowed[strings.ToLower(n)] = true
+	}
+
+	all := All()
+	filtered := make([]Platform, 0, len(names))
+	for _, p := range all {
+		if allowed[strings.ToLower(p.Name)] {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered
+}
+
+// HasPlatform reports whether the given platform name is in the list (case-insensitive).
+func HasPlatform(names []string, name string) bool {
+	target := strings.ToLower(name)
+	for _, n := range names {
+		if strings.ToLower(n) == target {
+			return true
+		}
+	}
+	return false
 }

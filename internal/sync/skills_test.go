@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/charliesbot/chai/internal/platform"
 )
 
 func TestSyncSymlinks_CreatesLinks(t *testing.T) {
@@ -162,7 +164,7 @@ func TestSyncSkillsAndAgents_SeparateDirectories(t *testing.T) {
 	err := syncSkillsAndAgents(
 		[]string{"~/dotfiles/ai/skills"},
 		[]string{"~/dotfiles/ai/subagents"},
-		home, false,
+		home, platform.All(), false,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -193,7 +195,7 @@ func TestSyncSkillsAndAgents_EmptyAgents(t *testing.T) {
 	err := syncSkillsAndAgents(
 		[]string{"~/dotfiles/ai/skills"},
 		[]string{"~/dotfiles/ai/subagents"},
-		home, false,
+		home, platform.All(), false,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

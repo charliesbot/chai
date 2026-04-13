@@ -63,9 +63,8 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), srcPath)
 	}
 
-	platforms := platform.All()
-	claudeOk := true
-	geminiOk := true
+	platforms := platform.ForNames(cfg.Platforms)
+	status := newPlatformStatus(platforms)
 
 	for _, p := range platforms {
 		if err := ctx.Err(); err != nil {
@@ -88,27 +87,23 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 					return err
 				}
 				if !overwrite {
-					if p.Name == "Claude" {
-						claudeOk = false
-					} else {
-						geminiOk = false
-					}
+					status.setFailed(p.Name)
 					continue
 				}
 			}
 		}
 
 		if opts.DryRun {
-			status := ui.Muted.Render("first sync")
+			dryStatus := ui.Muted.Render("first sync")
 			if _, ok := hashDB[dest]; ok {
 				dirty, _ := hashDB.IsDirty(dest)
 				if dirty {
-					status = ui.Warning.Render("modified — will prompt")
+					dryStatus = ui.Warning.Render("modified — will prompt")
 				} else {
-					status = ui.Muted.Render("unchanged")
+					dryStatus = ui.Muted.Render("unchanged")
 				}
 			}
-			fmt.Printf("  %s %s %s (%s)\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(dest), status)
+			fmt.Printf("  %s %s %s (%s)\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(dest), dryStatus)
 			continue
 		}
 
@@ -124,7 +119,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		for _, p := range platforms {
 			instructionItems = append(instructionItems, "→ "+filepath.Join(home, p.InstructionsPath))
 		}
-		fmt.Println(ui.Box("instructions", 0, ui.BoolState(claudeOk), ui.BoolState(geminiOk), instructionItems))
+		fmt.Println(ui.Box("instructions", 0, status.claude(), status.gemini(), instructionItems))
 	}
 
 	if opts.DryRun {
@@ -135,15 +130,15 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return fmt.Errorf("sync interrupted: %w", err)
 	}
 
-	if err := syncSkillsAndAgents(cfg.Skills.Paths, cfg.Subagents.Paths, home, opts.DryRun); err != nil {
+	if err := syncSkillsAndAgents(cfg.Skills.Paths, cfg.Subagents.Paths, home, platforms, opts.DryRun); err != nil {
 		return err
 	}
 
-	if err := syncMCP(cfg, home, opts.DryRun); err != nil {
+	if err := syncMCP(cfg, home, platforms, opts.DryRun); err != nil {
 		return err
 	}
 
-	if len(cfg.Gemini.Extensions) > 0 && !opts.DryRun {
+	if len(cfg.Gemini.Extensions) > 0 && !opts.DryRun && platform.HasPlatform(cfg.Platforms, "gemini") {
 		names := make([]string, 0, len(cfg.Gemini.Extensions))
 		for name := range cfg.Gemini.Extensions {
 			names = append(names, name)
@@ -161,6 +156,36 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 
 	return nil
 }
+
+// platformStatus tracks success/failure per platform, showing NA for platforms not in the list.
+type platformStatus struct {
+	active map[string]bool
+	ok     map[string]bool
+}
+
+func newPlatformStatus(platforms []platform.Platform) platformStatus {
+	active := make(map[string]bool, len(platforms))
+	ok := make(map[string]bool, len(platforms))
+	for _, p := range platforms {
+		active[p.Name] = true
+		ok[p.Name] = true
+	}
+	return platformStatus{active: active, ok: ok}
+}
+
+func (ps platformStatus) setFailed(name string) {
+	ps.ok[name] = false
+}
+
+func (ps platformStatus) state(name string) ui.PlatformState {
+	if !ps.active[name] {
+		return ui.PlatformNA
+	}
+	return ui.BoolState(ps.ok[name])
+}
+
+func (ps platformStatus) claude() ui.PlatformState { return ps.state("Claude") }
+func (ps platformStatus) gemini() ui.PlatformState { return ps.state("Gemini") }
 
 // DirtyError is returned when target files have been manually edited since the last sync.
 type DirtyError struct {

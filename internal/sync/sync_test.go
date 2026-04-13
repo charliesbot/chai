@@ -22,6 +22,7 @@ func TestRunWithHome_CopiesInstructions(t *testing.T) {
 	os.WriteFile(srcPath, []byte(content), 0644)
 
 	cfg := &config.Config{
+		Platforms:    []string{"claude", "gemini"},
 		Instructions: "~/dotfiles/ai/agents.md",
 	}
 
@@ -112,7 +113,7 @@ func TestRunWithHome_DirtyDetection(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
 
-	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "gemini"}, Instructions: "~/dotfiles/ai/agents.md"}
 
 	// First sync: should succeed and store hashes
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -152,7 +153,7 @@ func TestRunWithHome_PromptOverwrite(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
 
-	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "gemini"}, Instructions: "~/dotfiles/ai/agents.md"}
 
 	// First sync
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -182,7 +183,7 @@ func TestRunWithHome_PromptSkip(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
 
-	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "gemini"}, Instructions: "~/dotfiles/ai/agents.md"}
 
 	// First sync
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -219,7 +220,7 @@ func TestRunWithHome_CancelledContext(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("content"), 0644)
 
-	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "gemini"}, Instructions: "~/dotfiles/ai/agents.md"}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
@@ -246,7 +247,7 @@ func TestRunWithHome_DryRun(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("content"), 0644)
 
-	cfg := &config.Config{Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "gemini"}, Instructions: "~/dotfiles/ai/agents.md"}
 
 	err := RunWithHome(context.Background(), cfg, home, Options{DryRun: true})
 	if err != nil {

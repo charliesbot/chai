@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/charliesbot/chai/internal/config"
+	"github.com/charliesbot/chai/internal/platform"
 )
 
 func TestBuildMCPServers_ResolvesCWD(t *testing.T) {
@@ -143,7 +144,7 @@ func TestSyncMCP_NoMCPs(t *testing.T) {
 	cfg := &config.Config{}
 
 	// Should be a no-op, no error
-	err := syncMCP(cfg, home, false)
+	err := syncMCP(cfg, home, platform.All(), false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

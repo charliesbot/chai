@@ -23,7 +23,7 @@ type mcpEntry struct {
 }
 
 // syncMCP writes mcpServers to each platform's config file.
-func syncMCP(cfg *config.Config, home string, dryRun bool) error {
+func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dryRun bool) error {
 	if len(cfg.MCP) == 0 {
 		return nil
 	}
@@ -44,7 +44,6 @@ func syncMCP(cfg *config.Config, home string, dryRun bool) error {
 		fmt.Println()
 
 		fmt.Println(ui.Label.Render("  targets"))
-		platforms := platform.All()
 		for _, p := range platforms {
 			dest := filepath.Join(home, p.MCPConfigPath)
 			fmt.Printf("  %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(dest))
@@ -53,17 +52,11 @@ func syncMCP(cfg *config.Config, home string, dryRun bool) error {
 		return nil
 	}
 
-	claudeOk := true
-	geminiOk := true
-	platforms := platform.All()
+	status := newPlatformStatus(platforms)
 	for _, p := range platforms {
 		dest := filepath.Join(home, p.MCPConfigPath)
 		if err := mergeMCPIntoFile(dest, p.MCPKey, servers); err != nil {
-			if p.Name == "Claude" {
-				claudeOk = false
-			} else {
-				geminiOk = false
-			}
+			status.setFailed(p.Name)
 		}
 	}
 
@@ -74,7 +67,7 @@ func syncMCP(cfg *config.Config, home string, dryRun bool) error {
 	}
 	sort.Strings(names)
 
-	fmt.Println(ui.Box("mcpServers", len(servers), ui.BoolState(claudeOk), ui.BoolState(geminiOk), names))
+	fmt.Println(ui.Box("mcpServers", len(servers), status.claude(), status.gemini(), names))
 
 	return nil
 }
