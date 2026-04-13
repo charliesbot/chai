@@ -65,7 +65,7 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 
 - **Instructions** are **copied** with hash-based dirty detection. Agents may edit their copy. _chai_ detects changes and prompts before overwriting.
 - **Skills and subagents** are **symlinked**. One source of truth, read only from the agent's perspective.
-- **MCP servers** are **merged** into platform config files. chai owns the `mcpServers` key and preserves everything else.AA
+- **MCP servers** are **merged** into platform config files. chai owns the `mcpServers` key and preserves everything else.
 
 ## License
 
