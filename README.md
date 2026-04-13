@@ -23,7 +23,7 @@ chai update
 chai sync
 ```
 
-`chai init` creates `~/chai.toml` and a starter directory with `instructions/AGENTS.md`, `skills/`, and `subagents/`.
+`chai init` creates `~/chai.toml` with a starter config. It doesn't create any directories — the paths in the TOML are resolved at sync time.
 
 ## Config
 
@@ -108,7 +108,7 @@ workspace = "https://github.com/gemini-cli-extensions/workspace"
 
 ### `chai init`
 
-Scaffolds `~/chai.toml` and a starter directory structure. Skips files that already exist.
+Creates `~/chai.toml` with a starter config. Skips if it already exists.
 
 ### `chai sync`
 

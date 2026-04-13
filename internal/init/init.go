@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,11 +20,6 @@ paths = ["%s/skills"]
 
 [subagents]
 paths = ["%s/subagents"]
-`
-
-const agentsTemplate = `# AI Agent Instructions
-
-Add your shared instructions here. This file will be synced to all platforms by chai.
 `
 
 // Run executes the interactive init flow.
@@ -62,52 +56,20 @@ func Run() error {
 	return Scaffold(home, rawPath)
 }
 
-// Scaffold creates the chai.toml and AGENTS.md files.
+// Scaffold creates ~/chai.toml if it doesn't already exist.
 // rawPath may contain ~ which is expanded using home.
 func Scaffold(home, rawPath string) error {
 	tomlPath := filepath.Join(home, "chai.toml")
-	tomlExists := false
 	if _, err := os.Stat(tomlPath); err == nil {
-		tomlExists = true
-	}
-
-	expandedPath := rawPath
-	if strings.HasPrefix(expandedPath, "~/") {
-		expandedPath = filepath.Join(home, expandedPath[2:])
-	} else if expandedPath == "~" {
-		expandedPath = home
-	}
-
-	if err := os.MkdirAll(expandedPath, 0755); err != nil {
-		return fmt.Errorf("creating directory %s: %w", expandedPath, err)
-	}
-
-	for _, dir := range []string{"instructions", "skills", "subagents"} {
-		d := filepath.Join(expandedPath, dir)
-		if err := os.MkdirAll(d, 0755); err != nil {
-			return fmt.Errorf("creating directory %s: %w", d, err)
-		}
-	}
-
-	agentsPath := filepath.Join(expandedPath, "instructions", "AGENTS.md")
-	if _, err := os.Stat(agentsPath); os.IsNotExist(err) {
-		if err := os.WriteFile(agentsPath, []byte(agentsTemplate), 0644); err != nil {
-			return fmt.Errorf("writing %s: %w", agentsPath, err)
-		}
-		fmt.Printf("created %s\n", agentsPath)
-	} else {
-		fmt.Printf("skipped %s (already exists)\n", agentsPath)
-	}
-
-	if tomlExists {
 		fmt.Printf("skipped %s (already exists)\n", tomlPath)
-	} else {
-		tomlContent := fmt.Sprintf(tomlTemplate, rawPath, rawPath, rawPath)
-		if err := os.WriteFile(tomlPath, []byte(tomlContent), 0644); err != nil {
-			return fmt.Errorf("writing %s: %w", tomlPath, err)
-		}
-		fmt.Printf("created %s\n", tomlPath)
+		return nil
 	}
+
+	tomlContent := fmt.Sprintf(tomlTemplate, rawPath, rawPath, rawPath)
+	if err := os.WriteFile(tomlPath, []byte(tomlContent), 0644); err != nil {
+		return fmt.Errorf("writing %s: %w", tomlPath, err)
+	}
+	fmt.Printf("created %s\n", tomlPath)
 
 	return nil
 }
