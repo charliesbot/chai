@@ -105,14 +105,19 @@ func resolvePatterns(patterns []string, home string) ([]string, error) {
 	seen := make(map[string]bool)
 
 	for _, pattern := range patterns {
-		// If the path is a directory (no glob chars), treat it as dir/*
 		resolved, err := resolve.PathWithHome(pattern, home)
 		if err != nil {
 			return nil, fmt.Errorf("resolving path %q: %w", pattern, err)
 		}
+
+		// If the resolved path is an existing directory (no glob), include it directly.
 		info, statErr := os.Stat(resolved)
 		if statErr == nil && info.IsDir() {
-			pattern = pattern + "/*"
+			if !seen[resolved] {
+				seen[resolved] = true
+				all = append(all, resolved)
+			}
+			continue
 		}
 
 		matches, err := resolve.GlobWithHome(pattern, home)

@@ -137,11 +137,34 @@ func TestResolvePatterns_DirectoryPath(t *testing.T) {
 	home := t.TempDir()
 
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
+	os.MkdirAll(skillsDir, 0755)
+	os.WriteFile(filepath.Join(skillsDir, "SKILL.md"), []byte("skill"), 0644)
+
+	// A bare directory path should resolve to the directory itself
+	patterns := []string{"~/dotfiles/ai/skills"}
+	results, err := resolvePatterns(patterns, home)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Errorf("got %d results, want 1: %v", len(results), results)
+	}
+	if len(results) > 0 && results[0] != skillsDir {
+		t.Errorf("got %q, want %q", results[0], skillsDir)
+	}
+}
+
+func TestResolvePatterns_GlobChildren(t *testing.T) {
+	home := t.TempDir()
+
+	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
 	for _, name := range []string{"web-dev", "android-dev"} {
 		os.MkdirAll(filepath.Join(skillsDir, name), 0755)
 	}
 
-	patterns := []string{"~/dotfiles/ai/skills"}
+	// Use explicit glob to get children
+	patterns := []string{"~/dotfiles/ai/skills/*"}
 	results, err := resolvePatterns(patterns, home)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -162,8 +185,8 @@ func TestSyncSkillsAndAgents_SeparateDirectories(t *testing.T) {
 	os.MkdirAll(filepath.Join(agentsDir, "reviewer"), 0755)
 
 	err := syncSkillsAndAgents(
-		[]string{"~/dotfiles/ai/skills"},
-		[]string{"~/dotfiles/ai/subagents"},
+		[]string{"~/dotfiles/ai/skills/*"},
+		[]string{"~/dotfiles/ai/subagents/*"},
 		home, platform.All(), false,
 	)
 	if err != nil {
@@ -193,8 +216,8 @@ func TestSyncSkillsAndAgents_EmptyAgents(t *testing.T) {
 	os.MkdirAll(filepath.Join(home, "dotfiles", "ai", "subagents"), 0755)
 
 	err := syncSkillsAndAgents(
-		[]string{"~/dotfiles/ai/skills"},
-		[]string{"~/dotfiles/ai/subagents"},
+		[]string{"~/dotfiles/ai/skills/*"},
+		[]string{"~/dotfiles/ai/subagents/*"},
 		home, platform.All(), false,
 	)
 	if err != nil {
