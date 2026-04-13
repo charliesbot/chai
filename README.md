@@ -2,14 +2,20 @@
 
 Keep AI coding agent configs in sync. One manifest, distributed to every platform.
 
-## Install
+## Installation
 
+### Homebrew
 ```bash
-brew install charliesbot/tap/chai        # Homebrew (macOS and Linux)
-go install github.com/charliesbot/chai@latest  # From source
+brew install charliesbot/tap/chai
 ```
 
-Or grab a binary from [GitHub Releases](https://github.com/charliesbot/chai/releases/latest).
+### Go
+```bash
+go install github.com/charliesbot/chai@latest
+```
+
+### Binary
+Download the latest binary from [GitHub Releases](https://github.com/charliesbot/chai/releases/latest).
 
 ## Usage
 
