@@ -6,7 +6,7 @@ Keep AI coding agent configs in sync. One manifest, distributed to every platfor
 
 ### Homebrew
 ```bash
-brew install charliesbot/tap/chai
+brew install --cask charliesbot/tap/chai
 ```
 
 ### Go
@@ -49,11 +49,12 @@ build = "npm install"
 
 [skills]
 # Directories symlinked to each platform's skills folder.
-paths = ["~/dotfiles/ai/skills", "@angular-skills"]
+# Use /* to include all children, or a bare path for a single skill.
+paths = ["~/dotfiles/ai/skills/*", "@angular-skills/*"]
 
 [subagents]
 # Directories symlinked to each platform's agents folder.
-paths = ["~/dotfiles/ai/subagents"]
+paths = ["~/dotfiles/ai/subagents/*"]
 
 [mcp.angular-cli]
 # MCP server definitions written to each platform's config file.

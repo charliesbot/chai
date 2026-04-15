@@ -23,7 +23,7 @@ checksum:
 changelog:
   sort: asc
 
-brews:
+homebrew_casks:
   - repository:
       owner: charliesbot
       name: homebrew-tap
