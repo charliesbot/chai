@@ -22,7 +22,7 @@ func All() []Platform {
 			Name:             "Claude",
 			InstructionsPath: filepath.Join(".claude", "CLAUDE.md"),
 			SkillsDir:        filepath.Join(".claude", "skills"),
-			AgentsDir:        filepath.Join(".claude", "subagents"),
+			AgentsDir:        filepath.Join(".claude", "agents"),
 			MCPConfigPath:    ".claude.json",
 			MCPKey:           "mcpServers",
 		},

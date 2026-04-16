@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
 	"github.com/charliesbot/chai/internal/ui"
@@ -13,12 +14,12 @@ import (
 
 // syncSkillsAndAgents resolves skills and agents patterns, then symlinks
 // them to each platform's respective directories.
-func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, platforms []platform.Platform, dryRun bool) error {
+func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, platforms []platform.Platform, dryRun bool, hashDB hash.DB) error {
 	skills, err := resolvePatterns(skillPatterns, home)
 	if err != nil {
 		return err
 	}
-	agents, err := resolvePatterns(agentPatterns, home)
+	agents, err := resolveFilePatterns(agentPatterns, home)
 	if err != nil {
 		return err
 	}
@@ -78,7 +79,7 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, pla
 					fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, name)), ui.Muted.Render("→ "+src))
 				}
 			} else {
-				if err := syncSymlinks(agents, destDir); err != nil {
+				if err := syncFileCopies(agents, destDir, hashDB); err != nil {
 					status.setFailed(p.Name)
 				}
 			}
@@ -97,6 +98,39 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, pla
 	}
 
 	return nil
+}
+
+// resolveFilePatterns expands glob patterns and returns deduplicated absolute paths to .md files.
+// Unlike resolvePatterns (which returns directories), this returns individual files.
+func resolveFilePatterns(patterns []string, home string) ([]string, error) {
+	var all []string
+	seen := make(map[string]bool)
+
+	for _, pattern := range patterns {
+		matches, err := resolve.GlobWithHome(pattern, home)
+		if err != nil {
+			return nil, fmt.Errorf("resolving pattern %q: %w", pattern, err)
+		}
+		for _, m := range matches {
+			name := filepath.Base(m)
+			if strings.HasPrefix(name, ".") {
+				continue
+			}
+			if filepath.Ext(m) != ".md" {
+				continue
+			}
+			info, err := os.Stat(m)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			if !seen[m] {
+				seen[m] = true
+				all = append(all, m)
+			}
+		}
+	}
+
+	return all, nil
 }
 
 // resolvePatterns expands all glob patterns and returns deduplicated absolute paths.
@@ -141,6 +175,71 @@ func resolvePatterns(patterns []string, home string) ([]string, error) {
 	}
 
 	return all, nil
+}
+
+// syncFileCopies copies source files into destDir.
+// Uses the hash DB to track which files chai manages:
+//   - Stale chai-managed files (in hash DB but not in sources) are removed.
+//   - User-created files (not in hash DB and not in sources) are left alone.
+//
+// Uses atomic writes (write to .tmp, then rename).
+func syncFileCopies(sources []string, destDir string, hashDB hash.DB) error {
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("creating directory %s: %w", destDir, err)
+	}
+
+	// Build set of expected destination paths
+	expected := make(map[string]bool, len(sources))
+	for _, src := range sources {
+		dest := filepath.Join(destDir, filepath.Base(src))
+		expected[dest] = true
+	}
+
+	// Remove stale chai-managed files, warn about user-created ones
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", destDir, err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+			continue
+		}
+		path := filepath.Join(destDir, entry.Name())
+		if expected[path] {
+			continue
+		}
+		if _, managed := hashDB[path]; managed {
+			// Chai put this here previously, now it's gone from sources — remove
+			os.Remove(path)
+			delete(hashDB, path)
+		} else {
+			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), entry.Name(), ui.Muted.Render("not managed by chai — skipping"))
+		}
+	}
+
+	// Copy files atomically and update hashes
+	for _, src := range sources {
+		name := filepath.Base(src)
+		dest := filepath.Join(destDir, name)
+
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", src, err)
+		}
+
+		tmp := dest + ".tmp"
+		if err := os.WriteFile(tmp, data, 0644); err != nil {
+			return fmt.Errorf("writing %s: %w", tmp, err)
+		}
+		if err := os.Rename(tmp, dest); err != nil {
+			os.Remove(tmp)
+			return fmt.Errorf("renaming %s → %s: %w", tmp, dest, err)
+		}
+
+		hashDB[dest] = hash.Sum(data)
+	}
+
+	return nil
 }
 
 // syncSymlinks creates symlinks in destDir for each source directory.

@@ -130,7 +130,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return fmt.Errorf("sync interrupted: %w", err)
 	}
 
-	if err := syncSkillsAndAgents(cfg.Skills.Paths, cfg.Subagents.Paths, home, platforms, opts.DryRun); err != nil {
+	if err := syncSkillsAndAgents(cfg.Skills.Paths, cfg.Subagents.Paths, home, platforms, opts.DryRun, hashDB); err != nil {
 		return err
 	}
 
