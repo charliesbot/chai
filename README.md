@@ -48,12 +48,12 @@ url = "https://github.com/example/tool"
 build = "npm install"
 
 [skills]
-# Directories symlinked to each platform's skills folder.
+# Directories copied to each platform's skills folder.
 # Use /* to include all children, or a bare path for a single skill.
 paths = ["~/dotfiles/ai/skills/*", "@angular-skills/*"]
 
 [subagents]
-# Directories symlinked to each platform's agents folder.
+# Files copied to each platform's agents folder.
 paths = ["~/dotfiles/ai/subagents/*"]
 
 [mcp.angular-cli]
@@ -70,8 +70,7 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 
 ## Sync strategy
 
-- **Instructions** are **copied** with hash-based dirty detection. Agents may edit their copy. _chai_ detects changes and prompts before overwriting.
-- **Skills and subagents** are **symlinked**. One source of truth, read only from the agent's perspective.
+- **Instructions, skills, and subagents** are **copied** with hash-based dirty detection. Agents may edit their copies. _chai_ detects changes and prompts before overwriting.
 - **MCP servers** are **merged** into platform config files. chai owns the `mcpServers` key and preserves everything else.
 
 ## License

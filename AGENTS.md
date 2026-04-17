@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project Overview
 
-chai is a Go CLI that keeps AI coding agent configs in sync. It reads a single TOML manifest (`~/chai.toml`) and an `AGENTS.md` file, then distributes them to the right locations for each AI platform (Claude, Gemini). Instructions are copied (with hash-based dirty detection), while skills and agents are symlinked (read-only from the agent's perspective).
+chai is a Go CLI that keeps AI coding agent configs in sync. It reads a single TOML manifest (`~/chai.toml`) and an `AGENTS.md` file, then distributes them to the right locations for each AI platform (Claude, Gemini). Instructions, skills, and subagents are copied with hash-based dirty detection so chai can prompt before overwriting files an agent has edited.
 
 chai is deliberately minimal — it syncs config files, not manages workflows.
 
@@ -45,9 +45,9 @@ The CLI has three commands: `chai init` (scaffold config), `chai sync` (distribu
 
 1. Read `~/chai.toml`
 2. Resolve paths (`~`, `@name` for deps) and expand globs
-3. Hash target instructions files and compare against `~/.chai/hashes.json` for dirty detection
+3. Hash target instructions, skills, and subagents files and compare against `~/.chai/hashes.json` for dirty detection
 4. Copy instructions to platform locations (with dirty detection prompts)
-5. Symlink skills and subagents to platform directories
+5. Copy skills and subagents to platform directories (with dirty detection prompts)
 6. Replace `mcpServers` key in platform configs
 7. Display Gemini extensions status
 8. Update hash DB
@@ -62,13 +62,13 @@ Built into source code (not user-configured). Each platform specifies:
 
 | Platform | Instructions target      | Skills directory      | Subagents directory      | MCP config file           | MCP strategy  |
 |----------|--------------------------|----------------------|--------------------------|---------------------------|---------------|
-| Claude   | `~/.claude/CLAUDE.md`    | `~/.claude/skills/`  | `~/.claude/subagents/`   | `~/.claude.json`          | replace key   |
+| Claude   | `~/.claude/CLAUDE.md`    | `~/.claude/skills/`  | `~/.claude/agents/`      | `~/.claude.json`          | replace key   |
 | Gemini   | `~/.gemini/GEMINI.md`    | `~/.gemini/skills/`  | `~/.gemini/agents/`      | `~/.gemini/settings.json` | replace key   |
 
 ### Key Design Decisions
 
-- **Copy for instructions, symlink for skills** — Instructions are two-way (agents may edit them), so copies with dirty detection. Skills and agents are read-only from the agent's perspective, so symlinks give one source of truth with no duplication.
-- **Hash-based dirty detection** — only applies to instructions files. Skills, agents, and MCPs are fully owned by chai and replaced on every sync.
+- **Copy with dirty detection for instructions, skills, and subagents** — agents may edit any of these in place, so chai hashes each file on write and compares before the next sync, prompting on conflict rather than clobbering.
+- **Hash-based dirty detection** — applies to instructions, skills, and subagents. MCPs are fully owned by chai and replaced on every sync.
 - **`mcpServers` ownership** — chai owns the entire `mcpServers` key in platform config files. It replaces the key wholesale but preserves all other keys.
 - **Deps are clone-only** — chai clones repos to `~/.chai/deps/<name>/` but does not parse or inspect their contents. Deps with a `build` field run the build command on first clone.
 - **Sync doesn't touch deps** — `chai sync` is fast and predictable. `chai update` handles cloning/pulling deps and installing Gemini extensions.
