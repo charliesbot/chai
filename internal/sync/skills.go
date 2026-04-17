@@ -2,8 +2,10 @@ package sync
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/charliesbot/chai/internal/hash"
@@ -12,7 +14,7 @@ import (
 	"github.com/charliesbot/chai/internal/ui"
 )
 
-// syncSkillsAndAgents resolves skills and agents patterns, then symlinks
+// syncSkillsAndAgents resolves skills and agents patterns, then copies
 // them to each platform's respective directories.
 func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, platforms []platform.Platform, dryRun bool, hashDB hash.DB) error {
 	skills, err := resolvePatterns(skillPatterns, home)
@@ -54,7 +56,7 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, pla
 					fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, name)), ui.Muted.Render("→ "+src))
 				}
 			} else {
-				if err := syncSymlinks(skills, destDir); err != nil {
+				if err := syncDirCopies(skills, destDir, hashDB); err != nil {
 					status.setFailed(p.Name)
 				}
 			}
@@ -242,53 +244,134 @@ func syncFileCopies(sources []string, destDir string, hashDB hash.DB) error {
 	return nil
 }
 
-// syncSymlinks creates symlinks in destDir for each source directory.
-// Removes stale symlinks (managed by chai) before creating new ones.
-func syncSymlinks(sources []string, destDir string) error {
+// syncDirCopies recursively copies source directories into destDir.
+// Each source skill directory is wiped and re-copied on every sync so the
+// destination mirrors the source exactly.
+//
+// Uses the hash DB to track which directories chai manages:
+//   - Stale chai-managed directories (in hash DB but not in sources) are removed.
+//   - User-created directories (not in hash DB and not in sources) are left alone.
+//
+// The hash stored per skill is a composite md5 of all files inside the source tree.
+func syncDirCopies(sources []string, destDir string, hashDB hash.DB) error {
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("creating directory %s: %w", destDir, err)
 	}
 
-	// Build set of expected symlink names
 	expected := make(map[string]bool, len(sources))
 	for _, src := range sources {
-		expected[filepath.Base(src)] = true
+		dest := filepath.Join(destDir, filepath.Base(src))
+		expected[dest] = true
 	}
 
-	// Remove stale symlinks (only symlinks, not regular files/dirs)
 	entries, err := os.ReadDir(destDir)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", destDir, err)
 	}
 	for _, entry := range entries {
-		path := filepath.Join(destDir, entry.Name())
-		info, err := os.Lstat(path)
-		if err != nil {
+		if !entry.IsDir() {
 			continue
 		}
-		if info.Mode()&os.ModeSymlink != 0 && !expected[entry.Name()] {
-			os.Remove(path)
+		path := filepath.Join(destDir, entry.Name())
+		if expected[path] {
+			continue
+		}
+		if _, managed := hashDB[path]; managed {
+			os.RemoveAll(path)
+			delete(hashDB, path)
+		} else {
+			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), entry.Name(), ui.Muted.Render("not managed by chai — skipping"))
 		}
 	}
 
-	// Create symlinks
 	for _, src := range sources {
 		name := filepath.Base(src)
 		dest := filepath.Join(destDir, name)
 
-		// Remove existing symlink if it exists (might point to old location)
-		if info, err := os.Lstat(dest); err == nil {
-			if info.Mode()&os.ModeSymlink != 0 {
-				os.Remove(dest)
-			} else {
-				return fmt.Errorf("%s exists and is not a symlink — refusing to overwrite", dest)
-			}
+		if err := os.RemoveAll(dest); err != nil {
+			return fmt.Errorf("removing %s: %w", dest, err)
+		}
+		if err := copyTree(src, dest); err != nil {
+			return fmt.Errorf("copying %s → %s: %w", src, dest, err)
 		}
 
-		if err := os.Symlink(src, dest); err != nil {
-			return fmt.Errorf("symlinking %s → %s: %w", dest, src, err)
+		sum, err := dirHash(src)
+		if err != nil {
+			return fmt.Errorf("hashing %s: %w", src, err)
 		}
+		hashDB[dest] = sum
 	}
 
 	return nil
+}
+
+// copyTree recursively copies src into dst. Regular files are written atomically
+// (temp file + rename). Symlinks inside src are skipped.
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return os.MkdirAll(target, info.Mode().Perm())
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		tmp := target + ".tmp"
+		if err := os.WriteFile(tmp, data, info.Mode().Perm()); err != nil {
+			return err
+		}
+		if err := os.Rename(tmp, target); err != nil {
+			os.Remove(tmp)
+			return err
+		}
+		return nil
+	})
+}
+
+// dirHash computes a composite md5 over the directory's contents.
+// It hashes "relPath\tmd5(content)" lines joined by newline, in sorted order,
+// so the result is deterministic and changes when any file in the tree changes.
+func dirHash(root string) (string, error) {
+	var lines []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		lines = append(lines, fmt.Sprintf("%s\t%s", rel, hash.Sum(data)))
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(lines)
+	return hash.Sum([]byte(strings.Join(lines, "\n"))), nil
 }

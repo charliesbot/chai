@@ -9,12 +9,15 @@ import (
 	"github.com/charliesbot/chai/internal/platform"
 )
 
-func TestSyncSymlinks_CreatesLinks(t *testing.T) {
+func TestSyncDirCopies_CreatesCopies(t *testing.T) {
 	home := t.TempDir()
+	hashDB := hash.DB{}
 
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
 	for _, name := range []string{"web-dev", "android-dev"} {
-		os.MkdirAll(filepath.Join(skillsDir, name), 0755)
+		dir := filepath.Join(skillsDir, name)
+		os.MkdirAll(dir, 0755)
+		os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("skill "+name), 0644)
 	}
 
 	sources := []string{
@@ -24,93 +27,184 @@ func TestSyncSymlinks_CreatesLinks(t *testing.T) {
 
 	destDir := filepath.Join(home, ".claude", "skills")
 
-	err := syncSymlinks(sources, destDir)
+	err := syncDirCopies(sources, destDir, hashDB)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	for _, name := range []string{"web-dev", "android-dev"} {
-		link := filepath.Join(destDir, name)
-		target, err := os.Readlink(link)
+		dest := filepath.Join(destDir, name)
+		info, err := os.Lstat(dest)
 		if err != nil {
-			t.Errorf("reading symlink %s: %v", link, err)
+			t.Errorf("missing %s: %v", name, err)
 			continue
 		}
-		expected := filepath.Join(skillsDir, name)
-		if target != expected {
-			t.Errorf("symlink %s → %q, want %q", name, target, expected)
+		if info.Mode()&os.ModeSymlink != 0 {
+			t.Errorf("%s should be a copy, not a symlink", name)
+		}
+		data, err := os.ReadFile(filepath.Join(dest, "SKILL.md"))
+		if err != nil {
+			t.Errorf("reading copied SKILL.md: %v", err)
+		}
+		if string(data) != "skill "+name {
+			t.Errorf("content = %q, want %q", string(data), "skill "+name)
+		}
+		if _, ok := hashDB[dest]; !ok {
+			t.Errorf("hash not stored for %s", name)
 		}
 	}
 }
 
-func TestSyncSymlinks_RemovesStale(t *testing.T) {
+func TestSyncDirCopies_CopiesNestedFiles(t *testing.T) {
 	home := t.TempDir()
+	hashDB := hash.DB{}
+
+	src := filepath.Join(home, "dotfiles", "ai", "skills", "web-dev")
+	os.MkdirAll(filepath.Join(src, "resources", "templates"), 0755)
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("top"), 0644)
+	os.WriteFile(filepath.Join(src, "resources", "helper.md"), []byte("helper"), 0644)
+	os.WriteFile(filepath.Join(src, "resources", "templates", "page.html"), []byte("<html/>"), 0644)
+
+	destDir := filepath.Join(home, ".claude", "skills")
+	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	dest := filepath.Join(destDir, "web-dev")
+	cases := map[string]string{
+		"SKILL.md":                      "top",
+		"resources/helper.md":           "helper",
+		"resources/templates/page.html": "<html/>",
+	}
+	for rel, want := range cases {
+		data, err := os.ReadFile(filepath.Join(dest, rel))
+		if err != nil {
+			t.Errorf("reading %s: %v", rel, err)
+			continue
+		}
+		if string(data) != want {
+			t.Errorf("%s = %q, want %q", rel, string(data), want)
+		}
+	}
+}
+
+func TestSyncDirCopies_RemovesStaleChaiManaged(t *testing.T) {
+	home := t.TempDir()
+	hashDB := hash.DB{}
 
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
-	os.MkdirAll(filepath.Join(skillsDir, "web-dev"), 0755)
-	os.MkdirAll(filepath.Join(skillsDir, "old-skill"), 0755)
+	for _, name := range []string{"web-dev", "old-skill"} {
+		dir := filepath.Join(skillsDir, name)
+		os.MkdirAll(dir, 0755)
+		os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("x"), 0644)
+	}
 
 	destDir := filepath.Join(home, ".claude", "skills")
 
-	err := syncSymlinks([]string{
+	if err := syncDirCopies([]string{
 		filepath.Join(skillsDir, "web-dev"),
 		filepath.Join(skillsDir, "old-skill"),
-	}, destDir)
-	if err != nil {
+	}, destDir, hashDB); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 
-	err = syncSymlinks([]string{
+	if err := syncDirCopies([]string{
 		filepath.Join(skillsDir, "web-dev"),
-	}, destDir)
-	if err != nil {
+	}, destDir, hashDB); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 
-	if _, err := os.Lstat(filepath.Join(destDir, "old-skill")); !os.IsNotExist(err) {
-		t.Error("stale symlink old-skill should have been removed")
+	if _, err := os.Stat(filepath.Join(destDir, "old-skill")); !os.IsNotExist(err) {
+		t.Error("stale chai-managed skill old-skill should have been removed")
 	}
-	if _, err := os.Lstat(filepath.Join(destDir, "web-dev")); err != nil {
-		t.Error("web-dev symlink should still exist")
+	if _, err := os.Stat(filepath.Join(destDir, "web-dev")); err != nil {
+		t.Error("web-dev should still exist")
 	}
-}
-
-func TestSyncSymlinks_ReplacesBrokenLinks(t *testing.T) {
-	home := t.TempDir()
-
-	destDir := filepath.Join(home, ".claude", "skills")
-	os.MkdirAll(destDir, 0755)
-	os.Symlink("/nonexistent/old-path", filepath.Join(destDir, "web-dev"))
-
-	src := filepath.Join(home, "skills", "web-dev")
-	os.MkdirAll(src, 0755)
-
-	err := syncSymlinks([]string{src}, destDir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	target, err := os.Readlink(filepath.Join(destDir, "web-dev"))
-	if err != nil {
-		t.Fatalf("reading symlink: %v", err)
-	}
-	if target != src {
-		t.Errorf("symlink → %q, want %q", target, src)
+	if _, ok := hashDB[filepath.Join(destDir, "old-skill")]; ok {
+		t.Error("old-skill hash should have been deleted from hashDB")
 	}
 }
 
-func TestSyncSymlinks_RefusesToOverwriteNonSymlink(t *testing.T) {
+func TestSyncDirCopies_LeavesUserCreatedSkills(t *testing.T) {
 	home := t.TempDir()
+	hashDB := hash.DB{}
+
+	src := filepath.Join(home, "dotfiles", "ai", "skills", "web-dev")
+	os.MkdirAll(src, 0755)
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("x"), 0644)
 
 	destDir := filepath.Join(home, ".claude", "skills")
-	os.MkdirAll(filepath.Join(destDir, "web-dev"), 0755)
 
-	src := filepath.Join(home, "skills", "web-dev")
+	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	userSkill := filepath.Join(destDir, "my-skill")
+	os.MkdirAll(userSkill, 0755)
+	os.WriteFile(filepath.Join(userSkill, "SKILL.md"), []byte("user"), 0644)
+
+	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(userSkill, "SKILL.md"))
+	if err != nil {
+		t.Fatal("user-created skill was deleted")
+	}
+	if string(data) != "user" {
+		t.Error("user-created skill content was modified")
+	}
+}
+
+func TestSyncDirCopies_UpdatesContentOnResync(t *testing.T) {
+	home := t.TempDir()
+	hashDB := hash.DB{}
+
+	src := filepath.Join(home, "dotfiles", "ai", "skills", "web-dev")
 	os.MkdirAll(src, 0755)
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("v1"), 0644)
 
-	err := syncSymlinks([]string{src}, destDir)
-	if err == nil {
-		t.Fatal("expected error when target is a real directory")
+	destDir := filepath.Join(home, ".claude", "skills")
+	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+	firstHash := hashDB[filepath.Join(destDir, "web-dev")]
+
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("v2"), 0644)
+	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(destDir, "web-dev", "SKILL.md"))
+	if string(data) != "v2" {
+		t.Errorf("content = %q, want %q", string(data), "v2")
+	}
+	if hashDB[filepath.Join(destDir, "web-dev")] == firstHash {
+		t.Error("hash should have changed after source content changed")
+	}
+}
+
+func TestSyncDirCopies_RemovesFilesDeletedFromSource(t *testing.T) {
+	home := t.TempDir()
+	hashDB := hash.DB{}
+
+	src := filepath.Join(home, "dotfiles", "ai", "skills", "web-dev")
+	os.MkdirAll(src, 0755)
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("x"), 0644)
+	os.WriteFile(filepath.Join(src, "extra.md"), []byte("extra"), 0644)
+
+	destDir := filepath.Join(home, ".claude", "skills")
+	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	os.Remove(filepath.Join(src, "extra.md"))
+	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(destDir, "web-dev", "extra.md")); !os.IsNotExist(err) {
+		t.Error("extra.md should have been removed when deleted from source")
 	}
 }
 
@@ -180,7 +274,9 @@ func TestSyncSkillsAndAgents_SeparateDirectories(t *testing.T) {
 	home := t.TempDir()
 
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
-	os.MkdirAll(filepath.Join(skillsDir, "web-dev"), 0755)
+	webDevSrc := filepath.Join(skillsDir, "web-dev")
+	os.MkdirAll(webDevSrc, 0755)
+	os.WriteFile(filepath.Join(webDevSrc, "SKILL.md"), []byte("web"), 0644)
 
 	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
 	os.MkdirAll(agentsDir, 0755)
@@ -196,15 +292,19 @@ func TestSyncSkillsAndAgents_SeparateDirectories(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Skills go to skills dir
+	// Skills are copied to skills dir
 	claudeSkills := filepath.Join(home, ".claude", "skills")
-	if _, err := os.Lstat(filepath.Join(claudeSkills, "web-dev")); err != nil {
-		t.Error("web-dev symlink missing from skills dir")
+	webDevDest := filepath.Join(claudeSkills, "web-dev")
+	info, err := os.Lstat(webDevDest)
+	if err != nil {
+		t.Error("web-dev missing from skills dir")
+	} else if info.Mode()&os.ModeSymlink != 0 {
+		t.Error("web-dev should be a copy, not a symlink")
 	}
 
 	// Agents are copied to agents dir
 	claudeAgents := filepath.Join(home, ".claude", "agents")
-	info, err := os.Lstat(filepath.Join(claudeAgents, "reviewer.md"))
+	info, err = os.Lstat(filepath.Join(claudeAgents, "reviewer.md"))
 	if err != nil {
 		t.Error("reviewer.md missing from agents dir")
 	} else if info.Mode()&os.ModeSymlink != 0 {
@@ -422,7 +522,9 @@ func TestSyncSkillsAndAgents_SubagentFiles(t *testing.T) {
 
 	// Skills are directories
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
-	os.MkdirAll(filepath.Join(skillsDir, "web-dev"), 0755)
+	webDevSrc := filepath.Join(skillsDir, "web-dev")
+	os.MkdirAll(webDevSrc, 0755)
+	os.WriteFile(filepath.Join(webDevSrc, "SKILL.md"), []byte("web"), 0644)
 
 	// Subagents are .md files
 	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
@@ -440,10 +542,14 @@ func TestSyncSkillsAndAgents_SubagentFiles(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Skills go to skills dir
+	// Skills are copied to skills dir (not symlinked)
 	claudeSkills := filepath.Join(home, ".claude", "skills")
-	if _, err := os.Lstat(filepath.Join(claudeSkills, "web-dev")); err != nil {
-		t.Error("web-dev symlink missing from skills dir")
+	webDevDest := filepath.Join(claudeSkills, "web-dev")
+	info, err := os.Lstat(webDevDest)
+	if err != nil {
+		t.Error("web-dev missing from skills dir")
+	} else if info.Mode()&os.ModeSymlink != 0 {
+		t.Error("web-dev should be a copy, not a symlink")
 	}
 
 	// Subagent files are copied (not symlinked) to agents dir
@@ -462,7 +568,7 @@ func TestSyncSkillsAndAgents_SubagentFiles(t *testing.T) {
 
 	// Gemini too
 	geminiAgents := filepath.Join(home, ".gemini", "agents")
-	info, err := os.Lstat(filepath.Join(geminiAgents, "reviewer.md"))
+	info, err = os.Lstat(filepath.Join(geminiAgents, "reviewer.md"))
 	if err != nil {
 		t.Error("reviewer.md missing from gemini agents dir")
 	} else if info.Mode()&os.ModeSymlink != 0 {
@@ -474,7 +580,9 @@ func TestSyncSkillsAndAgents_EmptyAgents(t *testing.T) {
 	home := t.TempDir()
 
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
-	os.MkdirAll(filepath.Join(skillsDir, "web-dev"), 0755)
+	webDevSrc := filepath.Join(skillsDir, "web-dev")
+	os.MkdirAll(webDevSrc, 0755)
+	os.WriteFile(filepath.Join(webDevSrc, "SKILL.md"), []byte("web"), 0644)
 
 	// Empty agents dir
 	os.MkdirAll(filepath.Join(home, "dotfiles", "ai", "subagents"), 0755)
@@ -491,6 +599,6 @@ func TestSyncSkillsAndAgents_EmptyAgents(t *testing.T) {
 
 	claudeSkills := filepath.Join(home, ".claude", "skills")
 	if _, err := os.Lstat(filepath.Join(claudeSkills, "web-dev")); err != nil {
-		t.Error("web-dev symlink missing — empty agents should not affect skills")
+		t.Error("web-dev missing — empty agents should not affect skills")
 	}
 }

@@ -70,12 +70,11 @@ Real-world validation: [superpowers](https://github.com/obra/superpowers) ships 
 
 ### Sync strategy
 
-- **Symlink** (same as skills) — no transformation needed since files are portable as-is.
-- Subagents are **individual `.md` files**, not directories. The current `resolvePatterns` filters out non-directories and needs to be updated to accept `.md` files.
+- **Copy** (same as skills) — files are written into each platform's agents dir. No transformation needed since subagents are portable as-is.
+- Subagents are **individual `.md` files**, resolved via `resolveFilePatterns` (accepts `.md` files, unlike `resolvePatterns` used for skill directories).
+- Chai tracks ownership via an md5 in `~/.chai/hashes.json` keyed by the destination path. Stale chai-managed files are removed on re-sync; user-created files in the agents dir are left alone with a warning.
 - Platform-exclusive frontmatter fields are inert on the other platform (unknown keys are ignored).
 
-### Implementation delta from current code
+### Why copy instead of symlink
 
-1. **Fix `resolvePatterns`** (`internal/sync/skills.go`) — accept `.md` files, not just directories.
-2. **Fix Claude platform path** (`internal/platform/platform.go`) — change `.claude/subagents` to `.claude/agents`.
-3. **`syncSymlinks`** works as-is for files — `os.Symlink` doesn't care if the target is a file or directory.
+Gemini CLI doesn't follow symlinks for agent discovery, so the files at the destination must be real. Skills use the same copy + hash-ownership strategy for consistency; the unit of copy differs (directory tree for skills, single file for subagents) but the ownership model is identical — one hashDB entry per destination, stale entries removed on re-sync.
