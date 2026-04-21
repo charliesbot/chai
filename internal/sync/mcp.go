@@ -72,9 +72,12 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 
 	for _, t := range order {
 		if err := mergeMCPIntoFile(t.path, t.key, servers); err != nil {
-			for _, p := range seen[t] {
+			names := make([]string, len(seen[t]))
+			for i, p := range seen[t] {
 				status.setFailed(p.Name)
+				names[i] = p.Name
 			}
+			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), ui.Bold.Render(strings.Join(names, " + ")), ui.Muted.Render(err.Error()))
 		}
 	}
 
@@ -130,8 +133,12 @@ func mergeMCPIntoFile(path, mcpKey string, servers map[string]mcpEntry) error {
 
 	data, err := os.ReadFile(path)
 	if err == nil {
-		if err := json.Unmarshal(data, &existing); err != nil {
-			return fmt.Errorf("parsing existing config %s: %w", path, err)
+		// Some platforms (e.g. Antigravity) create this file empty on first launch;
+		// treat zero-byte files as a fresh start rather than a parse error.
+		if len(data) > 0 {
+			if err := json.Unmarshal(data, &existing); err != nil {
+				return fmt.Errorf("parsing existing config %s: %w", path, err)
+			}
 		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("reading %s: %w", path, err)

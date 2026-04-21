@@ -68,6 +68,33 @@ func TestMergeMCPIntoFile_NewFile(t *testing.T) {
 	}
 }
 
+func TestMergeMCPIntoFile_EmptyFile(t *testing.T) {
+	// Antigravity creates ~/.gemini/antigravity/mcp_config.json as a zero-byte
+	// file on first launch. We should treat that like a missing file.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte{}, 0644); err != nil {
+		t.Fatalf("creating empty file: %v", err)
+	}
+
+	servers := map[string]mcpEntry{
+		"ctx": {Command: "npx", Args: []string{"ctx"}},
+	}
+
+	if err := mergeMCPIntoFile(path, "mcpServers", servers); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := readJSON(t, path)
+	mcpServers, ok := got["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatalf("mcpServers not found or wrong type in %v", got)
+	}
+	if _, ok := mcpServers["ctx"]; !ok {
+		t.Error("ctx should be present")
+	}
+}
+
 func TestMergeMCPIntoFile_PreservesExistingKeys(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
