@@ -16,6 +16,9 @@ import (
 	"github.com/peterbourgon/ff/v3/ffcli"
 )
 
+// version is set at build time via -ldflags "-X main.version=..."
+var version = "dev"
+
 func main() {
 	initCmd := &ffcli.Command{
 		Name:       "init",
@@ -73,12 +76,19 @@ func main() {
 		},
 	}
 
+	rootFlags := flag.NewFlagSet("chai", flag.ExitOnError)
+	showVersion := rootFlags.Bool("version", false, "print version and exit")
+
 	root := &ffcli.Command{
 		ShortUsage:  "chai <command> [flags]",
 		ShortHelp:   "Keep AI coding agent configs in sync",
-		FlagSet:     flag.NewFlagSet("chai", flag.ExitOnError),
+		FlagSet:     rootFlags,
 		Subcommands: []*ffcli.Command{initCmd, syncCmd, updateCmd},
 		Exec: func(ctx context.Context, args []string) error {
+			if *showVersion {
+				fmt.Println(version)
+				return nil
+			}
 			fmt.Println("chai — run 'chai init', 'chai sync', or 'chai update'")
 			return nil
 		},
