@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/charliesbot/chai/internal/config"
+	"github.com/charliesbot/chai/internal/hash"
 )
 
 func TestRunWithHome_CopiesInstructions(t *testing.T) {
@@ -237,6 +238,125 @@ func TestRunWithHome_CancelledContext(t *testing.T) {
 	claudePath := filepath.Join(home, ".claude", "CLAUDE.md")
 	if _, err := os.Stat(claudePath); !os.IsNotExist(err) {
 		t.Error("CLAUDE.md should not exist after cancelled sync")
+	}
+}
+
+func TestRunWithHome_SharedInstructionsDedup(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	content := "shared instructions"
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte(content), 0644)
+
+	// Gemini and Antigravity both write to ~/.gemini/GEMINI.md.
+	// The prompt should fire at most once per unique destination.
+	promptCalls := 0
+	cfg := &config.Config{
+		Platforms:    []string{"gemini", "antigravity"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	sharedPath := filepath.Join(home, ".gemini", "GEMINI.md")
+	got, err := os.ReadFile(sharedPath)
+	if err != nil {
+		t.Fatalf("reading shared instructions: %v", err)
+	}
+	if string(got) != content {
+		t.Errorf("shared instructions = %q, want %q", string(got), content)
+	}
+
+	// Dirty the shared file, re-sync with a counting prompt.
+	os.WriteFile(sharedPath, []byte("edited"), 0644)
+	countingPrompt := func(path string) (bool, error) {
+		promptCalls++
+		return true, nil
+	}
+	if err := RunWithHome(context.Background(), cfg, home, Options{Prompt: countingPrompt}); err != nil {
+		t.Fatalf("re-sync: %v", err)
+	}
+	if promptCalls != 1 {
+		t.Errorf("prompt called %d times, want 1 (shared dest should dedupe)", promptCalls)
+	}
+
+	// hashDB should have exactly one entry for the shared destination, not one per platform.
+	hashDB, err := hash.Load(home)
+	if err != nil {
+		t.Fatalf("loading hash DB: %v", err)
+	}
+	if _, ok := hashDB[sharedPath]; !ok {
+		t.Errorf("hash DB missing entry for %s", sharedPath)
+	}
+	if len(hashDB) != 1 {
+		t.Errorf("hash DB has %d entries, want 1 (instructions-only sync)", len(hashDB))
+	}
+}
+
+func TestRunWithHome_SharedInstructionsPromptDeclined(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"gemini", "antigravity"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	sharedPath := filepath.Join(home, ".gemini", "GEMINI.md")
+	os.WriteFile(sharedPath, []byte("manually edited"), 0644)
+
+	alwaysNo := func(path string) (bool, error) { return false, nil }
+	if err := RunWithHome(context.Background(), cfg, home, Options{Prompt: alwaysNo}); err != nil {
+		t.Fatalf("re-sync: %v", err)
+	}
+
+	got, _ := os.ReadFile(sharedPath)
+	if string(got) != "manually edited" {
+		t.Errorf("shared path = %q, want %q (prompt declined, should not overwrite)", string(got), "manually edited")
+	}
+}
+
+func TestRunWithHome_AntigravitySkipsSubagents(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("x"), 0644)
+
+	agentDir := filepath.Join(home, "dotfiles", "ai", "subagents")
+	os.MkdirAll(agentDir, 0755)
+	os.WriteFile(filepath.Join(agentDir, "reviewer.md"), []byte("reviewer body"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"gemini", "antigravity"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	// Gemini gets the subagent
+	geminiAgent := filepath.Join(home, ".gemini", "agents", "reviewer.md")
+	if _, err := os.Stat(geminiAgent); err != nil {
+		t.Errorf("gemini agent should exist: %v", err)
+	}
+
+	// Antigravity has no agents dir — nothing should be written under its skills tree
+	antigravityAgents := filepath.Join(home, ".gemini", "antigravity", "agents")
+	if _, err := os.Stat(antigravityAgents); !os.IsNotExist(err) {
+		t.Errorf("antigravity agents dir should not exist, got err=%v", err)
 	}
 }
 

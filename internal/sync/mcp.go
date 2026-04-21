@@ -53,10 +53,28 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 	}
 
 	status := newPlatformStatus(platforms)
+
+	// Dedup by destination path + MCP key so platforms that share a config file
+	// only get one merge pass.
+	type mcpTarget struct {
+		path string
+		key  string
+	}
+	seen := make(map[mcpTarget][]platform.Platform)
+	order := make([]mcpTarget, 0, len(platforms))
 	for _, p := range platforms {
-		dest := filepath.Join(home, p.MCPConfigPath)
-		if err := mergeMCPIntoFile(dest, p.MCPKey, servers); err != nil {
-			status.setFailed(p.Name)
+		t := mcpTarget{path: filepath.Join(home, p.MCPConfigPath), key: p.MCPKey}
+		if _, ok := seen[t]; !ok {
+			order = append(order, t)
+		}
+		seen[t] = append(seen[t], p)
+	}
+
+	for _, t := range order {
+		if err := mergeMCPIntoFile(t.path, t.key, servers); err != nil {
+			for _, p := range seen[t] {
+				status.setFailed(p.Name)
+			}
 		}
 	}
 
@@ -67,7 +85,7 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 	}
 	sort.Strings(names)
 
-	fmt.Println(ui.Box("mcpServers", len(servers), status.claude(), status.gemini(), names))
+	fmt.Println(ui.Box("mcpServers", len(servers), status.statuses(), names))
 
 	return nil
 }

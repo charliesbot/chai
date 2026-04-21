@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/hash"
@@ -66,12 +67,25 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	platforms := platform.ForNames(cfg.Platforms)
 	status := newPlatformStatus(platforms)
 
+	// Group platforms by destination path so that platforms sharing an
+	// instructions file (e.g. Gemini + Antigravity both writing ~/.gemini/GEMINI.md)
+	// only trigger one write and one dirty-detection prompt.
+	destOrder := make([]string, 0, len(platforms))
+	destPlatforms := make(map[string][]platform.Platform, len(platforms))
 	for _, p := range platforms {
+		dest := filepath.Join(home, p.InstructionsPath)
+		if _, ok := destPlatforms[dest]; !ok {
+			destOrder = append(destOrder, dest)
+		}
+		destPlatforms[dest] = append(destPlatforms[dest], p)
+	}
+
+	for _, dest := range destOrder {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("sync interrupted: %w", err)
 		}
 
-		dest := filepath.Join(home, p.InstructionsPath)
+		sharers := destPlatforms[dest]
 
 		if !opts.Force && !opts.DryRun {
 			dirty, err := hashDB.IsDirty(dest)
@@ -87,7 +101,9 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 					return err
 				}
 				if !overwrite {
-					status.setFailed(p.Name)
+					for _, p := range sharers {
+						status.setFailed(p.Name)
+					}
 					continue
 				}
 			}
@@ -103,23 +119,24 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 					dryStatus = ui.Muted.Render("unchanged")
 				}
 			}
-			fmt.Printf("  %s %s %s (%s)\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(dest), dryStatus)
+			names := platformNames(sharers)
+			fmt.Printf("  %s %s %s (%s)\n", ui.Arrow(), ui.Bold.Render(names), ui.Muted.Render(dest), dryStatus)
 			continue
 		}
 
 		if err := atomicWrite(dest, content); err != nil {
-			return fmt.Errorf("writing %s instructions to %s: %w", p.Name, dest, err)
+			return fmt.Errorf("writing instructions to %s: %w", dest, err)
 		}
 		hashDB[dest] = hash.Sum(content)
 	}
 
 	if !opts.DryRun {
-		instructionItems := make([]string, 0, len(platforms)+1)
+		instructionItems := make([]string, 0, len(destOrder)+1)
 		instructionItems = append(instructionItems, srcPath)
-		for _, p := range platforms {
-			instructionItems = append(instructionItems, "→ "+filepath.Join(home, p.InstructionsPath))
+		for _, dest := range destOrder {
+			instructionItems = append(instructionItems, "→ "+dest)
 		}
-		fmt.Println(ui.Box("instructions", 0, status.claude(), status.gemini(), instructionItems))
+		fmt.Println(ui.Box("instructions", 0, status.statuses(), instructionItems))
 	}
 
 	if opts.DryRun {
@@ -143,7 +160,15 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		for name := range cfg.Gemini.Extensions {
 			names = append(names, name)
 		}
-		fmt.Println(ui.Box("gemini extensions", len(names), ui.PlatformNA, ui.PlatformOK, names))
+		extStatus := make([]ui.PlatformStatus, len(platforms))
+		for i, p := range platforms {
+			if p.Name == "Gemini" {
+				extStatus[i] = ui.PlatformStatus{Name: p.Name, State: ui.PlatformOK}
+			} else {
+				extStatus[i] = ui.PlatformStatus{Name: p.Name, State: ui.PlatformNA}
+			}
+		}
+		fmt.Println(ui.Box("gemini extensions", len(names), extStatus, names))
 	}
 
 	if opts.DryRun {
@@ -157,35 +182,52 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	return nil
 }
 
-// platformStatus tracks success/failure per platform, showing NA for platforms not in the list.
+// platformStatus tracks success/failure per platform, preserving order for UI rendering.
 type platformStatus struct {
-	active map[string]bool
-	ok     map[string]bool
+	order []string
+	state map[string]ui.PlatformState
 }
 
 func newPlatformStatus(platforms []platform.Platform) platformStatus {
-	active := make(map[string]bool, len(platforms))
-	ok := make(map[string]bool, len(platforms))
-	for _, p := range platforms {
-		active[p.Name] = true
-		ok[p.Name] = true
+	ps := platformStatus{
+		order: make([]string, 0, len(platforms)),
+		state: make(map[string]ui.PlatformState, len(platforms)),
 	}
-	return platformStatus{active: active, ok: ok}
+	for _, p := range platforms {
+		ps.order = append(ps.order, p.Name)
+		ps.state[p.Name] = ui.PlatformOK
+	}
+	return ps
 }
 
 func (ps platformStatus) setFailed(name string) {
-	ps.ok[name] = false
-}
-
-func (ps platformStatus) state(name string) ui.PlatformState {
-	if !ps.active[name] {
-		return ui.PlatformNA
+	if _, ok := ps.state[name]; ok {
+		ps.state[name] = ui.PlatformFailed
 	}
-	return ui.BoolState(ps.ok[name])
 }
 
-func (ps platformStatus) claude() ui.PlatformState { return ps.state("Claude") }
-func (ps platformStatus) gemini() ui.PlatformState { return ps.state("Gemini") }
+func (ps platformStatus) setNA(name string) {
+	if _, ok := ps.state[name]; ok {
+		ps.state[name] = ui.PlatformNA
+	}
+}
+
+func (ps platformStatus) statuses() []ui.PlatformStatus {
+	out := make([]ui.PlatformStatus, len(ps.order))
+	for i, name := range ps.order {
+		out[i] = ui.PlatformStatus{Name: name, State: ps.state[name]}
+	}
+	return out
+}
+
+// platformNames joins the names of the given platforms with " + " for display.
+func platformNames(platforms []platform.Platform) string {
+	names := make([]string, len(platforms))
+	for i, p := range platforms {
+		names[i] = p.Name
+	}
+	return strings.Join(names, " + ")
+}
 
 // DirtyError is returned when target files have been manually edited since the last sync.
 type DirtyError struct {
