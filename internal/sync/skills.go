@@ -66,7 +66,7 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, pla
 			for i, s := range skills {
 				names[i] = filepath.Base(s)
 			}
-			fmt.Println(ui.Box("skills", len(skills), status.claude(), status.gemini(), names))
+			fmt.Println(ui.Box("skills", len(skills), status.statuses(), names))
 		}
 	}
 
@@ -74,6 +74,13 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, pla
 	if len(agents) > 0 {
 		status := newPlatformStatus(platforms)
 		for _, p := range platforms {
+			if p.AgentsDir == "" {
+				status.setNA(p.Name)
+				if !dryRun {
+					fmt.Printf("  %s %s %s\n", ui.Skip(), ui.Bold.Render(p.Name), ui.Muted.Render("subagents not supported — skipping"))
+				}
+				continue
+			}
 			destDir := filepath.Join(home, p.AgentsDir)
 			if dryRun {
 				for _, src := range agents {
@@ -91,7 +98,7 @@ func syncSkillsAndAgents(skillPatterns, agentPatterns []string, home string, pla
 			for i, s := range agents {
 				names[i] = filepath.Base(s)
 			}
-			fmt.Println(ui.Box("subagents", len(agents), status.claude(), status.gemini(), names))
+			fmt.Println(ui.Box("subagents", len(agents), status.statuses(), names))
 		}
 	}
 

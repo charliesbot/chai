@@ -34,6 +34,14 @@ func All() []Platform {
 			MCPConfigPath:    filepath.Join(".gemini", "settings.json"),
 			MCPKey:           "mcpServers",
 		},
+		{
+			Name:             "Antigravity",
+			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
+			SkillsDir:        filepath.Join(".gemini", "antigravity", "skills"),
+			AgentsDir:        "", // Antigravity does not expose a user subagents directory
+			MCPConfigPath:    filepath.Join(".gemini", "antigravity", "mcp_config.json"),
+			MCPKey:           "mcpServers",
+		},
 	}
 }
 

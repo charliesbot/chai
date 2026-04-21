@@ -50,6 +50,9 @@ var (
 
 	GeminiStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("75")) // blue
+
+	AntigravityStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("135")) // purple
 )
 
 // Platform icons
@@ -61,6 +64,10 @@ func GeminiIcon() string {
 	return GeminiStyle.Render("◆")
 }
 
+func AntigravityIcon() string {
+	return AntigravityStyle.Render("▲")
+}
+
 // PlatformState represents whether a platform was synced, failed, or not applicable.
 type PlatformState int
 
@@ -70,17 +77,18 @@ const (
 	PlatformNA // not applicable
 )
 
-func PlatformIcons(claude, gemini PlatformState) string {
-	c := renderPlatformState(ClaudeIcon(), claude)
-	g := renderPlatformState(GeminiIcon(), gemini)
-	return c + " " + g
+// PlatformStatus pairs a platform name with its sync state for UI rendering.
+type PlatformStatus struct {
+	Name  string
+	State PlatformState
 }
 
-func BoolState(ok bool) PlatformState {
-	if ok {
-		return PlatformOK
+func PlatformIcons(statuses []PlatformStatus) string {
+	parts := make([]string, len(statuses))
+	for i, s := range statuses {
+		parts[i] = renderPlatformState(platformIcon(s.Name), s.State)
 	}
-	return PlatformFailed
+	return strings.Join(parts, " ")
 }
 
 func renderPlatformState(icon string, state PlatformState) string {
@@ -112,12 +120,12 @@ func Skip() string {
 
 // Box renders a boxed section with header, platform icons, and item lines.
 //
-//	┌ skills (12) ──────────────── ● ◆
+//	┌ skills (12) ──────────────── ● ◆ ▲
 //	│ agents-md  android-dev  slidev
 //	│ web-dev  angular-developer
 //	└
-func Box(name string, count int, claude, gemini PlatformState, items []string) string {
-	icons := PlatformIcons(claude, gemini)
+func Box(name string, count int, statuses []PlatformStatus, items []string) string {
+	icons := PlatformIcons(statuses)
 
 	// Build header: ┌ name (count) ─── ● ◆
 	header := Label.Render(name)
@@ -193,12 +201,12 @@ func renderItemLine(items []string) string {
 }
 
 // Section is kept for backward compat with dry-run output.
-func Section(name string, count int, claude, gemini PlatformState) string {
+func Section(name string, count int, statuses []PlatformStatus) string {
 	countStr := ""
 	if count > 0 {
 		countStr = " " + Muted.Render(fmt.Sprintf("(%d)", count))
 	}
-	return fmt.Sprintf("%s%s  %s", Label.Render(name), countStr, PlatformIcons(claude, gemini))
+	return fmt.Sprintf("%s%s  %s", Label.Render(name), countStr, PlatformIcons(statuses))
 }
 
 // ItemList is kept for backward compat with dry-run output.
@@ -232,6 +240,8 @@ func platformIcon(name string) string {
 		return ClaudeIcon()
 	case "Gemini":
 		return GeminiIcon()
+	case "Antigravity":
+		return AntigravityIcon()
 	default:
 		return "○"
 	}
