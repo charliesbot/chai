@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 
 	"github.com/charliesbot/chai/internal/config"
 	chaiinit "github.com/charliesbot/chai/internal/init"
@@ -16,8 +17,45 @@ import (
 	"github.com/peterbourgon/ff/v3/ffcli"
 )
 
-// version is set at build time via -ldflags "-X main.version=..."
+// version is set at build time via -ldflags "-X main.version=..." for release builds.
+// For local/go-install builds, resolveVersion() falls back to module version or git SHA.
 var version = "dev"
+
+func resolveVersion() string {
+	if version != "dev" {
+		return version
+	}
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version
+	}
+	// Prefer VCS info when present (repo builds) — shorter and more readable
+	// than Go's synthesized pseudo-versions.
+	var rev string
+	var dirty bool
+	for _, s := range bi.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.modified":
+			dirty = s.Value == "true"
+		}
+	}
+	if rev != "" {
+		if len(rev) > 7 {
+			rev = rev[:7]
+		}
+		if dirty {
+			return "dev-" + rev + "-dirty"
+		}
+		return "dev-" + rev
+	}
+	// No VCS info — likely a `go install pkg@vX.Y.Z` build from the module cache.
+	if bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return version
+}
 
 func main() {
 	initCmd := &ffcli.Command{
@@ -86,7 +124,7 @@ func main() {
 		Subcommands: []*ffcli.Command{initCmd, syncCmd, updateCmd},
 		Exec: func(ctx context.Context, args []string) error {
 			if *showVersion {
-				fmt.Println(version)
+				fmt.Println(resolveVersion())
 				return nil
 			}
 			fmt.Println("chai — run 'chai init', 'chai sync', or 'chai update'")
