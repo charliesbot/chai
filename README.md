@@ -33,7 +33,7 @@ Everything lives in `~/chai.toml`:
 
 ```toml
 # Which platforms to sync to. Only these get touched.
-platforms = ["claude", "gemini", "antigravity"]
+platforms = ["claude", "gemini", "antigravity", "opencode"]
 
 # Your shared instructions file. Copied to each platform with dirty detection.
 instructions = "~/dotfiles/ai/instructions/AGENTS.md"
@@ -71,15 +71,16 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 ## Sync strategy
 
 - **Instructions, skills, and subagents** are **copied** with hash-based dirty detection. Agents may edit their copies. _chai_ detects changes and prompts before overwriting.
-- **MCP servers** are **merged** into platform config files. chai owns the `mcpServers` key and preserves everything else.
+- **MCP servers** are **merged** into platform config files. chai owns the `mcpServers` key (or `mcp` for OpenCode) and preserves everything else.
 
 ### Supported platforms
 
-| Icon | Platform    | Notes                                                           |
-| ---- | ----------- | --------------------------------------------------------------- |
-| ●    | Claude      |                                                                 |
-| ◆    | Gemini      |                                                                 |
-| ▲    | Antigravity | Shares `~/.gemini/GEMINI.md` with Gemini. No subagents support. |
+| Icon | Platform    | Notes                                                                                          |
+| ---- | ----------- | ---------------------------------------------------------------------------------------------- |
+| ●    | Claude      |                                                                                                |
+| ◆    | Gemini      |                                                                                                |
+| ▲    | Antigravity | Shares `~/.gemini/GEMINI.md` with Gemini. No subagents support.                                |
+| ■    | OpenCode    | Writes `~/.config/opencode/`. MCP uses OpenCode's `mcp` schema; `cwd` is not supported.        |
 
 ## License
 

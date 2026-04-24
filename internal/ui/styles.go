@@ -53,6 +53,9 @@ var (
 
 	AntigravityStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("135")) // purple
+
+	OpenCodeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("86")) // teal
 )
 
 // Platform icons
@@ -66,6 +69,10 @@ func GeminiIcon() string {
 
 func AntigravityIcon() string {
 	return AntigravityStyle.Render("▲")
+}
+
+func OpenCodeIcon() string {
+	return OpenCodeStyle.Render("■")
 }
 
 // PlatformState represents whether a platform was synced, failed, or not applicable.
@@ -242,6 +249,8 @@ func platformIcon(name string) string {
 		return GeminiIcon()
 	case "Antigravity":
 		return AntigravityIcon()
+	case "OpenCode":
+		return OpenCodeIcon()
 	default:
 		return "○"
 	}

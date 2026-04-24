@@ -11,7 +11,7 @@ import (
 
 const defaultPath = "~/dotfiles/ai"
 
-const tomlTemplate = `platforms = ["claude", "gemini"]
+const tomlTemplate = `platforms = ["claude", "gemini", "opencode"]
 instructions = "%s/instructions/AGENTS.md"
 
 [deps]

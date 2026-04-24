@@ -45,8 +45,8 @@ func TestMergeMCPIntoFile_NewFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 
-	servers := map[string]mcpEntry{
-		"context7": {Command: "npx", Args: []string{"-y", "ctx7"}},
+	servers := map[string]any{
+		"context7": mcpEntry{Command: "npx", Args: []string{"-y", "ctx7"}},
 	}
 
 	err := mergeMCPIntoFile(path, "mcpServers", servers)
@@ -77,8 +77,8 @@ func TestMergeMCPIntoFile_EmptyFile(t *testing.T) {
 		t.Fatalf("creating empty file: %v", err)
 	}
 
-	servers := map[string]mcpEntry{
-		"ctx": {Command: "npx", Args: []string{"ctx"}},
+	servers := map[string]any{
+		"ctx": mcpEntry{Command: "npx", Args: []string{"ctx"}},
 	}
 
 	if err := mergeMCPIntoFile(path, "mcpServers", servers); err != nil {
@@ -109,8 +109,8 @@ func TestMergeMCPIntoFile_PreservesExistingKeys(t *testing.T) {
 	data, _ := json.MarshalIndent(existing, "", "  ")
 	os.WriteFile(path, data, 0644)
 
-	servers := map[string]mcpEntry{
-		"context7": {Command: "npx", Args: []string{"-y", "ctx7"}},
+	servers := map[string]any{
+		"context7": mcpEntry{Command: "npx", Args: []string{"-y", "ctx7"}},
 	}
 
 	err := mergeMCPIntoFile(path, "mcpServers", servers)
@@ -139,8 +139,8 @@ func TestMergeMCPIntoFile_EnvAndCWD(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 
-	servers := map[string]mcpEntry{
-		"gw": {
+	servers := map[string]any{
+		"gw": mcpEntry{
 			Command: "node",
 			Args:    []string{"start.js"},
 			Env:     map[string]string{"API_KEY": "abc"},
@@ -163,6 +163,98 @@ func TestMergeMCPIntoFile_EnvAndCWD(t *testing.T) {
 	env := gw["env"].(map[string]any)
 	if env["API_KEY"] != "abc" {
 		t.Errorf("env.API_KEY = %v, want %q", env["API_KEY"], "abc")
+	}
+}
+
+func TestBuildOpenCodeMCPServers_BundlesCommandAndArgs(t *testing.T) {
+	standard := map[string]mcpEntry{
+		"ctx7": {
+			Command: "npx",
+			Args:    []string{"-y", "@upstash/context7-mcp"},
+			Env:     map[string]string{"FOO": "bar"},
+			CWD:     "/ignored/by/opencode",
+		},
+	}
+
+	got := buildOpenCodeMCPServers(standard)
+	entry, ok := got["ctx7"]
+	if !ok {
+		t.Fatalf("ctx7 missing from output")
+	}
+	if entry.Type != "local" {
+		t.Errorf("type = %q, want %q", entry.Type, "local")
+	}
+	wantCmd := []string{"npx", "-y", "@upstash/context7-mcp"}
+	if len(entry.Command) != len(wantCmd) {
+		t.Fatalf("command = %v, want %v", entry.Command, wantCmd)
+	}
+	for i, v := range wantCmd {
+		if entry.Command[i] != v {
+			t.Errorf("command[%d] = %q, want %q", i, entry.Command[i], v)
+		}
+	}
+	if entry.Environment["FOO"] != "bar" {
+		t.Errorf("environment.FOO = %q, want %q", entry.Environment["FOO"], "bar")
+	}
+	if !entry.Enabled {
+		t.Error("enabled should default to true")
+	}
+}
+
+func TestSyncMCP_WritesOpenCodeFormat(t *testing.T) {
+	home := t.TempDir()
+
+	cfg := &config.Config{
+		MCP: map[string]config.MCP{
+			"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
+		},
+	}
+	opencode := platform.ForNames([]string{"opencode"})
+	if len(opencode) != 1 {
+		t.Fatalf("expected one platform match for opencode, got %d", len(opencode))
+	}
+
+	if err := syncMCP(cfg, home, opencode, false); err != nil {
+		t.Fatalf("syncMCP: %v", err)
+	}
+
+	path := filepath.Join(home, ".config", "opencode", "opencode.json")
+	got := readJSON(t, path)
+	mcp, ok := got["mcp"].(map[string]any)
+	if !ok {
+		t.Fatalf("mcp key missing or wrong type in %v", got)
+	}
+	if _, ok := got["mcpServers"]; ok {
+		t.Error("mcpServers should not be written for OpenCode")
+	}
+
+	entry, ok := mcp["ctx7"].(map[string]any)
+	if !ok {
+		t.Fatalf("ctx7 missing from mcp")
+	}
+	if entry["type"] != "local" {
+		t.Errorf("type = %v, want %q", entry["type"], "local")
+	}
+	cmd, ok := entry["command"].([]any)
+	if !ok {
+		t.Fatalf("command = %v, want array", entry["command"])
+	}
+	want := []string{"npx", "-y", "@upstash/context7-mcp"}
+	if len(cmd) != len(want) {
+		t.Fatalf("command length = %d, want %d", len(cmd), len(want))
+	}
+	for i, v := range want {
+		if cmd[i] != v {
+			t.Errorf("command[%d] = %v, want %q", i, cmd[i], v)
+		}
+	}
+	if entry["enabled"] != true {
+		t.Errorf("enabled = %v, want true", entry["enabled"])
+	}
+	for _, forbidden := range []string{"cwd", "args"} {
+		if _, ok := entry[forbidden]; ok {
+			t.Errorf("OpenCode entry should not contain %q field, got %v", forbidden, entry[forbidden])
+		}
 	}
 }
 

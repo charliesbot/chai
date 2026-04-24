@@ -24,6 +24,11 @@ func TestScaffold_CreatesToml(t *testing.T) {
 	if !strings.Contains(tomlContent, `instructions = "~/dotfiles/ai/instructions/AGENTS.md"`) {
 		t.Errorf("chai.toml missing instructions line, got:\n%s", tomlContent)
 	}
+	for _, p := range []string{`"claude"`, `"gemini"`, `"opencode"`} {
+		if !strings.Contains(tomlContent, p) {
+			t.Errorf("chai.toml missing platform %s, got:\n%s", p, tomlContent)
+		}
+	}
 	if !strings.Contains(tomlContent, `"~/dotfiles/ai/skills"`) {
 		t.Errorf("chai.toml missing skills path, got:\n%s", tomlContent)
 	}
