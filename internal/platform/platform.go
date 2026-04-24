@@ -5,14 +5,28 @@ import (
 	"strings"
 )
 
+// MCPFormat identifies the on-disk shape a platform expects for an MCP entry.
+type MCPFormat string
+
+const (
+	// MCPFormatStandard is the Claude / Gemini / Antigravity shape:
+	//   {"command": "npx", "args": [...], "env": {...}, "cwd": "..."}
+	MCPFormatStandard MCPFormat = "standard"
+
+	// MCPFormatOpenCode is the OpenCode shape:
+	//   {"type": "local", "command": ["npx", ...], "environment": {...}, "enabled": true}
+	MCPFormatOpenCode MCPFormat = "opencode"
+)
+
 // Platform describes where a specific AI tool expects its config files.
 type Platform struct {
 	Name             string
-	InstructionsPath string // relative to home, e.g. ".claude/CLAUDE.md"
-	SkillsDir        string // relative to home, e.g. ".claude/skills"
-	AgentsDir        string // relative to home, e.g. ".claude/subagents"
-	MCPConfigPath    string // relative to home, e.g. ".claude.json"
-	MCPKey           string // JSON key for MCP servers, e.g. "mcpServers"
+	InstructionsPath string    // relative to home, e.g. ".claude/CLAUDE.md"
+	SkillsDir        string    // relative to home, e.g. ".claude/skills"
+	AgentsDir        string    // relative to home, e.g. ".claude/subagents"
+	MCPConfigPath    string    // relative to home, e.g. ".claude.json"
+	MCPKey           string    // JSON key for MCP servers, e.g. "mcpServers"
+	MCPFormat        MCPFormat // on-disk shape of each MCP entry
 }
 
 // All returns the built-in platform definitions.
@@ -25,6 +39,7 @@ func All() []Platform {
 			AgentsDir:        filepath.Join(".claude", "agents"),
 			MCPConfigPath:    ".claude.json",
 			MCPKey:           "mcpServers",
+			MCPFormat:        MCPFormatStandard,
 		},
 		{
 			Name:             "Gemini",
@@ -33,6 +48,7 @@ func All() []Platform {
 			AgentsDir:        filepath.Join(".gemini", "agents"),
 			MCPConfigPath:    filepath.Join(".gemini", "settings.json"),
 			MCPKey:           "mcpServers",
+			MCPFormat:        MCPFormatStandard,
 		},
 		{
 			Name:             "Antigravity",
@@ -41,6 +57,16 @@ func All() []Platform {
 			AgentsDir:        "", // Antigravity does not expose a user subagents directory
 			MCPConfigPath:    filepath.Join(".gemini", "antigravity", "mcp_config.json"),
 			MCPKey:           "mcpServers",
+			MCPFormat:        MCPFormatStandard,
+		},
+		{
+			Name:             "OpenCode",
+			InstructionsPath: filepath.Join(".config", "opencode", "AGENTS.md"),
+			SkillsDir:        filepath.Join(".config", "opencode", "skills"),
+			AgentsDir:        filepath.Join(".config", "opencode", "agents"),
+			MCPConfigPath:    filepath.Join(".config", "opencode", "opencode.json"),
+			MCPKey:           "mcp",
+			MCPFormat:        MCPFormatOpenCode,
 		},
 	}
 }
