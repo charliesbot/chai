@@ -125,16 +125,16 @@ func Skip() string {
 	return Warning.Render("⊘")
 }
 
-// Box renders a boxed section with header, platform icons, and item lines.
+// Box renders a boxed section with header, platform icons, and one item per line.
 //
-//	┌ skills (12) ──────────────── ● ◆ ▲
-//	│ agents-md  android-dev  slidev
-//	│ web-dev  angular-developer
+//	┌ skills (3) ───────────────── ● ◆ ▲
+//	│ agents-md
+//	│ android-dev
+//	│ slidev
 //	└
 func Box(name string, count int, statuses []PlatformStatus, items []string) string {
 	icons := PlatformIcons(statuses)
 
-	// Build header: ┌ name (count) ─── ● ◆
 	header := Label.Render(name)
 	countStr := ""
 	if count > 0 {
@@ -146,7 +146,6 @@ func Box(name string, count int, statuses []PlatformStatus, items []string) stri
 		headerText += fmt.Sprintf(" (%d)", count)
 	}
 
-	// Calculate padding for the line
 	// Account for " ┌ " prefix (3) + headerText + " " + icons + " "
 	lineLen := boxWidth - len(headerText) - 6
 	if lineLen < 3 {
@@ -156,55 +155,13 @@ func Box(name string, count int, statuses []PlatformStatus, items []string) stri
 
 	s := Border.Render(" ┌") + " " + header + countStr + " " + Border.Render(line) + " " + icons + "\n"
 
-	// Render items
-	if len(items) > 0 {
-		lines := wrapItems(items, boxWidth-4) // 4 for " │ " prefix + margin
-		for _, l := range lines {
-			s += Border.Render(" │") + " " + l + "\n"
-		}
+	for _, item := range items {
+		s += Border.Render(" │") + " " + ItemStyle.Render(item) + "\n"
 	}
 
 	s += Border.Render(" └")
 
 	return s
-}
-
-// wrapItems arranges items into lines that fit within maxWidth.
-func wrapItems(items []string, maxWidth int) []string {
-	var lines []string
-	var current []string
-	currentLen := 0
-
-	for _, item := range items {
-		itemLen := len(item)
-		sepLen := 2
-
-		if currentLen > 0 && currentLen+sepLen+itemLen > maxWidth {
-			lines = append(lines, renderItemLine(current))
-			current = nil
-			currentLen = 0
-		}
-
-		if currentLen > 0 {
-			currentLen += sepLen
-		}
-		current = append(current, item)
-		currentLen += itemLen
-	}
-
-	if len(current) > 0 {
-		lines = append(lines, renderItemLine(current))
-	}
-
-	return lines
-}
-
-func renderItemLine(items []string) string {
-	styled := make([]string, len(items))
-	for i, item := range items {
-		styled[i] = ItemStyle.Render(item)
-	}
-	return strings.Join(styled, Muted.Render("  "))
 }
 
 // Section is kept for backward compat with dry-run output.
