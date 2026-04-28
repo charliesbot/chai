@@ -84,7 +84,7 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 | ◆    | Gemini      | ✅  | ✅     | ✅        |
 | ▲    | Antigravity | ✅  | ✅     | ❌        |
 | ■    | OpenCode    | ✅  | ✅     | ✅        |
-| ◈    | Codex       | ✅  | ✅     | ❌        |
+| ⬢    | Codex       | ✅  | ✅     | ❌        |
 
 ✅ full · ❌ not supported
 

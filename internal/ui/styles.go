@@ -79,7 +79,7 @@ func OpenCodeIcon() string {
 }
 
 func CodexIcon() string {
-	return CodexStyle.Render("◈")
+	return CodexStyle.Render("⬢")
 }
 
 // PlatformState represents whether a platform was synced, failed, or not applicable.
