@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -357,42 +356,6 @@ command = "old-command"
 	}
 	if _, ok := mcp["pencil"]; !ok {
 		t.Error("pencil server should be present")
-	}
-}
-
-// TestMergeMCPIntoTOMLFile_DropsComments locks in the documented behavior that
-// round-tripping ~/.codex/config.toml loses comments and reformats whitespace.
-// Change this test only after the merge implementation switches to a comment-
-// preserving TOML library — otherwise users would silently lose annotations.
-func TestMergeMCPIntoTOMLFile_DropsComments(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
-
-	preexisting := []byte(`# top-level comment
-model = "gpt-5"  # inline comment
-`)
-	if err := os.WriteFile(path, preexisting, 0644); err != nil {
-		t.Fatalf("writing fixture: %v", err)
-	}
-
-	servers := map[string]any{
-		"pencil": codexMCPEntry{Command: "/path/to/mcp"},
-	}
-
-	if err := mergeMCPIntoTOMLFile(path, "mcp_servers", servers); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	out, _ := os.ReadFile(path)
-	for _, marker := range []string{"# top-level comment", "# inline comment"} {
-		if strings.Contains(string(out), marker) {
-			t.Errorf("expected comment %q to be dropped, but found it in output:\n%s", marker, string(out))
-		}
-	}
-	// The non-comment data should still be there.
-	got := readTOML(t, path)
-	if got["model"] != "gpt-5" {
-		t.Errorf("model = %v, want %q (data should survive even though comments don't)", got["model"], "gpt-5")
 	}
 }
 

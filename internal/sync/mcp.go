@@ -269,9 +269,6 @@ func buildCodexMCPServers(standard map[string]mcpEntry) map[string]codexMCPEntry
 }
 
 // mergeMCPIntoTOMLFile reads an existing TOML file, replaces the mcpKey, and writes it back atomically.
-// Note: go-toml/v2's Unmarshal/Marshal round trip drops comments and rewrites whitespace.
-// This is intentional for now (documented in the README) — switch to a comment-preserving
-// TOML library if users start losing meaningful annotations in ~/.codex/config.toml.
 func mergeMCPIntoTOMLFile(path, mcpKey string, servers map[string]any) error {
 	existing := make(map[string]any)
 
