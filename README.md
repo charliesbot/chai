@@ -88,8 +88,6 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 
 ✅ full · ❌ not supported
 
-Antigravity shares `~/.gemini/GEMINI.md` with Gemini and has no user subagents directory. OpenCode and Codex MCP entries omit `cwd` because neither platform's schema supports it. Codex subagents use a TOML schema chai doesn't translate from markdown; Codex skills go to the shared `~/.agents/skills/` path.
-
 ## License
 
 MIT
