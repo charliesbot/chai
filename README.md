@@ -83,16 +83,14 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 | ●    | Claude      | ✅    | ✅     | ✅        |
 | ◆    | Gemini      | ✅    | ✅     | ✅        |
 | ▲    | Antigravity | ✅    | ✅     | ❌        |
-| ■    | OpenCode    | ⚠️ ¹  | ✅     | ✅        |
-| ◈    | Codex       | ⚠️ ²  | ⚠️ ³   | ❌        |
+| ■    | OpenCode    | ✅    | ✅     | ✅        |
+| ◈    | Codex       | ⚠️ ¹  | ✅     | ❌        |
 
 ✅ full · ⚠️ partial · ❌ not supported
 
-¹ OpenCode uses a different MCP schema (`mcp` key, command as a single array, `cwd` unsupported).
-² Codex stores MCPs in TOML (`~/.codex/config.toml`). `cwd` is unsupported; comments and whitespace are dropped on every sync.
-³ Codex reads skills from the shared `~/.agents/skills/` path, not a `.codex`-namespaced directory.
+¹ chai writes the correct TOML schema, but `~/.codex/config.toml` is round-tripped through `go-toml/v2`, which drops comments and reformats whitespace.
 
-Antigravity shares `~/.gemini/GEMINI.md` with Gemini and has no user subagents directory. Codex agents use a TOML schema chai doesn't translate from markdown.
+Antigravity shares `~/.gemini/GEMINI.md` with Gemini and has no user subagents directory. OpenCode and Codex MCP entries omit `cwd` because neither platform's schema supports it. Codex subagents use a TOML schema chai doesn't translate from markdown; Codex skills go to the shared `~/.agents/skills/` path.
 
 ## License
 
