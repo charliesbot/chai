@@ -5,16 +5,19 @@ Keep AI coding agent configs in sync. One manifest, distributed to every platfor
 ## Installation
 
 ### Homebrew
+
 ```bash
 brew install --cask charliesbot/tap/chai
 ```
 
 ### Go
+
 ```bash
 go install github.com/charliesbot/chai@latest
 ```
 
 ### Binary
+
 Download the latest binary from [GitHub Releases](https://github.com/charliesbot/chai/releases/latest).
 
 ## Usage
@@ -75,13 +78,21 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 
 ### Supported platforms
 
-| Icon | Platform    | Notes                                                                                          |
-| ---- | ----------- | ---------------------------------------------------------------------------------------------- |
-| ●    | Claude      |                                                                                                |
-| ◆    | Gemini      |                                                                                                |
-| ▲    | Antigravity | Shares `~/.gemini/GEMINI.md` with Gemini. No subagents support.                                |
-| ■    | OpenCode    | Writes `~/.config/opencode/`. MCP uses OpenCode's `mcp` schema; `cwd` is not supported.        |
-| ◈    | Codex       | Writes `~/.codex/AGENTS.md` and `~/.agents/skills/`. MCPs go to `~/.codex/config.toml` (TOML); `cwd` is not supported. No subagents support — Codex agents use a TOML schema chai doesn't translate. **Comments and formatting in `config.toml` are not preserved** — the file is round-tripped on every sync. Keep handwritten notes elsewhere. |
+| Icon | Platform    | MCP   | Skills | Subagents |
+| ---- | ----------- | ----- | ------ | --------- |
+| ●    | Claude      | ✅    | ✅     | ✅        |
+| ◆    | Gemini      | ✅    | ✅     | ✅        |
+| ▲    | Antigravity | ✅    | ✅     | ❌        |
+| ■    | OpenCode    | ⚠️ ¹  | ✅     | ✅        |
+| ◈    | Codex       | ⚠️ ²  | ⚠️ ³   | ❌        |
+
+✅ full · ⚠️ partial · ❌ not supported
+
+¹ OpenCode uses a different MCP schema (`mcp` key, command as a single array, `cwd` unsupported).
+² Codex stores MCPs in TOML (`~/.codex/config.toml`). `cwd` is unsupported; comments and whitespace are dropped on every sync.
+³ Codex reads skills from the shared `~/.agents/skills/` path, not a `.codex`-namespaced directory.
+
+Antigravity shares `~/.gemini/GEMINI.md` with Gemini and has no user subagents directory. Codex agents use a TOML schema chai doesn't translate from markdown.
 
 ## License
 
