@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project Overview
 
-chai is a Go CLI that keeps AI coding agent configs in sync. It reads a single TOML manifest (`~/chai.toml`) and an `AGENTS.md` file, then distributes them to the right locations for each AI platform (Claude, Gemini, OpenCode). Instructions, skills, and subagents are copied with hash-based dirty detection so chai can prompt before overwriting files an agent has edited.
+chai is a Go CLI that keeps AI coding agent configs in sync. It reads a single TOML manifest (`~/chai.toml`) and an `AGENTS.md` file, then distributes them to the right locations for each AI platform (Claude, Gemini, OpenCode, Codex). Instructions, skills, and subagents are copied with hash-based dirty detection so chai can prompt before overwriting files an agent has edited.
 
 chai is deliberately minimal — it syncs config files, not manages workflows.
 
@@ -65,6 +65,7 @@ Built into source code (not user-configured). Each platform specifies:
 | Claude   | `~/.claude/CLAUDE.md`             | `~/.claude/skills/`                | `~/.claude/agents/`                | `~/.claude.json`                      | replace key   |
 | Gemini   | `~/.gemini/GEMINI.md`             | `~/.gemini/skills/`                | `~/.gemini/agents/`                | `~/.gemini/settings.json`             | replace key   |
 | OpenCode | `~/.config/opencode/AGENTS.md`    | `~/.config/opencode/skills/`       | `~/.config/opencode/agents/`       | `~/.config/opencode/opencode.json`    | replace `mcp` (OpenCode-format entries) |
+| Codex    | `~/.codex/AGENTS.md`              | `~/.agents/skills/`                | _none_                             | `~/.codex/config.toml`                | replace `mcp_servers` table (TOML, no cwd) |
 
 ### Key Design Decisions
 

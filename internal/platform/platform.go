@@ -16,6 +16,10 @@ const (
 	// MCPFormatOpenCode is the OpenCode shape:
 	//   {"type": "local", "command": ["npx", ...], "environment": {...}, "enabled": true}
 	MCPFormatOpenCode MCPFormat = "opencode"
+
+	// MCPFormatCodex is the Codex shape — same fields as Standard minus cwd,
+	// but the host file is TOML rather than JSON.
+	MCPFormatCodex MCPFormat = "codex"
 )
 
 // Platform describes where a specific AI tool expects its config files.
@@ -67,6 +71,18 @@ func All() []Platform {
 			MCPConfigPath:    filepath.Join(".config", "opencode", "opencode.json"),
 			MCPKey:           "mcp",
 			MCPFormat:        MCPFormatOpenCode,
+		},
+		{
+			Name: "Codex",
+			// Codex reads ~/.agents/skills/ — a shared, non-namespaced path. If
+			// another tool starts writing there, dirty detection may flag files
+			// chai didn't write.
+			InstructionsPath: filepath.Join(".codex", "AGENTS.md"),
+			SkillsDir:        filepath.Join(".agents", "skills"),
+			AgentsDir:        "", // Codex agents are TOML files; chai does not translate from markdown.
+			MCPConfigPath:    filepath.Join(".codex", "config.toml"),
+			MCPKey:           "mcp_servers",
+			MCPFormat:        MCPFormatCodex,
 		},
 	}
 }

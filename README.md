@@ -33,7 +33,7 @@ Everything lives in `~/chai.toml`:
 
 ```toml
 # Which platforms to sync to. Only these get touched.
-platforms = ["claude", "gemini", "antigravity", "opencode"]
+platforms = ["claude", "gemini", "antigravity", "opencode", "codex"]
 
 # Your shared instructions file. Copied to each platform with dirty detection.
 instructions = "~/dotfiles/ai/instructions/AGENTS.md"
@@ -71,7 +71,7 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 ## Sync strategy
 
 - **Instructions, skills, and subagents** are **copied** with hash-based dirty detection. Agents may edit their copies. _chai_ detects changes and prompts before overwriting.
-- **MCP servers** are **merged** into platform config files. chai owns the `mcpServers` key (or `mcp` for OpenCode) and preserves everything else.
+- **MCP servers** are **merged** into platform config files. chai owns the `mcpServers` key (or `mcp` for OpenCode, `mcp_servers` for Codex) and preserves everything else.
 
 ### Supported platforms
 
@@ -81,6 +81,7 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 | ◆    | Gemini      |                                                                                                |
 | ▲    | Antigravity | Shares `~/.gemini/GEMINI.md` with Gemini. No subagents support.                                |
 | ■    | OpenCode    | Writes `~/.config/opencode/`. MCP uses OpenCode's `mcp` schema; `cwd` is not supported.        |
+| ◈    | Codex       | Writes `~/.codex/AGENTS.md` and `~/.agents/skills/`. MCPs go to `~/.codex/config.toml` (TOML); `cwd` is not supported. No subagents support — Codex agents use a TOML schema chai doesn't translate. **Comments and formatting in `config.toml` are not preserved** — the file is round-tripped on every sync. Keep handwritten notes elsewhere. |
 
 ## License
 
