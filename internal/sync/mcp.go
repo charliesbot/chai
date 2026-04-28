@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	toml "github.com/pelletier/go-toml/v2"
+
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
@@ -32,6 +34,14 @@ type opencodeMCPEntry struct {
 	Enabled     bool              `json:"enabled"`
 }
 
+// codexMCPEntry is the TOML structure Codex expects in ~/.codex/config.toml
+// under [mcp_servers.<name>]. Same fields as the standard shape minus cwd.
+type codexMCPEntry struct {
+	Command string            `toml:"command"`
+	Args    []string          `toml:"args,omitempty"`
+	Env     map[string]string `toml:"env,omitempty"`
+}
+
 // syncMCP writes MCP server definitions to each platform's config file,
 // using each platform's preferred entry shape.
 func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dryRun bool) error {
@@ -44,17 +54,17 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 		return err
 	}
 	opencode := buildOpenCodeMCPServers(standard)
+	codex := buildCodexMCPServers(standard)
 
-	// OpenCode has no cwd equivalent — flag servers that define one so users
-	// don't silently get a different working directory across platforms.
-	hasOpenCode := false
+	// OpenCode and Codex have no cwd equivalent — flag servers that define one
+	// so users don't silently get a different working directory across platforms.
+	cwdDropTargets := make([]string, 0, 2)
 	for _, p := range platforms {
-		if p.MCPFormat == platform.MCPFormatOpenCode {
-			hasOpenCode = true
-			break
+		if p.MCPFormat == platform.MCPFormatOpenCode || p.MCPFormat == platform.MCPFormatCodex {
+			cwdDropTargets = append(cwdDropTargets, p.Name)
 		}
 	}
-	if hasOpenCode && !dryRun {
+	if len(cwdDropTargets) > 0 && !dryRun {
 		var dropped []string
 		for name, e := range standard {
 			if e.CWD != "" {
@@ -63,7 +73,9 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 		}
 		if len(dropped) > 0 {
 			sort.Strings(dropped)
-			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), ui.Muted.Render("cwd not supported by OpenCode, ignored for:"), ui.Bold.Render(strings.Join(dropped, ", ")))
+			sort.Strings(cwdDropTargets)
+			label := fmt.Sprintf("cwd not supported by %s, ignored for:", joinTargets(cwdDropTargets))
+			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), ui.Muted.Render(label), ui.Bold.Render(strings.Join(dropped, ", ")))
 		}
 	}
 
@@ -72,6 +84,10 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 		switch p.MCPFormat {
 		case platform.MCPFormatOpenCode:
 			for name, e := range opencode {
+				out[name] = e
+			}
+		case platform.MCPFormatCodex:
+			for name, e := range codex {
 				out[name] = e
 			}
 		default:
@@ -98,7 +114,13 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 		for _, f := range formatOrder {
 			group := byFormat[f]
 			fmt.Printf("  %s\n", ui.Muted.Render(platformNames(group)+":"))
-			preview, err := json.MarshalIndent(map[string]any{group[0].MCPKey: entriesFor(group[0])}, "", "  ")
+			payload := map[string]any{group[0].MCPKey: entriesFor(group[0])}
+			var preview []byte
+			if f == platform.MCPFormatCodex {
+				preview, err = toml.Marshal(payload)
+			} else {
+				preview, err = json.MarshalIndent(payload, "", "  ")
+			}
 			if err != nil {
 				return fmt.Errorf("marshaling MCP preview: %w", err)
 			}
@@ -136,13 +158,19 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 
 	for _, t := range order {
 		entries := entriesFor(seen[t][0])
-		if err := mergeMCPIntoFile(t.path, t.key, entries); err != nil {
+		var mergeErr error
+		if t.format == platform.MCPFormatCodex {
+			mergeErr = mergeMCPIntoTOMLFile(t.path, t.key, entries)
+		} else {
+			mergeErr = mergeMCPIntoFile(t.path, t.key, entries)
+		}
+		if mergeErr != nil {
 			names := make([]string, len(seen[t]))
 			for i, p := range seen[t] {
 				status.setFailed(p.Name)
 				names[i] = p.Name
 			}
-			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), ui.Bold.Render(strings.Join(names, " + ")), ui.Muted.Render(err.Error()))
+			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), ui.Bold.Render(strings.Join(names, " + ")), ui.Muted.Render(mergeErr.Error()))
 		}
 	}
 
@@ -209,6 +237,60 @@ func buildOpenCodeMCPServers(standard map[string]mcpEntry) map[string]opencodeMC
 		}
 	}
 	return out
+}
+
+// joinTargets renders a list of platform names as "A", "A and B", or "A, B, and C".
+func joinTargets(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " and " + names[1]
+	default:
+		return strings.Join(names[:len(names)-1], ", ") + ", and " + names[len(names)-1]
+	}
+}
+
+// buildCodexMCPServers translates standard entries into Codex's shape.
+// Codex has no `cwd` field; if a server sets one, it is dropped silently —
+// callers running mixed platforms should rely on shell setup instead.
+func buildCodexMCPServers(standard map[string]mcpEntry) map[string]codexMCPEntry {
+	out := make(map[string]codexMCPEntry, len(standard))
+	for name, e := range standard {
+		out[name] = codexMCPEntry{
+			Command: e.Command,
+			Args:    e.Args,
+			Env:     e.Env,
+		}
+	}
+	return out
+}
+
+// mergeMCPIntoTOMLFile reads an existing TOML file, replaces the mcpKey, and writes it back atomically.
+func mergeMCPIntoTOMLFile(path, mcpKey string, servers map[string]any) error {
+	existing := make(map[string]any)
+
+	data, err := os.ReadFile(path)
+	if err == nil {
+		if len(data) > 0 {
+			if err := toml.Unmarshal(data, &existing); err != nil {
+				return fmt.Errorf("parsing existing config %s: %w", path, err)
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	existing[mcpKey] = servers
+
+	out, err := toml.Marshal(existing)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+
+	return atomicWrite(path, out)
 }
 
 // mergeMCPIntoFile reads an existing JSON file, replaces the mcpKey, and writes it back atomically.

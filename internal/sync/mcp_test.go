@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	toml "github.com/pelletier/go-toml/v2"
+
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/platform"
 )
@@ -258,6 +260,140 @@ func TestSyncMCP_WritesOpenCodeFormat(t *testing.T) {
 	}
 }
 
+func TestBuildCodexMCPServers_DropsCWD(t *testing.T) {
+	standard := map[string]mcpEntry{
+		"pencil": {
+			Command: "/Applications/Pencil.app/mcp",
+			Args:    []string{"--app", "desktop"},
+			Env:     map[string]string{"FOO": "bar"},
+			CWD:     "/ignored/by/codex",
+		},
+	}
+
+	got := buildCodexMCPServers(standard)
+	entry, ok := got["pencil"]
+	if !ok {
+		t.Fatalf("pencil missing from output")
+	}
+	if entry.Command != "/Applications/Pencil.app/mcp" {
+		t.Errorf("command = %q", entry.Command)
+	}
+	wantArgs := []string{"--app", "desktop"}
+	if len(entry.Args) != len(wantArgs) {
+		t.Fatalf("args = %v, want %v", entry.Args, wantArgs)
+	}
+	for i, v := range wantArgs {
+		if entry.Args[i] != v {
+			t.Errorf("args[%d] = %q, want %q", i, entry.Args[i], v)
+		}
+	}
+	if entry.Env["FOO"] != "bar" {
+		t.Errorf("env.FOO = %q", entry.Env["FOO"])
+	}
+}
+
+func TestMergeMCPIntoTOMLFile_NewFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	servers := map[string]any{
+		"pencil": codexMCPEntry{Command: "/path/to/mcp", Args: []string{"--app", "desktop"}},
+	}
+
+	if err := mergeMCPIntoTOMLFile(path, "mcp_servers", servers); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := readTOML(t, path)
+	mcp, ok := got["mcp_servers"].(map[string]any)
+	if !ok {
+		t.Fatalf("mcp_servers missing or wrong type in %v", got)
+	}
+	pencil, ok := mcp["pencil"].(map[string]any)
+	if !ok {
+		t.Fatalf("pencil entry missing")
+	}
+	if pencil["command"] != "/path/to/mcp" {
+		t.Errorf("command = %v", pencil["command"])
+	}
+}
+
+func TestMergeMCPIntoTOMLFile_PreservesExistingKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	// Pre-existing config with unrelated top-level keys and a stale mcp_servers entry.
+	preexisting := []byte(`model = "gpt-5"
+approval_policy = "on-request"
+
+[mcp_servers.old]
+command = "old-command"
+`)
+	if err := os.WriteFile(path, preexisting, 0644); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+
+	servers := map[string]any{
+		"pencil": codexMCPEntry{Command: "/path/to/mcp"},
+	}
+
+	if err := mergeMCPIntoTOMLFile(path, "mcp_servers", servers); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := readTOML(t, path)
+
+	if got["model"] != "gpt-5" {
+		t.Errorf("model = %v, want %q (top-level key not preserved)", got["model"], "gpt-5")
+	}
+	if got["approval_policy"] != "on-request" {
+		t.Errorf("approval_policy = %v, want %q", got["approval_policy"], "on-request")
+	}
+
+	mcp := got["mcp_servers"].(map[string]any)
+	if _, ok := mcp["old"]; ok {
+		t.Error("old server should have been replaced")
+	}
+	if _, ok := mcp["pencil"]; !ok {
+		t.Error("pencil server should be present")
+	}
+}
+
+func TestSyncMCP_WritesCodexFormat(t *testing.T) {
+	home := t.TempDir()
+
+	cfg := &config.Config{
+		MCP: map[string]config.MCP{
+			"pencil": {Command: "/path/to/mcp", Args: []string{"--app", "desktop"}},
+		},
+	}
+	codex := platform.ForNames([]string{"codex"})
+	if len(codex) != 1 {
+		t.Fatalf("expected one platform match for codex, got %d", len(codex))
+	}
+
+	if err := syncMCP(cfg, home, codex, false); err != nil {
+		t.Fatalf("syncMCP: %v", err)
+	}
+
+	path := filepath.Join(home, ".codex", "config.toml")
+	got := readTOML(t, path)
+	mcp, ok := got["mcp_servers"].(map[string]any)
+	if !ok {
+		t.Fatalf("mcp_servers missing or wrong type in %v", got)
+	}
+	entry, ok := mcp["pencil"].(map[string]any)
+	if !ok {
+		t.Fatalf("pencil missing from mcp_servers")
+	}
+	if entry["command"] != "/path/to/mcp" {
+		t.Errorf("command = %v", entry["command"])
+	}
+	if _, ok := entry["cwd"]; ok {
+		t.Error("Codex entry should not contain cwd field")
+	}
+}
+
 func TestSyncMCP_NoMCPs(t *testing.T) {
 	home := t.TempDir()
 	cfg := &config.Config{}
@@ -277,6 +413,19 @@ func readJSON(t *testing.T, path string) map[string]any {
 	}
 	var result map[string]any
 	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parsing %s: %v", path, err)
+	}
+	return result
+}
+
+func readTOML(t *testing.T, path string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	var result map[string]any
+	if err := toml.Unmarshal(data, &result); err != nil {
 		t.Fatalf("parsing %s: %v", path, err)
 	}
 	return result
