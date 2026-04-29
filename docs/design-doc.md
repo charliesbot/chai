@@ -79,7 +79,7 @@ paths = [
 ]
 
 [subagents]
-paths = ["~/dotfiles/ai/agents/*"]
+paths = ["~/dotfiles/ai/subagents/*"]
 
 [mcp.context7]
 command = "npx"
@@ -138,7 +138,7 @@ Defined in chai's source code, not by the user. Each platform specifies where fi
 Chai owns the platform MCP key completely. The TOML is the source of truth.
 
 1. Read existing config file (if any).
-2. Replace the entire `mcpServers` key with all resolved MCP definitions.
+2. Replace the entire platform MCP key with all resolved MCP definitions.
 3. Preserve all other keys in the file untouched.
 4. Write the file back.
 

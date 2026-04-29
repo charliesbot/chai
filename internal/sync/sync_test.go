@@ -406,7 +406,7 @@ func TestRunWithHome_DroidPaths(t *testing.T) {
 	}{
 		{"instructions", filepath.Join(home, ".factory", "AGENTS.md"), "hello"},
 		{"skill", filepath.Join(home, ".factory", "skills", "greet", "SKILL.md"), "greet skill"},
-		{"droid", filepath.Join(home, ".factory", "droids", "reviewer.md"), "reviewer body"},
+		{"droid subagent", filepath.Join(home, ".factory", "droids", "reviewer.md"), "reviewer body"},
 	}
 	for _, c := range cases {
 		got, err := os.ReadFile(c.path)
