@@ -63,7 +63,7 @@ Built into source code (not user-configured). Each platform specifies:
 | Platform | Instructions target               | Skills directory                   | Subagents directory                | MCP config file                       | MCP strategy  |
 |----------|-----------------------------------|------------------------------------|------------------------------------|---------------------------------------|---------------|
 | Claude   | `~/.claude/CLAUDE.md`             | `~/.claude/skills/`                | `~/.claude/agents/`                | `~/.claude.json`                      | replace key   |
-| Gemini   | `~/.gemini/GEMINI.md`             | `~/.gemini/skills/`                | `~/.gemini/agents/`                | `~/.gemini/settings.json`             | replace key   |
+| Gemini   | `~/.gemini/GEMINI.md`             | `~/.agents/skills/` _(shared)_     | `~/.gemini/agents/`                | `~/.gemini/settings.json`             | replace key   |
 | OpenCode | `~/.config/opencode/AGENTS.md`    | `~/.config/opencode/skills/`       | `~/.config/opencode/agents/`       | `~/.config/opencode/opencode.json`    | replace `mcp` (OpenCode-format entries) |
 | Codex    | `~/.codex/AGENTS.md`              | `~/.agents/skills/`                | _none_                             | `~/.codex/config.toml`                | replace `mcp_servers` table (TOML, no cwd) |
 

@@ -119,7 +119,7 @@ Defined in chai's source code, not by the user. Each platform specifies where fi
 | Platform | Instructions destination | Skills directory      | MCP config file              | MCP key        | MCP strategy |
 |----------|--------------------------|----------------------|------------------------------|----------------|--------------|
 | Claude   | `~/.claude/CLAUDE.md`    | `~/.claude/skills/`  | `~/.claude.json`             | `mcpServers`   | replace key  |
-| Gemini   | `~/.gemini/GEMINI.md`    | `~/.gemini/skills/`  | `~/.gemini/settings.json`    | `mcpServers`   | replace key  |
+| Gemini   | `~/.gemini/GEMINI.md`    | `~/.agents/skills/` _(shared with Codex)_ | `~/.gemini/settings.json`    | `mcpServers`   | replace key  |
 
 - Instructions are **copied** (agents may edit their platform copy — dirty detection protects manual changes).
 - Skills and agents are **symlinked** (read-only from the agent's perspective — one source of truth, no duplication).
