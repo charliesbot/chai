@@ -373,7 +373,7 @@ func TestRunWithHome_OpenCodePaths(t *testing.T) {
 	}
 }
 
-func TestRunWithHome_DroidDefaultCustomModels(t *testing.T) {
+func TestRunWithHome_DroidSkipsCustomModelsWhenUnconfigured(t *testing.T) {
 	home := t.TempDir()
 
 	srcDir := filepath.Join(home, "dotfiles", "ai")
@@ -390,41 +390,61 @@ func TestRunWithHome_DroidDefaultCustomModels(t *testing.T) {
 	}
 
 	settings := filepath.Join(home, ".factory", "settings.json")
-	got := readJSON(t, settings)
-	models, ok := got["customModels"].([]any)
-	if !ok {
-		t.Fatalf("customModels missing or wrong type: %#v", got["customModels"])
+	if _, err := os.Stat(settings); !os.IsNotExist(err) {
+		t.Fatalf("settings.json should not be created when Droid custom models are unconfigured, err=%v", err)
 	}
-	if len(models) != 58 {
-		t.Fatalf("customModels length = %d, want 58", len(models))
+}
+
+func TestRunWithHome_DroidConfiguredCustomModels(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+
+	settings := filepath.Join(home, ".factory", "settings.json")
+	os.MkdirAll(filepath.Dir(settings), 0755)
+	os.WriteFile(settings, []byte(`{"theme":"dark"}`), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"droid"},
+		Instructions: "~/dotfiles/ai/agents.md",
+		Droid: config.DroidConfig{CustomModels: []config.CustomModel{
+			{
+				Model:           "openai/gpt-4o-mini",
+				DisplayName:     "GPT-4o Mini",
+				BaseURL:         "https://api.openai.com/v1",
+				APIKey:          "${OPENAI_API_KEY}",
+				Provider:        "generic-chat-completion-api",
+				MaxOutputTokens: 4096,
+			},
+		}},
 	}
 
-	want := map[string]bool{
-		"ollama/glm-4.7-flash":    false,
-		"gh/claude-sonnet-4.6":    false,
-		"cx/gpt-5.3-codex":        false,
-		"gc/gemini-3-pro-preview": false,
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
 	}
-	for _, item := range models {
-		model, ok := item.(map[string]any)
-		if !ok {
-			t.Fatalf("custom model has wrong type: %#v", item)
-		}
-		name, _ := model["model"].(string)
-		if _, ok := want[name]; ok {
-			want[name] = true
-			if model["baseUrl"] != "https://inference.noestelar.com/v1" {
-				t.Errorf("%s baseUrl = %v", name, model["baseUrl"])
-			}
-			if model["apiKey"] != "${NOESTELAR_INFERENCE_API_KEY}" {
-				t.Errorf("%s apiKey = %v", name, model["apiKey"])
-			}
-		}
+
+	got := readJSON(t, settings)
+	if got["theme"] != "dark" {
+		t.Fatalf("unrelated setting was not preserved: %#v", got)
 	}
-	for name, found := range want {
-		if !found {
-			t.Errorf("customModels missing %s", name)
-		}
+	models, ok := got["customModels"].([]any)
+	if !ok || len(models) != 1 {
+		t.Fatalf("customModels = %#v, want one configured model", got["customModels"])
+	}
+	model, ok := models[0].(map[string]any)
+	if !ok {
+		t.Fatalf("custom model has wrong type: %#v", models[0])
+	}
+	if model["model"] != "openai/gpt-4o-mini" {
+		t.Errorf("model = %v", model["model"])
+	}
+	if model["displayName"] != "GPT-4o Mini" {
+		t.Errorf("displayName = %v", model["displayName"])
+	}
+	if model["apiKey"] != "${OPENAI_API_KEY}" {
+		t.Errorf("apiKey = %v", model["apiKey"])
 	}
 }
 

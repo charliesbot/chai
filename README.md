@@ -69,13 +69,13 @@ args = ["-y", "@angular/cli", "mcp"]
 workspace = "https://github.com/gemini-cli-extensions/workspace"
 
 [[droid.custom_models]]
-# Droid-only BYOK custom model written to ~/.factory/settings.json.
-model = "ollama/glm-4.7-flash"
-display_name = "GLM 4.7 Flash [Noestelar]"
-base_url = "https://inference.noestelar.com/v1"
-api_key = "${NOESTELAR_INFERENCE_API_KEY}"
+# Optional Droid-only BYOK custom model written to ~/.factory/settings.json.
+model = "openai/gpt-4o-mini"
+display_name = "GPT-4o Mini"
+base_url = "https://api.openai.com/v1"
+api_key = "${OPENAI_API_KEY}"
 provider = "generic-chat-completion-api"
-max_output_tokens = 16384
+max_output_tokens = 4096
 ```
 
 Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>/`).
