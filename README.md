@@ -36,7 +36,7 @@ Everything lives in `~/chai.toml`:
 
 ```toml
 # Which platforms to sync to. Only these get touched.
-platforms = ["claude", "gemini", "antigravity", "opencode", "codex"]
+platforms = ["claude", "gemini", "antigravity", "droid", "opencode", "codex"]
 
 # Your shared instructions file. Copied to each platform with dirty detection.
 instructions = "~/dotfiles/ai/instructions/AGENTS.md"
@@ -83,6 +83,7 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 | ●    | Claude      | ✅  | ✅     | ✅        |
 | ◆    | Gemini      | ✅  | ✅     | ✅        |
 | ▲    | Antigravity | ✅  | ✅     | ❌        |
+| ✦    | Droid       | ✅  | ✅     | ✅        |
 | ■    | OpenCode    | ✅  | ✅     | ✅        |
 | ⬢    | Codex       | ✅  | ✅     | ❌        |
 

@@ -373,6 +373,53 @@ func TestRunWithHome_OpenCodePaths(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_DroidPaths(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+
+	skillDir := filepath.Join(srcDir, "skills", "greet")
+	os.MkdirAll(skillDir, 0755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
+
+	agentDir := filepath.Join(srcDir, "subagents")
+	os.MkdirAll(agentDir, 0755)
+	os.WriteFile(filepath.Join(agentDir, "reviewer.md"), []byte("reviewer body"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"droid"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
+	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	cases := []struct {
+		label string
+		path  string
+		body  string
+	}{
+		{"instructions", filepath.Join(home, ".factory", "AGENTS.md"), "hello"},
+		{"skill", filepath.Join(home, ".factory", "skills", "greet", "SKILL.md"), "greet skill"},
+		{"droid", filepath.Join(home, ".factory", "droids", "reviewer.md"), "reviewer body"},
+	}
+	for _, c := range cases {
+		got, err := os.ReadFile(c.path)
+		if err != nil {
+			t.Errorf("%s at %s: %v", c.label, c.path, err)
+			continue
+		}
+		if string(got) != c.body {
+			t.Errorf("%s body = %q, want %q", c.label, string(got), c.body)
+		}
+	}
+}
+
 func TestRunWithHome_CodexPaths(t *testing.T) {
 	home := t.TempDir()
 

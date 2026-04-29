@@ -15,10 +15,11 @@ This is the most likely contribution. All platform definitions live in `internal
 {
     Name:             "ChatGPT",                              // display name in sync output
     InstructionsPath: filepath.Join(".chatgpt", "AGENTS.md"), // relative to ~
-    SkillsDir:        filepath.Join(".chatgpt", "skills"),    // where skills are symlinked
-    AgentsDir:        filepath.Join(".chatgpt", "agents"),    // where subagents are symlinked
-    MCPConfigPath:    filepath.Join(".chatgpt", "mcp.json"),  // JSON file with MCP config
-    MCPKey:           "mcpServers",                           // JSON key chai replaces
+    SkillsDir:        filepath.Join(".chatgpt", "skills"),    // where skills are copied
+    AgentsDir:        filepath.Join(".chatgpt", "agents"),    // where subagents are copied, if supported
+    MCPConfigPath:    filepath.Join(".chatgpt", "mcp.json"),  // config file with MCP entries
+    MCPKey:           "mcpServers",                           // config key chai replaces
+    MCPFormat:        MCPFormatStandard,                       // on-disk MCP entry shape
 },
 ```
 
@@ -26,8 +27,8 @@ All paths are relative to the user's home directory. The compiler will catch mis
 
 ## Design decisions to know about
 
-- **Instructions are copied**, skills and subagents are **symlinked**. Instructions are two-way (agents may edit their copy), so chai uses hash-based dirty detection. Skills and subagents are read-only from the agent's perspective.
-- **chai owns the entire `mcpServers` key** in each platform's config file. It replaces the key wholesale but preserves all other keys.
+- **Instructions, skills, and subagents are copied**. Instructions use dirty detection because agents may edit their platform copy; skills/subagents use hash-based ownership so stale chai-managed copies can be removed without touching user-created files.
+- **chai owns each platform's MCP key**. It replaces that key wholesale but preserves all other keys.
 - **All file writes must be atomic** — write to a `.tmp` file, then `os.Rename`.
 - **`chai sync` doesn't touch deps or extensions**. Those are handled by `chai update`.
 

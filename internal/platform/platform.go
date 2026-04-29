@@ -20,6 +20,10 @@ const (
 	// MCPFormatCodex is the Codex shape — same fields as Standard minus cwd,
 	// but the host file is TOML rather than JSON.
 	MCPFormatCodex MCPFormat = "codex"
+
+	// MCPFormatDroid is the Droid shape in ~/.factory/mcp.json:
+	//   {"type": "stdio", "command": "npx", "args": [...], "env": {...}, "disabled": false}
+	MCPFormatDroid MCPFormat = "droid"
 )
 
 // Platform describes where a specific AI tool expects its config files.
@@ -76,6 +80,15 @@ func All() []Platform {
 			MCPConfigPath:    filepath.Join(".config", "opencode", "opencode.json"),
 			MCPKey:           "mcp",
 			MCPFormat:        MCPFormatOpenCode,
+		},
+		{
+			Name:             "Droid",
+			InstructionsPath: filepath.Join(".factory", "AGENTS.md"),
+			SkillsDir:        filepath.Join(".factory", "skills"),
+			AgentsDir:        filepath.Join(".factory", "droids"),
+			MCPConfigPath:    filepath.Join(".factory", "mcp.json"),
+			MCPKey:           "mcpServers",
+			MCPFormat:        MCPFormatDroid,
 		},
 		{
 			Name: "Codex",
