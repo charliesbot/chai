@@ -155,6 +155,12 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return err
 	}
 
+	if platform.HasPlatform(cfg.Platforms, "droid") {
+		if err := syncDroidCustomModels(cfg, home, opts.DryRun); err != nil {
+			return err
+		}
+	}
+
 	if len(cfg.Gemini.Extensions) > 0 && !opts.DryRun && platform.HasPlatform(cfg.Platforms, "gemini") {
 		names := make([]string, 0, len(cfg.Gemini.Extensions))
 		for name := range cfg.Gemini.Extensions {

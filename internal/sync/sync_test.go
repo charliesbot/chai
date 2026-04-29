@@ -373,6 +373,61 @@ func TestRunWithHome_OpenCodePaths(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_DroidDefaultCustomModels(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"droid"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	settings := filepath.Join(home, ".factory", "settings.json")
+	got := readJSON(t, settings)
+	models, ok := got["customModels"].([]any)
+	if !ok {
+		t.Fatalf("customModels missing or wrong type: %#v", got["customModels"])
+	}
+	if len(models) != 58 {
+		t.Fatalf("customModels length = %d, want 58", len(models))
+	}
+
+	want := map[string]bool{
+		"ollama/glm-4.7-flash":    false,
+		"gh/claude-sonnet-4.6":    false,
+		"cx/gpt-5.3-codex":        false,
+		"gc/gemini-3-pro-preview": false,
+	}
+	for _, item := range models {
+		model, ok := item.(map[string]any)
+		if !ok {
+			t.Fatalf("custom model has wrong type: %#v", item)
+		}
+		name, _ := model["model"].(string)
+		if _, ok := want[name]; ok {
+			want[name] = true
+			if model["baseUrl"] != "https://inference.noestelar.com/v1" {
+				t.Errorf("%s baseUrl = %v", name, model["baseUrl"])
+			}
+			if model["apiKey"] != "${NOESTELAR_INFERENCE_API_KEY}" {
+				t.Errorf("%s apiKey = %v", name, model["apiKey"])
+			}
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("customModels missing %s", name)
+		}
+	}
+}
+
 func TestRunWithHome_DroidPaths(t *testing.T) {
 	home := t.TempDir()
 

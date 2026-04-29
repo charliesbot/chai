@@ -67,6 +67,15 @@ args = ["-y", "@angular/cli", "mcp"]
 [gemini.extensions]
 # Gemini-only extensions installed via 'gemini extensions install'.
 workspace = "https://github.com/gemini-cli-extensions/workspace"
+
+[[droid.custom_models]]
+# Droid-only BYOK custom model written to ~/.factory/settings.json.
+model = "ollama/glm-4.7-flash"
+display_name = "GLM 4.7 Flash [Noestelar]"
+base_url = "https://inference.noestelar.com/v1"
+api_key = "${NOESTELAR_INFERENCE_API_KEY}"
+provider = "generic-chat-completion-api"
+max_output_tokens = 16384
 ```
 
 Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>/`).
@@ -75,6 +84,7 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 
 - **Instructions, skills, and subagents** are **copied** with hash-based dirty detection. Agents may edit their copies. _chai_ detects changes and prompts before overwriting.
 - **MCP servers** are **merged** into platform config files. chai owns the `mcpServers` key (or `mcp` for OpenCode, `mcp_servers` for Codex) and preserves everything else.
+- **Droid custom models** are merged into `~/.factory/settings.json` under `customModels` and preserve unrelated settings.
 
 ### Supported platforms
 

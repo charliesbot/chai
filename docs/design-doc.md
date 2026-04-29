@@ -108,6 +108,7 @@ args = ["--app", "desktop"]
 - `[skills]` — skill directories. Supports globs, external paths (`~/`), and dep references (`@name/`). Copied to each platform's skills directory.
 - `[subagents]` — markdown subagent definitions. Same path resolution as skills; copied to platforms with a markdown subagent target.
 - `[mcp.<name>]` — MCP server definitions. `command`, `args`, optional `env` and `cwd`. The section name becomes the key in the platform's `mcpServers` object. Use `@name` in `cwd` to reference a dep's local path. NPX-based MCPs don't need a `[deps]` entry.
+- `[[droid.custom_models]]` — Droid BYOK model definitions. Written to `~/.factory/settings.json` as `customModels`, preserving unrelated settings.
 
 ### Path Resolution
 
@@ -158,7 +159,8 @@ Distributes config to all platforms. Does **not** touch deps — uses whatever i
 4. Copy instructions to platform locations (with dirty detection prompts).
 5. Copy skills and agents to platform directories (remove stale chai-managed copies first).
 6. Replace the platform MCP key in platform config files.
-7. Update hash DB.
+7. Merge Droid custom models into `~/.factory/settings.json` if configured.
+8. Update hash DB.
 
 Flags: `--force` (skip dirty checks), `--dry-run` (preview without writing).
 
