@@ -459,6 +459,88 @@ func TestRunWithHome_AntigravitySkipsSubagents(t *testing.T) {
 	}
 }
 
+// TestRunWithHome_GeminiSkillsUseSharedAgentsDir verifies that a Gemini-only
+// sync writes skills to ~/.agents/skills/ (shared, auto-discovered by Gemini),
+// not the legacy ~/.gemini/skills/ path. Writing both produced "skill conflict"
+// warnings on Gemini launch.
+func TestRunWithHome_GeminiSkillsUseSharedAgentsDir(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+
+	skillDir := filepath.Join(srcDir, "skills", "greet")
+	os.MkdirAll(skillDir, 0755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
+
+	agentDir := filepath.Join(srcDir, "subagents")
+	os.MkdirAll(agentDir, 0755)
+	os.WriteFile(filepath.Join(agentDir, "reviewer.md"), []byte("reviewer body"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"gemini"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
+	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	sharedSkill := filepath.Join(home, ".agents", "skills", "greet", "SKILL.md")
+	got, err := os.ReadFile(sharedSkill)
+	if err != nil {
+		t.Errorf("shared skill should exist at %s: %v", sharedSkill, err)
+	} else if string(got) != "greet skill" {
+		t.Errorf("shared skill body = %q, want %q", string(got), "greet skill")
+	}
+
+	geminiSkills := filepath.Join(home, ".gemini", "skills")
+	if _, err := os.Stat(geminiSkills); !os.IsNotExist(err) {
+		t.Errorf(".gemini/skills should not exist, got err=%v", err)
+	}
+
+	geminiAgent := filepath.Join(home, ".gemini", "agents", "reviewer.md")
+	if _, err := os.Stat(geminiAgent); err != nil {
+		t.Errorf("gemini agent should exist: %v", err)
+	}
+}
+
+// TestRunWithHome_GeminiSkillsLeavesPreexistingAlone documents the migration
+// behavior: a pre-existing ~/.gemini/skills/<name>/ from an older chai version
+// is left untouched, not wiped. Users must `rm -rf ~/.gemini/skills/` themselves.
+func TestRunWithHome_GeminiSkillsLeavesPreexistingAlone(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+
+	skillDir := filepath.Join(srcDir, "skills", "greet")
+	os.MkdirAll(skillDir, 0755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
+
+	stale := filepath.Join(home, ".gemini", "skills", "old-skill")
+	os.MkdirAll(stale, 0755)
+	os.WriteFile(filepath.Join(stale, "SKILL.md"), []byte("old"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"gemini"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(stale, "SKILL.md")); err != nil {
+		t.Errorf("pre-existing ~/.gemini/skills/old-skill/SKILL.md should be left alone, got err=%v", err)
+	}
+}
+
 func TestRunWithHome_DryRun(t *testing.T) {
 	home := t.TempDir()
 

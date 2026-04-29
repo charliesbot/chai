@@ -26,8 +26,8 @@ const (
 type Platform struct {
 	Name             string
 	InstructionsPath string    // relative to home, e.g. ".claude/CLAUDE.md"
-	SkillsDir        string    // relative to home, e.g. ".claude/skills"
-	AgentsDir        string    // relative to home, e.g. ".claude/subagents"
+	SkillsDir        string    // relative to home, e.g. ".claude/skills". May be shared across platforms (e.g. Gemini and Codex both target ".agents/skills").
+	AgentsDir        string    // relative to home, e.g. ".claude/subagents"; "" = platform has no markdown subagent target
 	MCPConfigPath    string    // relative to home, e.g. ".claude.json"
 	MCPKey           string    // JSON key for MCP servers, e.g. "mcpServers"
 	MCPFormat        MCPFormat // on-disk shape of each MCP entry
@@ -48,11 +48,16 @@ func All() []Platform {
 		{
 			Name:             "Gemini",
 			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
-			SkillsDir:        filepath.Join(".gemini", "skills"),
-			AgentsDir:        filepath.Join(".gemini", "agents"),
-			MCPConfigPath:    filepath.Join(".gemini", "settings.json"),
-			MCPKey:           "mcpServers",
-			MCPFormat:        MCPFormatStandard,
+			// Gemini auto-discovers skills from ~/.agents/skills/ (shared with Codex)
+			// in addition to ~/.gemini/skills/, with .agents/ taking precedence on
+			// conflict. Writing both paths produced "skill conflict" warnings on
+			// launch, so chai writes only the shared path. Works whether Codex is
+			// enabled or not.
+			SkillsDir:     filepath.Join(".agents", "skills"),
+			AgentsDir:     filepath.Join(".gemini", "agents"),
+			MCPConfigPath: filepath.Join(".gemini", "settings.json"),
+			MCPKey:        "mcpServers",
+			MCPFormat:     MCPFormatStandard,
 		},
 		{
 			Name:             "Antigravity",
