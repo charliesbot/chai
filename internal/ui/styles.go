@@ -57,6 +57,9 @@ var (
 	OpenCodeStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("86")) // teal
 
+	DroidStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("205")) // pink
+
 	CodexStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("46")) // bright green
 )
@@ -76,6 +79,10 @@ func AntigravityIcon() string {
 
 func OpenCodeIcon() string {
 	return OpenCodeStyle.Render("■")
+}
+
+func DroidIcon() string {
+	return DroidStyle.Render("✦")
 }
 
 func CodexIcon() string {
@@ -215,6 +222,8 @@ func platformIcon(name string) string {
 		return AntigravityIcon()
 	case "OpenCode":
 		return OpenCodeIcon()
+	case "Droid":
+		return DroidIcon()
 	case "Codex":
 		return CodexIcon()
 	default:

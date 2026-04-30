@@ -42,6 +42,16 @@ type codexMCPEntry struct {
 	Env     map[string]string `toml:"env,omitempty"`
 }
 
+// droidMCPEntry is the JSON structure Droid expects in ~/.factory/mcp.json
+// under "mcpServers" for stdio servers. Droid has no cwd field in this file.
+type droidMCPEntry struct {
+	Type     string            `json:"type"`
+	Command  string            `json:"command"`
+	Args     []string          `json:"args,omitempty"`
+	Env      map[string]string `json:"env,omitempty"`
+	Disabled bool              `json:"disabled"`
+}
+
 // syncMCP writes MCP server definitions to each platform's config file,
 // using each platform's preferred entry shape.
 func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dryRun bool) error {
@@ -55,12 +65,13 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 	}
 	opencode := buildOpenCodeMCPServers(standard)
 	codex := buildCodexMCPServers(standard)
+	droid := buildDroidMCPServers(standard)
 
-	// OpenCode and Codex have no cwd equivalent — flag servers that define one
+	// OpenCode, Codex, and Droid have no cwd equivalent — flag servers that define one
 	// so users don't silently get a different working directory across platforms.
 	cwdDropTargets := make([]string, 0, 2)
 	for _, p := range platforms {
-		if p.MCPFormat == platform.MCPFormatOpenCode || p.MCPFormat == platform.MCPFormatCodex {
+		if p.MCPFormat == platform.MCPFormatOpenCode || p.MCPFormat == platform.MCPFormatCodex || p.MCPFormat == platform.MCPFormatDroid {
 			cwdDropTargets = append(cwdDropTargets, p.Name)
 		}
 	}
@@ -88,6 +99,10 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 			}
 		case platform.MCPFormatCodex:
 			for name, e := range codex {
+				out[name] = e
+			}
+		case platform.MCPFormatDroid:
+			for name, e := range droid {
 				out[name] = e
 			}
 		default:
@@ -263,6 +278,23 @@ func buildCodexMCPServers(standard map[string]mcpEntry) map[string]codexMCPEntry
 			Command: e.Command,
 			Args:    e.Args,
 			Env:     e.Env,
+		}
+	}
+	return out
+}
+
+// buildDroidMCPServers translates standard entries into Droid's stdio MCP shape.
+// Droid supports HTTP MCP servers too, but chai's current MCP schema models local
+// command-based servers, so every generated entry is a stdio server.
+func buildDroidMCPServers(standard map[string]mcpEntry) map[string]droidMCPEntry {
+	out := make(map[string]droidMCPEntry, len(standard))
+	for name, e := range standard {
+		out[name] = droidMCPEntry{
+			Type:     "stdio",
+			Command:  e.Command,
+			Args:     e.Args,
+			Env:      e.Env,
+			Disabled: false,
 		}
 	}
 	return out

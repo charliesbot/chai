@@ -15,10 +15,24 @@ type Config struct {
 	Subagents    Subagents      `toml:"subagents"`
 	MCP          map[string]MCP `toml:"mcp"`
 	Gemini       GeminiConfig   `toml:"gemini"`
+	Droid        DroidConfig    `toml:"droid"`
 }
 
 type GeminiConfig struct {
 	Extensions map[string]string `toml:"extensions"`
+}
+
+type DroidConfig struct {
+	CustomModels []CustomModel `toml:"custom_models"`
+}
+
+type CustomModel struct {
+	Model           string `toml:"model" json:"model"`
+	DisplayName     string `toml:"display_name" json:"displayName"`
+	BaseURL         string `toml:"base_url" json:"baseUrl"`
+	APIKey          string `toml:"api_key" json:"apiKey"`
+	Provider        string `toml:"provider" json:"provider"`
+	MaxOutputTokens int    `toml:"max_output_tokens" json:"maxOutputTokens,omitempty"`
 }
 
 // Dep represents a dependency — either a simple URL string or a table with url + build.
@@ -51,6 +65,7 @@ type rawConfig struct {
 	Subagents    Subagents      `toml:"subagents"`
 	MCP          map[string]MCP `toml:"mcp"`
 	Gemini       GeminiConfig   `toml:"gemini"`
+	Droid        DroidConfig    `toml:"droid"`
 }
 
 func Load(path string) (*Config, error) {
@@ -80,6 +95,7 @@ func Load(path string) (*Config, error) {
 		Subagents:    raw.Subagents,
 		MCP:          raw.MCP,
 		Gemini:       raw.Gemini,
+		Droid:        raw.Droid,
 	}
 
 	return cfg, nil

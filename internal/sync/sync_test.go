@@ -373,6 +373,128 @@ func TestRunWithHome_OpenCodePaths(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_DroidSkipsCustomModelsWhenUnconfigured(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"droid"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	settings := filepath.Join(home, ".factory", "settings.json")
+	if _, err := os.Stat(settings); !os.IsNotExist(err) {
+		t.Fatalf("settings.json should not be created when Droid custom models are unconfigured, err=%v", err)
+	}
+}
+
+func TestRunWithHome_DroidConfiguredCustomModels(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+
+	settings := filepath.Join(home, ".factory", "settings.json")
+	os.MkdirAll(filepath.Dir(settings), 0755)
+	os.WriteFile(settings, []byte(`{"theme":"dark"}`), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"droid"},
+		Instructions: "~/dotfiles/ai/agents.md",
+		Droid: config.DroidConfig{CustomModels: []config.CustomModel{
+			{
+				Model:           "openai/gpt-4o-mini",
+				DisplayName:     "GPT-4o Mini",
+				BaseURL:         "https://api.openai.com/v1",
+				APIKey:          "${OPENAI_API_KEY}",
+				Provider:        "generic-chat-completion-api",
+				MaxOutputTokens: 4096,
+			},
+		}},
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	got := readJSON(t, settings)
+	if got["theme"] != "dark" {
+		t.Fatalf("unrelated setting was not preserved: %#v", got)
+	}
+	models, ok := got["customModels"].([]any)
+	if !ok || len(models) != 1 {
+		t.Fatalf("customModels = %#v, want one configured model", got["customModels"])
+	}
+	model, ok := models[0].(map[string]any)
+	if !ok {
+		t.Fatalf("custom model has wrong type: %#v", models[0])
+	}
+	if model["model"] != "openai/gpt-4o-mini" {
+		t.Errorf("model = %v", model["model"])
+	}
+	if model["displayName"] != "GPT-4o Mini" {
+		t.Errorf("displayName = %v", model["displayName"])
+	}
+	if model["apiKey"] != "${OPENAI_API_KEY}" {
+		t.Errorf("apiKey = %v", model["apiKey"])
+	}
+}
+
+func TestRunWithHome_DroidPaths(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+
+	skillDir := filepath.Join(srcDir, "skills", "greet")
+	os.MkdirAll(skillDir, 0755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
+
+	agentDir := filepath.Join(srcDir, "subagents")
+	os.MkdirAll(agentDir, 0755)
+	os.WriteFile(filepath.Join(agentDir, "reviewer.md"), []byte("reviewer body"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"droid"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
+	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	cases := []struct {
+		label string
+		path  string
+		body  string
+	}{
+		{"instructions", filepath.Join(home, ".factory", "AGENTS.md"), "hello"},
+		{"skill", filepath.Join(home, ".factory", "skills", "greet", "SKILL.md"), "greet skill"},
+		{"droid subagent", filepath.Join(home, ".factory", "droids", "reviewer.md"), "reviewer body"},
+	}
+	for _, c := range cases {
+		got, err := os.ReadFile(c.path)
+		if err != nil {
+			t.Errorf("%s at %s: %v", c.label, c.path, err)
+			continue
+		}
+		if string(got) != c.body {
+			t.Errorf("%s body = %q, want %q", c.label, string(got), c.body)
+		}
+	}
+}
+
 func TestRunWithHome_CodexPaths(t *testing.T) {
 	home := t.TempDir()
 

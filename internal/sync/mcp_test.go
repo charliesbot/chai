@@ -394,6 +394,101 @@ func TestSyncMCP_WritesCodexFormat(t *testing.T) {
 	}
 }
 
+func TestBuildDroidMCPServers_UsesStdioShape(t *testing.T) {
+	standard := map[string]mcpEntry{
+		"ctx7": {
+			Command: "npx",
+			Args:    []string{"-y", "@upstash/context7-mcp"},
+			Env:     map[string]string{"FOO": "bar"},
+			CWD:     "/ignored/by/droid",
+		},
+	}
+
+	got := buildDroidMCPServers(standard)
+	entry, ok := got["ctx7"]
+	if !ok {
+		t.Fatalf("ctx7 missing from output")
+	}
+	if entry.Type != "stdio" {
+		t.Errorf("type = %q, want %q", entry.Type, "stdio")
+	}
+	if entry.Command != "npx" {
+		t.Errorf("command = %q, want %q", entry.Command, "npx")
+	}
+	wantArgs := []string{"-y", "@upstash/context7-mcp"}
+	if len(entry.Args) != len(wantArgs) {
+		t.Fatalf("args = %v, want %v", entry.Args, wantArgs)
+	}
+	for i, v := range wantArgs {
+		if entry.Args[i] != v {
+			t.Errorf("args[%d] = %q, want %q", i, entry.Args[i], v)
+		}
+	}
+	if entry.Env["FOO"] != "bar" {
+		t.Errorf("env.FOO = %q, want %q", entry.Env["FOO"], "bar")
+	}
+	if entry.Disabled {
+		t.Error("disabled should default to false")
+	}
+}
+
+func TestSyncMCP_WritesDroidFormat(t *testing.T) {
+	home := t.TempDir()
+
+	cfg := &config.Config{
+		MCP: map[string]config.MCP{
+			"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
+		},
+	}
+	droid := platform.ForNames([]string{"droid"})
+	if len(droid) != 1 {
+		t.Fatalf("expected one platform match for droid, got %d", len(droid))
+	}
+
+	if err := syncMCP(cfg, home, droid, false); err != nil {
+		t.Fatalf("syncMCP: %v", err)
+	}
+
+	path := filepath.Join(home, ".factory", "mcp.json")
+	got := readJSON(t, path)
+	mcpServers, ok := got["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatalf("mcpServers key missing or wrong type in %v", got)
+	}
+
+	entry, ok := mcpServers["ctx7"].(map[string]any)
+	if !ok {
+		t.Fatalf("ctx7 missing from mcpServers")
+	}
+	if entry["type"] != "stdio" {
+		t.Errorf("type = %v, want %q", entry["type"], "stdio")
+	}
+	if entry["command"] != "npx" {
+		t.Errorf("command = %v, want %q", entry["command"], "npx")
+	}
+	args, ok := entry["args"].([]any)
+	if !ok {
+		t.Fatalf("args = %v, want array", entry["args"])
+	}
+	want := []string{"-y", "@upstash/context7-mcp"}
+	if len(args) != len(want) {
+		t.Fatalf("args length = %d, want %d", len(args), len(want))
+	}
+	for i, v := range want {
+		if args[i] != v {
+			t.Errorf("args[%d] = %v, want %q", i, args[i], v)
+		}
+	}
+	if entry["disabled"] != false {
+		t.Errorf("disabled = %v, want false", entry["disabled"])
+	}
+	for _, forbidden := range []string{"cwd", "enabled"} {
+		if _, ok := entry[forbidden]; ok {
+			t.Errorf("Droid entry should not contain %q field, got %v", forbidden, entry[forbidden])
+		}
+	}
+}
+
 func TestSyncMCP_NoMCPs(t *testing.T) {
 	home := t.TempDir()
 	cfg := &config.Config{}

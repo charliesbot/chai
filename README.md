@@ -36,7 +36,7 @@ Everything lives in `~/chai.toml`:
 
 ```toml
 # Which platforms to sync to. Only these get touched.
-platforms = ["claude", "gemini", "antigravity", "opencode", "codex"]
+platforms = ["claude", "gemini", "antigravity", "droid", "opencode", "codex"]
 
 # Your shared instructions file. Copied to each platform with dirty detection.
 instructions = "~/dotfiles/ai/instructions/AGENTS.md"
@@ -67,6 +67,15 @@ args = ["-y", "@angular/cli", "mcp"]
 [gemini.extensions]
 # Gemini-only extensions installed via 'gemini extensions install'.
 workspace = "https://github.com/gemini-cli-extensions/workspace"
+
+[[droid.custom_models]]
+# Optional Droid-only BYOK custom model written to ~/.factory/settings.json.
+model = "openai/gpt-4o-mini"
+display_name = "GPT-4o Mini"
+base_url = "https://api.openai.com/v1"
+api_key = "${OPENAI_API_KEY}"
+provider = "generic-chat-completion-api"
+max_output_tokens = 4096
 ```
 
 Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>/`).
@@ -75,6 +84,7 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 
 - **Instructions, skills, and subagents** are **copied** with hash-based dirty detection. Agents may edit their copies. _chai_ detects changes and prompts before overwriting.
 - **MCP servers** are **merged** into platform config files. chai owns the `mcpServers` key (or `mcp` for OpenCode, `mcp_servers` for Codex) and preserves everything else.
+- **Droid custom models** are merged into `~/.factory/settings.json` under `customModels` and preserve unrelated settings.
 
 ### Supported platforms
 
@@ -83,6 +93,7 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 | ●    | Claude      | ✅  | ✅     | ✅        |
 | ◆    | Gemini      | ✅  | ✅     | ✅        |
 | ▲    | Antigravity | ✅  | ✅     | ❌        |
+| ✦    | Droid       | ✅  | ✅     | ✅        |
 | ■    | OpenCode    | ✅  | ✅     | ✅        |
 | ⬢    | Codex       | ✅  | ✅     | ❌        |
 
