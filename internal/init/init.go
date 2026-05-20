@@ -11,7 +11,7 @@ import (
 
 const defaultPath = "~/dotfiles/ai"
 
-const tomlTemplate = `platforms = ["claude", "droid", "opencode", "codex"]
+const tomlTemplate = `platforms = ["claude", "antigravity-cli", "droid", "opencode", "codex"]
 instructions = "%s/instructions/AGENTS.md"
 
 [deps]

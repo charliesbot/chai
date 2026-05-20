@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/charliesbot/chai/internal/config"
+	"github.com/charliesbot/chai/internal/hash"
 )
 
 func TestRunWithHome_CopiesInstructions(t *testing.T) {
@@ -235,6 +236,160 @@ func TestRunWithHome_CancelledContext(t *testing.T) {
 	claudePath := filepath.Join(home, ".claude", "CLAUDE.md")
 	if _, err := os.Stat(claudePath); !os.IsNotExist(err) {
 		t.Error("CLAUDE.md should not exist after cancelled sync")
+	}
+}
+
+func TestRunWithHome_SharedInstructionsDedup(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	content := "shared instructions"
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte(content), 0644)
+
+	// Antigravity (IDE) and Antigravity-CLI both write to ~/.gemini/GEMINI.md.
+	// The prompt should fire at most once per unique destination.
+	promptCalls := 0
+	cfg := &config.Config{
+		Platforms:    []string{"antigravity", "antigravity-cli"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	sharedPath := filepath.Join(home, ".gemini", "GEMINI.md")
+	got, err := os.ReadFile(sharedPath)
+	if err != nil {
+		t.Fatalf("reading shared instructions: %v", err)
+	}
+	if string(got) != content {
+		t.Errorf("shared instructions = %q, want %q", string(got), content)
+	}
+
+	os.WriteFile(sharedPath, []byte("edited"), 0644)
+	countingPrompt := func(path string) (bool, error) {
+		promptCalls++
+		return true, nil
+	}
+	if err := RunWithHome(context.Background(), cfg, home, Options{Prompt: countingPrompt}); err != nil {
+		t.Fatalf("re-sync: %v", err)
+	}
+	if promptCalls != 1 {
+		t.Errorf("prompt called %d times, want 1 (shared dest should dedupe)", promptCalls)
+	}
+
+	hashDB, err := hash.Load(home)
+	if err != nil {
+		t.Fatalf("loading hash DB: %v", err)
+	}
+	if _, ok := hashDB[sharedPath]; !ok {
+		t.Errorf("hash DB missing entry for %s", sharedPath)
+	}
+	if len(hashDB) != 1 {
+		t.Errorf("hash DB has %d entries, want 1 (instructions-only sync)", len(hashDB))
+	}
+}
+
+func TestRunWithHome_SharedInstructionsPromptDeclined(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"antigravity", "antigravity-cli"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	sharedPath := filepath.Join(home, ".gemini", "GEMINI.md")
+	os.WriteFile(sharedPath, []byte("manually edited"), 0644)
+
+	alwaysNo := func(path string) (bool, error) { return false, nil }
+	if err := RunWithHome(context.Background(), cfg, home, Options{Prompt: alwaysNo}); err != nil {
+		t.Fatalf("re-sync: %v", err)
+	}
+
+	got, _ := os.ReadFile(sharedPath)
+	if string(got) != "manually edited" {
+		t.Errorf("shared path = %q, want %q (prompt declined, should not overwrite)", string(got), "manually edited")
+	}
+}
+
+func TestRunWithHome_AntigravityCLIPaths(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+
+	skillDir := filepath.Join(srcDir, "skills", "greet")
+	os.MkdirAll(skillDir, 0755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
+
+	agentDir := filepath.Join(srcDir, "subagents")
+	os.MkdirAll(agentDir, 0755)
+	os.WriteFile(filepath.Join(agentDir, "reviewer.md"), []byte("reviewer body"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"antigravity-cli"},
+		Instructions: "~/dotfiles/ai/agents.md",
+	}
+	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
+	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
+	cfg.MCP = map[string]config.MCP{
+		"context7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	cases := []struct {
+		label string
+		path  string
+		body  string
+	}{
+		{"instructions", filepath.Join(home, ".gemini", "GEMINI.md"), "hello"},
+		{"skill", filepath.Join(home, ".gemini", "antigravity-cli", "skills", "greet", "SKILL.md"), "greet skill"},
+	}
+	for _, c := range cases {
+		got, err := os.ReadFile(c.path)
+		if err != nil {
+			t.Errorf("%s at %s: %v", c.label, c.path, err)
+			continue
+		}
+		if string(got) != c.body {
+			t.Errorf("%s body = %q, want %q", c.label, string(got), c.body)
+		}
+	}
+
+	// MCP config lives in its own file under antigravity-cli/, not in settings.json.
+	mcpPath := filepath.Join(home, ".gemini", "antigravity-cli", "mcp_config.json")
+	mcp := readJSON(t, mcpPath)
+	servers, ok := mcp["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatalf("mcpServers missing or wrong type in %s: %#v", mcpPath, mcp["mcpServers"])
+	}
+	ctx7, ok := servers["context7"].(map[string]any)
+	if !ok {
+		t.Fatalf("context7 entry missing in %s", mcpPath)
+	}
+	if ctx7["command"] != "npx" {
+		t.Errorf("context7.command = %v, want npx", ctx7["command"])
+	}
+
+	// Antigravity-CLI has no standalone subagents dir (subagents live in plugins).
+	// Nothing should be written under any agents/ path for this platform.
+	agentsDir := filepath.Join(home, ".gemini", "antigravity-cli", "agents")
+	if _, err := os.Stat(agentsDir); !os.IsNotExist(err) {
+		t.Errorf("antigravity-cli agents dir should not exist, got err=%v", err)
 	}
 }
 

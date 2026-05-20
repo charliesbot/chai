@@ -31,7 +31,8 @@ Minimal first. Nail the basics, then think about complexity.
 ## Supported Platforms
 
 - Claude
-- Antigravity
+- Antigravity (IDE)
+- Antigravity-CLI
 - Droid
 - OpenCode
 - Codex
@@ -124,6 +125,7 @@ Defined in chai's source code, not by the user. Each platform specifies where fi
 |----------|--------------------------|----------------------|---------------------|------------------------------|----------------|--------------|
 | Claude   | `~/.claude/CLAUDE.md`    | `~/.claude/skills/`  | `~/.claude/agents/` | `~/.claude.json`             | `mcpServers`   | replace key  |
 | Antigravity | `~/.gemini/GEMINI.md` | `~/.gemini/antigravity/skills/` | _none_ | `~/.gemini/antigravity/mcp_config.json` | `mcpServers` | replace key |
+| Antigravity-CLI | `~/.gemini/GEMINI.md` _(shared with Antigravity)_ | `~/.gemini/antigravity-cli/skills/` | _none (subagents live in plugins)_ | `~/.gemini/antigravity-cli/mcp_config.json` | `mcpServers` | replace key |
 | Droid    | `~/.factory/AGENTS.md`   | `~/.factory/skills/` | `~/.factory/droids/` | `~/.factory/mcp.json`       | `mcpServers`   | replace key with Droid stdio entries |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skills/` | `~/.config/opencode/agents/` | `~/.config/opencode/opencode.json` | `mcp` | replace key with OpenCode entries |
 | Codex    | `~/.codex/AGENTS.md`     | `~/.agents/skills/`  | _none_ | `~/.codex/config.toml` | `mcp_servers` | replace TOML table |

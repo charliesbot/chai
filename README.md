@@ -36,7 +36,7 @@ Everything lives in `~/chai.toml`:
 
 ```toml
 # Which platforms to sync to. Only these get touched.
-platforms = ["claude", "antigravity", "droid", "opencode", "codex"]
+platforms = ["claude", "antigravity-cli", "droid", "opencode", "codex"]
 
 # Your shared instructions file. Copied to each platform with dirty detection.
 instructions = "~/dotfiles/ai/instructions/AGENTS.md"
@@ -84,13 +84,14 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 
 ### Supported platforms
 
-| Icon | Platform    | MCP | Skills | Subagents |
-| ---- | ----------- | --- | ------ | --------- |
-| ●    | Claude      | ✅  | ✅     | ✅        |
-| ▲    | Antigravity | ✅  | ✅     | ❌        |
-| ✦    | Droid       | ✅  | ✅     | ✅        |
-| ■    | OpenCode    | ✅  | ✅     | ✅        |
-| ⬢    | Codex       | ✅  | ✅     | ❌        |
+| Icon | Platform        | MCP | Skills | Subagents |
+| ---- | --------------- | --- | ------ | --------- |
+| ●    | Claude          | ✅  | ✅     | ✅        |
+| ▲    | Antigravity     | ✅  | ✅     | ❌        |
+| ◆    | Antigravity-CLI | ✅  | ✅     | ❌        |
+| ✦    | Droid           | ✅  | ✅     | ✅        |
+| ■    | OpenCode        | ✅  | ✅     | ✅        |
+| ⬢    | Codex           | ✅  | ✅     | ❌        |
 
 ✅ full · ❌ not supported
 

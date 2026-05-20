@@ -59,6 +59,19 @@ func All() []Platform {
 			MCPFormat:        MCPFormatStandard,
 		},
 		{
+			// Antigravity CLI is the terminal counterpart to the IDE, replacing
+			// Gemini CLI (sunset 2026-06-18). Reads the same ~/.gemini/GEMINI.md
+			// as the IDE. Subagents live inside plugins, so there is no standalone
+			// agents directory.
+			Name:             "Antigravity-CLI",
+			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
+			SkillsDir:        filepath.Join(".gemini", "antigravity-cli", "skills"),
+			AgentsDir:        "",
+			MCPConfigPath:    filepath.Join(".gemini", "antigravity-cli", "mcp_config.json"),
+			MCPKey:           "mcpServers",
+			MCPFormat:        MCPFormatStandard,
+		},
+		{
 			Name:             "OpenCode",
 			InstructionsPath: filepath.Join(".config", "opencode", "AGENTS.md"),
 			SkillsDir:        filepath.Join(".config", "opencode", "skills"),

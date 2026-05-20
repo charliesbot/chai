@@ -51,6 +51,9 @@ var (
 	AntigravityStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("135")) // purple
 
+	AntigravityCLIStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("75")) // blue
+
 	OpenCodeStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("86")) // teal
 
@@ -68,6 +71,10 @@ func ClaudeIcon() string {
 
 func AntigravityIcon() string {
 	return AntigravityStyle.Render("▲")
+}
+
+func AntigravityCLIIcon() string {
+	return AntigravityCLIStyle.Render("◆")
 }
 
 func OpenCodeIcon() string {
@@ -211,6 +218,8 @@ func platformIcon(name string) string {
 		return ClaudeIcon()
 	case "Antigravity":
 		return AntigravityIcon()
+	case "Antigravity-CLI":
+		return AntigravityCLIIcon()
 	case "OpenCode":
 		return OpenCodeIcon()
 	case "Droid":
