@@ -31,7 +31,8 @@ Minimal first. Nail the basics, then think about complexity.
 ## Supported Platforms
 
 - Claude
-- Antigravity
+- Antigravity (IDE)
+- Antigravity-CLI
 - Droid
 - OpenCode
 - Codex
@@ -124,6 +125,7 @@ Defined in chai's source code, not by the user. Each platform specifies where fi
 |----------|--------------------------|----------------------|---------------------|------------------------------|----------------|--------------|
 | Claude   | `~/.claude/CLAUDE.md`    | `~/.claude/skills/`  | `~/.claude/agents/` | `~/.claude.json`             | `mcpServers`   | replace key  |
 | Antigravity | `~/.gemini/GEMINI.md` | `~/.gemini/antigravity/skills/` | _none_ | `~/.gemini/antigravity/mcp_config.json` | `mcpServers` | replace key |
+| Antigravity-CLI | `~/.gemini/GEMINI.md` _(shared with Antigravity)_ | `~/.gemini/antigravity-cli/skills/` | _none (subagents live in plugins)_ | `~/.gemini/antigravity-cli/mcp_config.json` | `mcpServers` | replace key |
 | Droid    | `~/.factory/AGENTS.md`   | `~/.factory/skills/` | `~/.factory/droids/` | `~/.factory/mcp.json`       | `mcpServers`   | replace key with Droid stdio entries |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skills/` | `~/.config/opencode/agents/` | `~/.config/opencode/opencode.json` | `mcp` | replace key with OpenCode entries |
 | Codex    | `~/.codex/AGENTS.md`     | `~/.agents/skills/`  | _none_ | `~/.codex/config.toml` | `mcp_servers` | replace TOML table |
@@ -164,11 +166,12 @@ Flags: `--force` (skip dirty checks), `--dry-run` (preview without writing).
 
 ### `chai update`
 
-Clones missing deps and pulls existing ones. Shows Bubbletea progress UI with per-dep status.
+Clones missing deps, pulls existing ones, and installs Antigravity-CLI plugins. Shows Bubbletea progress UI with per-item status.
 
-1. Read `[deps]` from `~/chai.toml`.
+1. Read `[deps]` and `[antigravity-cli.plugins]` from `~/chai.toml`.
 2. For each dep: clone if missing, pull if already cloned.
-3. Display progress bars and status per dependency.
+3. For each plugin (when `antigravity-cli` is in `platforms`): run `agy plugin install <url>`; treat `"already installed"` as up to date.
+4. Display progress bars and status per item.
 
 ## Sync Flow
 
