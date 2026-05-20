@@ -14,12 +14,7 @@ type Config struct {
 	Skills       Skills         `toml:"skills"`
 	Subagents    Subagents      `toml:"subagents"`
 	MCP          map[string]MCP `toml:"mcp"`
-	Gemini       GeminiConfig   `toml:"gemini"`
 	Droid        DroidConfig    `toml:"droid"`
-}
-
-type GeminiConfig struct {
-	Extensions map[string]string `toml:"extensions"`
 }
 
 type DroidConfig struct {
@@ -64,7 +59,6 @@ type rawConfig struct {
 	Skills       Skills         `toml:"skills"`
 	Subagents    Subagents      `toml:"subagents"`
 	MCP          map[string]MCP `toml:"mcp"`
-	Gemini       GeminiConfig   `toml:"gemini"`
 	Droid        DroidConfig    `toml:"droid"`
 }
 
@@ -94,7 +88,6 @@ func Load(path string) (*Config, error) {
 		Skills:       raw.Skills,
 		Subagents:    raw.Subagents,
 		MCP:          raw.MCP,
-		Gemini:       raw.Gemini,
 		Droid:        raw.Droid,
 	}
 

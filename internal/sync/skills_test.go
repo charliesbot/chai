@@ -565,15 +565,6 @@ func TestSyncSkillsAndAgents_SubagentFiles(t *testing.T) {
 			t.Errorf("%s should be a copy, not a symlink", name)
 		}
 	}
-
-	// Gemini too
-	geminiAgents := filepath.Join(home, ".gemini", "agents")
-	info, err = os.Lstat(filepath.Join(geminiAgents, "reviewer.md"))
-	if err != nil {
-		t.Error("reviewer.md missing from gemini agents dir")
-	} else if info.Mode()&os.ModeSymlink != 0 {
-		t.Error("reviewer.md should be a copy, not a symlink")
-	}
 }
 
 func TestSyncSkillsAndAgents_EmptyAgents(t *testing.T) {

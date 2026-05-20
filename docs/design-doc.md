@@ -31,7 +31,6 @@ Minimal first. Nail the basics, then think about complexity.
 ## Supported Platforms
 
 - Claude
-- Gemini
 - Antigravity
 - Droid
 - OpenCode
@@ -124,11 +123,10 @@ Defined in chai's source code, not by the user. Each platform specifies where fi
 | Platform | Instructions destination | Skills directory      | Subagents directory | MCP config file              | MCP key        | MCP strategy |
 |----------|--------------------------|----------------------|---------------------|------------------------------|----------------|--------------|
 | Claude   | `~/.claude/CLAUDE.md`    | `~/.claude/skills/`  | `~/.claude/agents/` | `~/.claude.json`             | `mcpServers`   | replace key  |
-| Gemini   | `~/.gemini/GEMINI.md`    | `~/.agents/skills/` _(shared with Codex)_ | `~/.gemini/agents/` | `~/.gemini/settings.json`    | `mcpServers`   | replace key  |
 | Antigravity | `~/.gemini/GEMINI.md` | `~/.gemini/antigravity/skills/` | _none_ | `~/.gemini/antigravity/mcp_config.json` | `mcpServers` | replace key |
 | Droid    | `~/.factory/AGENTS.md`   | `~/.factory/skills/` | `~/.factory/droids/` | `~/.factory/mcp.json`       | `mcpServers`   | replace key with Droid stdio entries |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skills/` | `~/.config/opencode/agents/` | `~/.config/opencode/opencode.json` | `mcp` | replace key with OpenCode entries |
-| Codex    | `~/.codex/AGENTS.md`     | `~/.agents/skills/` _(shared with Gemini)_ | _none_ | `~/.codex/config.toml` | `mcp_servers` | replace TOML table |
+| Codex    | `~/.codex/AGENTS.md`     | `~/.agents/skills/`  | _none_ | `~/.codex/config.toml` | `mcp_servers` | replace TOML table |
 
 - Instructions are **copied** (agents may edit their platform copy — dirty detection protects manual changes).
 - Skills and agents are **copied** and tracked so stale chai-managed files can be removed without touching user-created files.
@@ -231,7 +229,7 @@ Clones missing deps and pulls existing ones. Shows Bubbletea progress UI with pe
 
 ## Resolved Questions
 
-- **How do skills map to platforms?** — Copied to each platform's configured skills directory. Gemini and Codex share `~/.agents/skills/`. Droid uses `~/.factory/skills/`.
+- **How do skills map to platforms?** — Copied to each platform's configured skills directory. Codex uses `~/.agents/skills/`. Droid uses `~/.factory/skills/`.
 - **Why copies instead of symlinks?** — Copies are portable across platforms and allow chai to use hash-based tracking for stale managed content while leaving user-created files alone.
 - **Why separate `chai sync` from `chai update`?** — Sync should be fast and predictable. Pulling git repos is slow and network-dependent. Users update deps explicitly when they want to.
 - **Do NPX-based MCPs need deps?** — No. NPX fetches the package on the fly. `[deps]` is only needed when you need actual files on disk (for skills, agents, or MCPs that run from a local path).
@@ -243,13 +241,12 @@ Clones missing deps and pulls existing ones. Shows Bubbletea progress UI with pe
 ## Future Features
 
 - **`dep = "@name"` shorthand for MCPs** — read dep manifests and extract MCP definitions automatically instead of manual inline config.
-- **Hooks** — `[claude.hooks]` and `[gemini.hooks]` sections that write to each platform's `settings.json` under the `hooks` key. Same replace-key strategy as MCPs. Event names differ per platform (`PreToolUse` vs `BeforeTool`, etc.) so no abstraction — platform-specific sections.
+- **Hooks** — `[claude.hooks]` and per-platform sections that write to each platform's `settings.json` under the `hooks` key. Same replace-key strategy as MCPs. Event names differ per platform (`PreToolUse` vs `BeforeTool`, etc.) so no abstraction — platform-specific sections.
 - **Project-level config** — a `chai.toml` in a project root for project-scoped instructions, skills, and MCPs. Running `chai sync` from within a project directory detects the local `chai.toml` and generates platform-specific files:
 
   | Platform | Instructions         | MCP config          | Notes                                      |
   |----------|----------------------|---------------------|--------------------------------------------|
   | Claude   | `CLAUDE.md`          | `.mcp.json`         | Both supported at project level             |
-  | Gemini   | `GEMINI.md`          | `.gemini/settings.json` | Needs verification — project-level MCP support unclear |
   | Droid    | `.factory/AGENTS.md` | `.factory/mcp.json` | Project-level config is natively supported by Droid |
 
   The project `chai.toml` uses the same schema as the global one. Global config (`~/chai.toml`) is not merged — project config is standalone.

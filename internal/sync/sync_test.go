@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/charliesbot/chai/internal/config"
-	"github.com/charliesbot/chai/internal/hash"
 )
 
 func TestRunWithHome_CopiesInstructions(t *testing.T) {
@@ -23,7 +22,7 @@ func TestRunWithHome_CopiesInstructions(t *testing.T) {
 	os.WriteFile(srcPath, []byte(content), 0644)
 
 	cfg := &config.Config{
-		Platforms:    []string{"claude", "gemini"},
+		Platforms:    []string{"claude", "antigravity"},
 		Instructions: "~/dotfiles/ai/agents.md",
 	}
 
@@ -32,7 +31,6 @@ func TestRunWithHome_CopiesInstructions(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify Claude instructions
 	claudePath := filepath.Join(home, ".claude", "CLAUDE.md")
 	got, err := os.ReadFile(claudePath)
 	if err != nil {
@@ -42,14 +40,13 @@ func TestRunWithHome_CopiesInstructions(t *testing.T) {
 		t.Errorf("Claude instructions = %q, want %q", string(got), content)
 	}
 
-	// Verify Gemini instructions
-	geminiPath := filepath.Join(home, ".gemini", "GEMINI.md")
-	got, err = os.ReadFile(geminiPath)
+	antigravityPath := filepath.Join(home, ".gemini", "GEMINI.md")
+	got, err = os.ReadFile(antigravityPath)
 	if err != nil {
-		t.Fatalf("reading Gemini instructions: %v", err)
+		t.Fatalf("reading Antigravity instructions: %v", err)
 	}
 	if string(got) != content {
-		t.Errorf("Gemini instructions = %q, want %q", string(got), content)
+		t.Errorf("Antigravity instructions = %q, want %q", string(got), content)
 	}
 }
 
@@ -114,7 +111,7 @@ func TestRunWithHome_DirtyDetection(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
 
-	cfg := &config.Config{Platforms: []string{"claude", "gemini"}, Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: "~/dotfiles/ai/agents.md"}
 
 	// First sync: should succeed and store hashes
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -154,7 +151,7 @@ func TestRunWithHome_PromptOverwrite(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
 
-	cfg := &config.Config{Platforms: []string{"claude", "gemini"}, Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: "~/dotfiles/ai/agents.md"}
 
 	// First sync
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -184,7 +181,7 @@ func TestRunWithHome_PromptSkip(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
 
-	cfg := &config.Config{Platforms: []string{"claude", "gemini"}, Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: "~/dotfiles/ai/agents.md"}
 
 	// First sync
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -193,9 +190,9 @@ func TestRunWithHome_PromptSkip(t *testing.T) {
 
 	// Manually edit both targets
 	claudePath := filepath.Join(home, ".claude", "CLAUDE.md")
-	geminiPath := filepath.Join(home, ".gemini", "GEMINI.md")
+	antigravityPath := filepath.Join(home, ".gemini", "GEMINI.md")
 	os.WriteFile(claudePath, []byte("edited"), 0644)
-	os.WriteFile(geminiPath, []byte("edited"), 0644)
+	os.WriteFile(antigravityPath, []byte("edited"), 0644)
 
 	// Sync with prompt that says no
 	alwaysNo := func(path string) (bool, error) { return false, nil }
@@ -208,9 +205,9 @@ func TestRunWithHome_PromptSkip(t *testing.T) {
 	if string(got) != "edited" {
 		t.Errorf("claude content = %q, want %q (should have been skipped)", string(got), "edited")
 	}
-	got, _ = os.ReadFile(geminiPath)
+	got, _ = os.ReadFile(antigravityPath)
 	if string(got) != "edited" {
-		t.Errorf("gemini content = %q, want %q (should have been skipped)", string(got), "edited")
+		t.Errorf("antigravity content = %q, want %q (should have been skipped)", string(got), "edited")
 	}
 }
 
@@ -221,7 +218,7 @@ func TestRunWithHome_CancelledContext(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("content"), 0644)
 
-	cfg := &config.Config{Platforms: []string{"claude", "gemini"}, Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: "~/dotfiles/ai/agents.md"}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
@@ -238,91 +235,6 @@ func TestRunWithHome_CancelledContext(t *testing.T) {
 	claudePath := filepath.Join(home, ".claude", "CLAUDE.md")
 	if _, err := os.Stat(claudePath); !os.IsNotExist(err) {
 		t.Error("CLAUDE.md should not exist after cancelled sync")
-	}
-}
-
-func TestRunWithHome_SharedInstructionsDedup(t *testing.T) {
-	home := t.TempDir()
-
-	srcDir := filepath.Join(home, "dotfiles", "ai")
-	os.MkdirAll(srcDir, 0755)
-	content := "shared instructions"
-	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte(content), 0644)
-
-	// Gemini and Antigravity both write to ~/.gemini/GEMINI.md.
-	// The prompt should fire at most once per unique destination.
-	promptCalls := 0
-	cfg := &config.Config{
-		Platforms:    []string{"gemini", "antigravity"},
-		Instructions: "~/dotfiles/ai/agents.md",
-	}
-
-	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
-		t.Fatalf("first sync: %v", err)
-	}
-
-	sharedPath := filepath.Join(home, ".gemini", "GEMINI.md")
-	got, err := os.ReadFile(sharedPath)
-	if err != nil {
-		t.Fatalf("reading shared instructions: %v", err)
-	}
-	if string(got) != content {
-		t.Errorf("shared instructions = %q, want %q", string(got), content)
-	}
-
-	// Dirty the shared file, re-sync with a counting prompt.
-	os.WriteFile(sharedPath, []byte("edited"), 0644)
-	countingPrompt := func(path string) (bool, error) {
-		promptCalls++
-		return true, nil
-	}
-	if err := RunWithHome(context.Background(), cfg, home, Options{Prompt: countingPrompt}); err != nil {
-		t.Fatalf("re-sync: %v", err)
-	}
-	if promptCalls != 1 {
-		t.Errorf("prompt called %d times, want 1 (shared dest should dedupe)", promptCalls)
-	}
-
-	// hashDB should have exactly one entry for the shared destination, not one per platform.
-	hashDB, err := hash.Load(home)
-	if err != nil {
-		t.Fatalf("loading hash DB: %v", err)
-	}
-	if _, ok := hashDB[sharedPath]; !ok {
-		t.Errorf("hash DB missing entry for %s", sharedPath)
-	}
-	if len(hashDB) != 1 {
-		t.Errorf("hash DB has %d entries, want 1 (instructions-only sync)", len(hashDB))
-	}
-}
-
-func TestRunWithHome_SharedInstructionsPromptDeclined(t *testing.T) {
-	home := t.TempDir()
-
-	srcDir := filepath.Join(home, "dotfiles", "ai")
-	os.MkdirAll(srcDir, 0755)
-	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
-
-	cfg := &config.Config{
-		Platforms:    []string{"gemini", "antigravity"},
-		Instructions: "~/dotfiles/ai/agents.md",
-	}
-
-	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
-		t.Fatalf("first sync: %v", err)
-	}
-
-	sharedPath := filepath.Join(home, ".gemini", "GEMINI.md")
-	os.WriteFile(sharedPath, []byte("manually edited"), 0644)
-
-	alwaysNo := func(path string) (bool, error) { return false, nil }
-	if err := RunWithHome(context.Background(), cfg, home, Options{Prompt: alwaysNo}); err != nil {
-		t.Fatalf("re-sync: %v", err)
-	}
-
-	got, _ := os.ReadFile(sharedPath)
-	if string(got) != "manually edited" {
-		t.Errorf("shared path = %q, want %q (prompt declined, should not overwrite)", string(got), "manually edited")
 	}
 }
 
@@ -559,107 +471,19 @@ func TestRunWithHome_AntigravitySkipsSubagents(t *testing.T) {
 	os.WriteFile(filepath.Join(agentDir, "reviewer.md"), []byte("reviewer body"), 0644)
 
 	cfg := &config.Config{
-		Platforms:    []string{"gemini", "antigravity"},
+		Platforms:    []string{"antigravity"},
 		Instructions: "~/dotfiles/ai/agents.md",
 	}
 	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
 
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
 		t.Fatalf("sync: %v", err)
-	}
-
-	// Gemini gets the subagent
-	geminiAgent := filepath.Join(home, ".gemini", "agents", "reviewer.md")
-	if _, err := os.Stat(geminiAgent); err != nil {
-		t.Errorf("gemini agent should exist: %v", err)
 	}
 
 	// Antigravity has no agents dir — nothing should be written under its skills tree
 	antigravityAgents := filepath.Join(home, ".gemini", "antigravity", "agents")
 	if _, err := os.Stat(antigravityAgents); !os.IsNotExist(err) {
 		t.Errorf("antigravity agents dir should not exist, got err=%v", err)
-	}
-}
-
-// TestRunWithHome_GeminiSkillsUseSharedAgentsDir verifies that a Gemini-only
-// sync writes skills to ~/.agents/skills/ (shared, auto-discovered by Gemini),
-// not the legacy ~/.gemini/skills/ path. Writing both produced "skill conflict"
-// warnings on Gemini launch.
-func TestRunWithHome_GeminiSkillsUseSharedAgentsDir(t *testing.T) {
-	home := t.TempDir()
-
-	srcDir := filepath.Join(home, "dotfiles", "ai")
-	os.MkdirAll(srcDir, 0755)
-	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
-
-	skillDir := filepath.Join(srcDir, "skills", "greet")
-	os.MkdirAll(skillDir, 0755)
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
-
-	agentDir := filepath.Join(srcDir, "subagents")
-	os.MkdirAll(agentDir, 0755)
-	os.WriteFile(filepath.Join(agentDir, "reviewer.md"), []byte("reviewer body"), 0644)
-
-	cfg := &config.Config{
-		Platforms:    []string{"gemini"},
-		Instructions: "~/dotfiles/ai/agents.md",
-	}
-	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
-	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
-
-	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-
-	sharedSkill := filepath.Join(home, ".agents", "skills", "greet", "SKILL.md")
-	got, err := os.ReadFile(sharedSkill)
-	if err != nil {
-		t.Errorf("shared skill should exist at %s: %v", sharedSkill, err)
-	} else if string(got) != "greet skill" {
-		t.Errorf("shared skill body = %q, want %q", string(got), "greet skill")
-	}
-
-	geminiSkills := filepath.Join(home, ".gemini", "skills")
-	if _, err := os.Stat(geminiSkills); !os.IsNotExist(err) {
-		t.Errorf(".gemini/skills should not exist, got err=%v", err)
-	}
-
-	geminiAgent := filepath.Join(home, ".gemini", "agents", "reviewer.md")
-	if _, err := os.Stat(geminiAgent); err != nil {
-		t.Errorf("gemini agent should exist: %v", err)
-	}
-}
-
-// TestRunWithHome_GeminiSkillsLeavesPreexistingAlone documents the migration
-// behavior: a pre-existing ~/.gemini/skills/<name>/ from an older chai version
-// is left untouched, not wiped. Users must `rm -rf ~/.gemini/skills/` themselves.
-func TestRunWithHome_GeminiSkillsLeavesPreexistingAlone(t *testing.T) {
-	home := t.TempDir()
-
-	srcDir := filepath.Join(home, "dotfiles", "ai")
-	os.MkdirAll(srcDir, 0755)
-	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
-
-	skillDir := filepath.Join(srcDir, "skills", "greet")
-	os.MkdirAll(skillDir, 0755)
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
-
-	stale := filepath.Join(home, ".gemini", "skills", "old-skill")
-	os.MkdirAll(stale, 0755)
-	os.WriteFile(filepath.Join(stale, "SKILL.md"), []byte("old"), 0644)
-
-	cfg := &config.Config{
-		Platforms:    []string{"gemini"},
-		Instructions: "~/dotfiles/ai/agents.md",
-	}
-	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
-
-	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(stale, "SKILL.md")); err != nil {
-		t.Errorf("pre-existing ~/.gemini/skills/old-skill/SKILL.md should be left alone, got err=%v", err)
 	}
 }
 
@@ -670,7 +494,7 @@ func TestRunWithHome_DryRun(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("content"), 0644)
 
-	cfg := &config.Config{Platforms: []string{"claude", "gemini"}, Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: "~/dotfiles/ai/agents.md"}
 
 	err := RunWithHome(context.Background(), cfg, home, Options{DryRun: true})
 	if err != nil {

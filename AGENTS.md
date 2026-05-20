@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project Overview
 
-chai is a Go CLI that keeps AI coding agent configs in sync. It reads a single TOML manifest (`~/chai.toml`) and an `AGENTS.md` file, then distributes them to the right locations for each AI platform (Claude, Gemini, Droid, OpenCode, Codex). Instructions, skills, and subagents are copied with hash-based dirty detection so chai can prompt before overwriting files an agent has edited.
+chai is a Go CLI that keeps AI coding agent configs in sync. It reads a single TOML manifest (`~/chai.toml`) and an `AGENTS.md` file, then distributes them to the right locations for each AI platform (Claude, Antigravity, Droid, OpenCode, Codex). Instructions, skills, and subagents are copied with hash-based dirty detection so chai can prompt before overwriting files an agent has edited.
 
 chai is deliberately minimal — it syncs config files, not manages workflows.
 
@@ -49,10 +49,9 @@ The CLI has three commands: `chai init` (scaffold config), `chai sync` (distribu
 4. Copy instructions to platform locations (with dirty detection prompts)
 5. Copy skills and subagents to platform directories (with dirty detection prompts)
 6. Replace `mcpServers` key in platform configs
-7. Display Gemini extensions status
-8. Update hash DB
+7. Update hash DB
 
-Deps and Gemini extensions are managed separately via `chai update` (clone/pull deps, install extensions).
+Deps are managed separately via `chai update` (clone/pull deps).
 
 All file writes must be atomic (write to `.tmp`, then `os.Rename`).
 
@@ -62,11 +61,11 @@ Built into source code (not user-configured). Each platform specifies:
 
 | Platform | Instructions target               | Skills directory                   | Subagents directory                | MCP config file                       | MCP strategy  |
 |----------|-----------------------------------|------------------------------------|------------------------------------|---------------------------------------|---------------|
-| Claude   | `~/.claude/CLAUDE.md`             | `~/.claude/skills/`                | `~/.claude/agents/`                | `~/.claude.json`                      | replace key   |
-| Gemini   | `~/.gemini/GEMINI.md`             | `~/.agents/skills/` _(shared)_     | `~/.gemini/agents/`                | `~/.gemini/settings.json`             | replace key   |
-| Droid    | `~/.factory/AGENTS.md`            | `~/.factory/skills/`               | `~/.factory/droids/`               | `~/.factory/mcp.json`                 | replace `mcpServers` with Droid stdio entries |
-| OpenCode | `~/.config/opencode/AGENTS.md`    | `~/.config/opencode/skills/`       | `~/.config/opencode/agents/`       | `~/.config/opencode/opencode.json`    | replace `mcp` (OpenCode-format entries) |
-| Codex    | `~/.codex/AGENTS.md`              | `~/.agents/skills/`                | _none_                             | `~/.codex/config.toml`                | replace `mcp_servers` table (TOML, no cwd) |
+| Claude      | `~/.claude/CLAUDE.md`             | `~/.claude/skills/`                | `~/.claude/agents/`                | `~/.claude.json`                      | replace key   |
+| Antigravity | `~/.gemini/GEMINI.md`             | `~/.gemini/antigravity/skills/`    | _none_                             | `~/.gemini/antigravity/mcp_config.json` | replace key |
+| Droid       | `~/.factory/AGENTS.md`            | `~/.factory/skills/`               | `~/.factory/droids/`               | `~/.factory/mcp.json`                 | replace `mcpServers` with Droid stdio entries |
+| OpenCode    | `~/.config/opencode/AGENTS.md`    | `~/.config/opencode/skills/`       | `~/.config/opencode/agents/`       | `~/.config/opencode/opencode.json`    | replace `mcp` (OpenCode-format entries) |
+| Codex       | `~/.codex/AGENTS.md`              | `~/.agents/skills/`                | _none_                             | `~/.codex/config.toml`                | replace `mcp_servers` table (TOML, no cwd) |
 
 ### Key Design Decisions
 
@@ -74,8 +73,7 @@ Built into source code (not user-configured). Each platform specifies:
 - **Hash-based dirty detection** — applies to instructions, skills, and subagents. MCPs are fully owned by chai and replaced on every sync.
 - **`mcpServers` ownership** — chai owns the entire `mcpServers` key in platform config files. It replaces the key wholesale but preserves all other keys.
 - **Deps are clone-only** — chai clones repos to `~/.chai/deps/<name>/` but does not parse or inspect their contents. Deps with a `build` field run the build command on first clone.
-- **Sync doesn't touch deps** — `chai sync` is fast and predictable. `chai update` handles cloning/pulling deps and installing Gemini extensions.
-- **Gemini extensions** — some tools only work as Gemini extensions (e.g., they rely on Gemini's OAuth). Declared under `[gemini.extensions]`, installed via `gemini extensions install`.
+- **Sync doesn't touch deps** — `chai sync` is fast and predictable. `chai update` handles cloning/pulling deps.
 - **Path resolution** — `~` expands to home dir, `@name` resolves to `~/.chai/deps/<name>/`. Works in skill paths, subagent paths, and MCP `args`/`cwd`.
 - **Atomic writes** — all file writes go through a temp file + `os.Rename` to prevent partial writes.
 

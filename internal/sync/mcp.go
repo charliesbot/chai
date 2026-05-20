@@ -17,7 +17,7 @@ import (
 )
 
 // mcpEntry is the JSON structure written per MCP server for standard-format platforms
-// (Claude, Gemini, Antigravity).
+// (Claude, Antigravity).
 type mcpEntry struct {
 	Command string            `json:"command"`
 	Args    []string          `json:"args"`

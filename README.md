@@ -24,7 +24,7 @@ Download the latest binary from [GitHub Releases](https://github.com/charliesbot
 
 ```bash
 chai init    # Scaffold ~/chai.toml
-chai update  # Clone deps and install extensions
+chai update  # Clone or pull deps
 chai sync    # Distribute config to all platforms
 ```
 
@@ -36,7 +36,7 @@ Everything lives in `~/chai.toml`:
 
 ```toml
 # Which platforms to sync to. Only these get touched.
-platforms = ["claude", "gemini", "antigravity", "droid", "opencode", "codex"]
+platforms = ["claude", "antigravity", "droid", "opencode", "codex"]
 
 # Your shared instructions file. Copied to each platform with dirty detection.
 instructions = "~/dotfiles/ai/instructions/AGENTS.md"
@@ -64,10 +64,6 @@ paths = ["~/dotfiles/ai/subagents/*"]
 command = "npx"
 args = ["-y", "@angular/cli", "mcp"]
 
-[gemini.extensions]
-# Gemini-only extensions installed via 'gemini extensions install'.
-workspace = "https://github.com/gemini-cli-extensions/workspace"
-
 [[droid.custom_models]]
 # Optional Droid-only BYOK custom model written to ~/.factory/settings.json.
 model = "openai/gpt-4o-mini"
@@ -91,7 +87,6 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 | Icon | Platform    | MCP | Skills | Subagents |
 | ---- | ----------- | --- | ------ | --------- |
 | ●    | Claude      | ✅  | ✅     | ✅        |
-| ◆    | Gemini      | ✅  | ✅     | ✅        |
 | ▲    | Antigravity | ✅  | ✅     | ❌        |
 | ✦    | Droid       | ✅  | ✅     | ✅        |
 | ■    | OpenCode    | ✅  | ✅     | ✅        |
