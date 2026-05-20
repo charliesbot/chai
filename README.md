@@ -24,7 +24,7 @@ Download the latest binary from [GitHub Releases](https://github.com/charliesbot
 
 ```bash
 chai init    # Scaffold ~/chai.toml
-chai update  # Clone or pull deps
+chai update  # Clone or pull deps, install Antigravity-CLI plugins
 chai sync    # Distribute config to all platforms
 ```
 
@@ -63,6 +63,10 @@ paths = ["~/dotfiles/ai/subagents/*"]
 # MCP server definitions written to each platform's config file.
 command = "npx"
 args = ["-y", "@angular/cli", "mcp"]
+
+[antigravity-cli.plugins]
+# Antigravity-CLI plugins installed via 'agy plugin install' on 'chai update'.
+workspace = "https://github.com/gemini-cli-extensions/workspace"
 
 [[droid.custom_models]]
 # Optional Droid-only BYOK custom model written to ~/.factory/settings.json.

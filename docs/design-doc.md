@@ -166,11 +166,12 @@ Flags: `--force` (skip dirty checks), `--dry-run` (preview without writing).
 
 ### `chai update`
 
-Clones missing deps and pulls existing ones. Shows Bubbletea progress UI with per-dep status.
+Clones missing deps, pulls existing ones, and installs Antigravity-CLI plugins. Shows Bubbletea progress UI with per-item status.
 
-1. Read `[deps]` from `~/chai.toml`.
+1. Read `[deps]` and `[antigravity-cli.plugins]` from `~/chai.toml`.
 2. For each dep: clone if missing, pull if already cloned.
-3. Display progress bars and status per dependency.
+3. For each plugin (when `antigravity-cli` is in `platforms`): run `agy plugin install <url>`; treat `"already installed"` as up to date.
+4. Display progress bars and status per item.
 
 ## Sync Flow
 

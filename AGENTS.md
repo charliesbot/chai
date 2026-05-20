@@ -51,7 +51,7 @@ The CLI has three commands: `chai init` (scaffold config), `chai sync` (distribu
 6. Replace `mcpServers` key in platform configs
 7. Update hash DB
 
-Deps are managed separately via `chai update` (clone/pull deps).
+Deps and Antigravity-CLI plugins are managed separately via `chai update` (clone/pull deps, install plugins).
 
 All file writes must be atomic (write to `.tmp`, then `os.Rename`).
 
@@ -74,7 +74,8 @@ Built into source code (not user-configured). Each platform specifies:
 - **Hash-based dirty detection** — applies to instructions, skills, and subagents. MCPs are fully owned by chai and replaced on every sync.
 - **`mcpServers` ownership** — chai owns the entire `mcpServers` key in platform config files. It replaces the key wholesale but preserves all other keys.
 - **Deps are clone-only** — chai clones repos to `~/.chai/deps/<name>/` but does not parse or inspect their contents. Deps with a `build` field run the build command on first clone.
-- **Sync doesn't touch deps** — `chai sync` is fast and predictable. `chai update` handles cloning/pulling deps.
+- **Sync doesn't touch deps or plugins** — `chai sync` is fast and predictable. `chai update` handles cloning/pulling deps and installing Antigravity-CLI plugins.
+- **Antigravity-CLI plugins** — bundled skills/agents/MCPs installed via `agy plugin install <url>`. Declared under `[antigravity-cli.plugins]`. Only installed when `antigravity-cli` is in `platforms`.
 - **Path resolution** — `~` expands to home dir, `@name` resolves to `~/.chai/deps/<name>/`. Works in skill paths, subagent paths, and MCP `args`/`cwd`.
 - **Atomic writes** — all file writes go through a temp file + `os.Rename` to prevent partial writes.
 

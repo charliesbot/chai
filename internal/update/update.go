@@ -3,7 +3,9 @@ package update
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/charliesbot/chai/internal/config"
@@ -16,22 +18,22 @@ import (
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // Run executes the update with a Bubbletea TUI.
-func Run(depMap map[string]config.Dep) error {
+func Run(depMap map[string]config.Dep, plugins map[string]string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("getting home directory: %w", err)
 	}
-	return RunWithHome(depMap, home)
+	return RunWithHome(depMap, plugins, home)
 }
 
 // RunWithHome executes the update with a Bubbletea TUI using the given home directory.
-func RunWithHome(depMap map[string]config.Dep, home string) error {
-	if len(depMap) == 0 {
+func RunWithHome(depMap map[string]config.Dep, plugins map[string]string, home string) error {
+	if len(depMap) == 0 && len(plugins) == 0 {
 		fmt.Println(ui.Muted.Render("nothing to update"))
 		return nil
 	}
 
-	m := newModel(depMap, home)
+	m := newModel(depMap, plugins, home)
 	p := tea.NewProgram(m)
 	final, err := p.Run()
 	if err != nil {
@@ -46,12 +48,22 @@ func RunWithHome(depMap map[string]config.Dep, home string) error {
 	return nil
 }
 
-// item tracks the state of a single dep during update.
+// itemKind distinguishes deps from Antigravity-CLI plugins.
+type itemKind int
+
+const (
+	kindDep itemKind = iota
+	kindPlugin
+)
+
+// item tracks the state of a single dep or plugin during update.
 type item struct {
 	name   string
-	dep    config.Dep
-	status string // "waiting", "updating", "done", "error"
-	action string // result description
+	url    string
+	kind   itemKind
+	dep    config.Dep // only meaningful when kind == kindDep
+	status string     // "waiting", "updating", "done", "error"
+	action string     // result description
 }
 
 type model struct {
@@ -70,14 +82,24 @@ type itemDoneMsg struct {
 	err    error
 }
 
-func newModel(depMap map[string]config.Dep, home string) model {
+func newModel(depMap map[string]config.Dep, plugins map[string]string, home string) model {
 	var items []item
 
-	depNames := sortedKeys(depMap)
-	for _, name := range depNames {
+	for _, name := range sortedDepKeys(depMap) {
 		items = append(items, item{
 			name:   name,
+			url:    depMap[name].URL,
+			kind:   kindDep,
 			dep:    depMap[name],
+			status: "waiting",
+		})
+	}
+
+	for _, name := range sortedStringKeys(plugins) {
+		items = append(items, item{
+			name:   name,
+			url:    plugins[name],
+			kind:   kindPlugin,
 			status: "waiting",
 		})
 	}
@@ -140,20 +162,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	if len(m.items) == 0 {
-		return ""
-	}
-	s := ui.Title.Render("deps") + "\n\n"
+	hasDeps, hasPlugins := false, false
 	for _, it := range m.items {
-		s += m.renderItem(it)
+		switch it.kind {
+		case kindDep:
+			hasDeps = true
+		case kindPlugin:
+			hasPlugins = true
+		}
 	}
-	return s + "\n"
+
+	s := ""
+	if hasDeps {
+		s += ui.Title.Render("deps") + "\n\n"
+		for _, it := range m.items {
+			if it.kind == kindDep {
+				s += m.renderItem(it)
+			}
+		}
+		s += "\n"
+	}
+	if hasPlugins {
+		s += ui.Title.Render("antigravity-cli plugins") + "\n\n"
+		for _, it := range m.items {
+			if it.kind == kindPlugin {
+				s += m.renderItem(it)
+			}
+		}
+		s += "\n"
+	}
+	return s
 }
 
 func (m model) renderItem(it item) string {
 	icon := m.statusIcon(it.status)
 	name := ui.Bold.Render(it.name)
-	url := ui.Muted.Render(it.dep.URL)
+	url := ui.Muted.Render(it.url)
 
 	switch it.status {
 	case "done":
@@ -204,15 +248,32 @@ func (m model) startItem(index int) tea.Cmd {
 	it := m.items[index]
 	home := m.home
 	return func() tea.Msg {
-		result := deps.SyncOne(it.name, it.dep, home)
-		if result.Err != nil {
-			return itemDoneMsg{index: index, err: result.Err}
+		switch it.kind {
+		case kindDep:
+			result := deps.SyncOne(it.name, it.dep, home)
+			if result.Err != nil {
+				return itemDoneMsg{index: index, err: result.Err}
+			}
+			action := string(result.Action)
+			if result.Built {
+				action += " + built"
+			}
+			return itemDoneMsg{index: index, action: action}
+
+		case kindPlugin:
+			cmd := exec.Command("agy", "plugin", "install", it.url)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				// "already installed" is not a real error.
+				if strings.Contains(string(out), "already installed") {
+					return itemDoneMsg{index: index, action: "up to date"}
+				}
+				return itemDoneMsg{index: index, err: fmt.Errorf("%s", string(out))}
+			}
+			return itemDoneMsg{index: index, action: "installed"}
 		}
-		action := string(result.Action)
-		if result.Built {
-			action += " + built"
-		}
-		return itemDoneMsg{index: index, action: action}
+
+		return itemDoneMsg{index: index, err: fmt.Errorf("unknown item kind")}
 	}
 }
 
@@ -222,7 +283,16 @@ func (m model) tick() tea.Cmd {
 	})
 }
 
-func sortedKeys(m map[string]config.Dep) []string {
+func sortedDepKeys(m map[string]config.Dep) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedStringKeys(m map[string]string) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)

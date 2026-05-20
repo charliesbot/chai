@@ -11,6 +11,7 @@ import (
 
 	"github.com/charliesbot/chai/internal/config"
 	chaiinit "github.com/charliesbot/chai/internal/init"
+	"github.com/charliesbot/chai/internal/platform"
 	chaisync "github.com/charliesbot/chai/internal/sync"
 	"github.com/charliesbot/chai/internal/update"
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -95,7 +96,7 @@ func main() {
 	updateCmd := &ffcli.Command{
 		Name:       "update",
 		ShortUsage: "chai update",
-		ShortHelp:  "Clone or pull dependencies",
+		ShortHelp:  "Clone or pull dependencies and install plugins",
 		Exec: func(ctx context.Context, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
@@ -105,7 +106,11 @@ func main() {
 			if err != nil {
 				return err
 			}
-			return update.Run(cfg.Deps)
+			plugins := cfg.AntigravityCLI.Plugins
+			if !platform.HasPlatform(cfg.Platforms, "antigravity-cli") {
+				plugins = nil
+			}
+			return update.Run(cfg.Deps, plugins)
 		},
 	}
 
