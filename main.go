@@ -11,7 +11,6 @@ import (
 
 	"github.com/charliesbot/chai/internal/config"
 	chaiinit "github.com/charliesbot/chai/internal/init"
-	"github.com/charliesbot/chai/internal/platform"
 	chaisync "github.com/charliesbot/chai/internal/sync"
 	"github.com/charliesbot/chai/internal/update"
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -106,11 +105,7 @@ func main() {
 			if err != nil {
 				return err
 			}
-			extensions := cfg.Gemini.Extensions
-			if !platform.HasPlatform(cfg.Platforms, "gemini") {
-				extensions = nil
-			}
-			return update.Run(cfg.Deps, extensions)
+			return update.Run(cfg.Deps)
 		},
 	}
 

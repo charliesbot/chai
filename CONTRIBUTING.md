@@ -30,6 +30,6 @@ All paths are relative to the user's home directory. The compiler will catch mis
 - **Instructions, skills, and subagents are copied**. Instructions use dirty detection because agents may edit their platform copy; skills/subagents use hash-based ownership so stale chai-managed copies can be removed without touching user-created files.
 - **chai owns each platform's MCP key**. It replaces that key wholesale but preserves all other keys.
 - **All file writes must be atomic** — write to a `.tmp` file, then `os.Rename`.
-- **`chai sync` doesn't touch deps or extensions**. Those are handled by `chai update`.
+- **`chai sync` doesn't touch deps**. Those are handled by `chai update`.
 
 See `CLAUDE.md` for the full architecture and `docs/design-doc.md` for the spec.

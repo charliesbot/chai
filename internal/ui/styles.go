@@ -48,9 +48,6 @@ var (
 	ClaudeStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("214")) // orange
 
-	GeminiStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("75")) // blue
-
 	AntigravityStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("135")) // purple
 
@@ -67,10 +64,6 @@ var (
 // Platform icons
 func ClaudeIcon() string {
 	return ClaudeStyle.Render("●")
-}
-
-func GeminiIcon() string {
-	return GeminiStyle.Render("◆")
 }
 
 func AntigravityIcon() string {
@@ -141,7 +134,7 @@ func Skip() string {
 
 // Box renders a boxed section with header, platform icons, and one item per line.
 //
-//	┌ skills (3) ───────────────── ● ◆ ▲
+//	┌ skills (3) ───────────────── ● ▲
 //	│ agents-md
 //	│ android-dev
 //	│ slidev
@@ -216,8 +209,6 @@ func platformIcon(name string) string {
 	switch name {
 	case "Claude":
 		return ClaudeIcon()
-	case "Gemini":
-		return GeminiIcon()
 	case "Antigravity":
 		return AntigravityIcon()
 	case "OpenCode":

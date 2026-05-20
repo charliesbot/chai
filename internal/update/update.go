@@ -3,9 +3,7 @@ package update
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/charliesbot/chai/internal/config"
@@ -18,22 +16,22 @@ import (
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // Run executes the update with a Bubbletea TUI.
-func Run(depMap map[string]config.Dep, extensions map[string]string) error {
+func Run(depMap map[string]config.Dep) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("getting home directory: %w", err)
 	}
-	return RunWithHome(depMap, extensions, home)
+	return RunWithHome(depMap, home)
 }
 
 // RunWithHome executes the update with a Bubbletea TUI using the given home directory.
-func RunWithHome(depMap map[string]config.Dep, extensions map[string]string, home string) error {
-	if len(depMap) == 0 && len(extensions) == 0 {
+func RunWithHome(depMap map[string]config.Dep, home string) error {
+	if len(depMap) == 0 {
 		fmt.Println(ui.Muted.Render("nothing to update"))
 		return nil
 	}
 
-	m := newModel(depMap, extensions, home)
+	m := newModel(depMap, home)
 	p := tea.NewProgram(m)
 	final, err := p.Run()
 	if err != nil {
@@ -48,22 +46,12 @@ func RunWithHome(depMap map[string]config.Dep, extensions map[string]string, hom
 	return nil
 }
 
-// itemKind distinguishes deps from extensions.
-type itemKind int
-
-const (
-	kindDep itemKind = iota
-	kindExtension
-)
-
-// item tracks the state of a single dep or extension during update.
+// item tracks the state of a single dep during update.
 type item struct {
 	name   string
-	url    string
-	kind   itemKind
-	dep    *config.Dep // only for deps
-	status string      // "waiting", "updating", "done", "error"
-	action string      // result description
+	dep    config.Dep
+	status string // "waiting", "updating", "done", "error"
+	action string // result description
 }
 
 type model struct {
@@ -82,29 +70,14 @@ type itemDoneMsg struct {
 	err    error
 }
 
-func newModel(depMap map[string]config.Dep, extensions map[string]string, home string) model {
+func newModel(depMap map[string]config.Dep, home string) model {
 	var items []item
 
-	// Add deps first
 	depNames := sortedKeys(depMap)
 	for _, name := range depNames {
-		dep := depMap[name]
 		items = append(items, item{
 			name:   name,
-			url:    dep.URL,
-			kind:   kindDep,
-			dep:    &dep,
-			status: "waiting",
-		})
-	}
-
-	// Add extensions
-	extNames := sortedStringKeys(extensions)
-	for _, name := range extNames {
-		items = append(items, item{
-			name:   name,
-			url:    extensions[name],
-			kind:   kindExtension,
+			dep:    depMap[name],
 			status: "waiting",
 		})
 	}
@@ -167,48 +140,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	// Check if we have deps and/or extensions
-	hasDeps := false
-	hasExts := false
+	if len(m.items) == 0 {
+		return ""
+	}
+	s := ui.Title.Render("deps") + "\n\n"
 	for _, it := range m.items {
-		if it.kind == kindDep {
-			hasDeps = true
-		} else {
-			hasExts = true
-		}
+		s += m.renderItem(it)
 	}
-
-	s := ""
-
-	if hasDeps {
-		s += ui.Title.Render("deps") + "\n\n"
-		for _, it := range m.items {
-			if it.kind != kindDep {
-				continue
-			}
-			s += m.renderItem(it)
-		}
-		s += "\n"
-	}
-
-	if hasExts {
-		s += ui.Title.Render("gemini extensions") + "\n\n"
-		for _, it := range m.items {
-			if it.kind != kindExtension {
-				continue
-			}
-			s += m.renderItem(it)
-		}
-		s += "\n"
-	}
-
-	return s
+	return s + "\n"
 }
 
 func (m model) renderItem(it item) string {
 	icon := m.statusIcon(it.status)
 	name := ui.Bold.Render(it.name)
-	url := ui.Muted.Render(it.url)
+	url := ui.Muted.Render(it.dep.URL)
 
 	switch it.status {
 	case "done":
@@ -259,32 +204,15 @@ func (m model) startItem(index int) tea.Cmd {
 	it := m.items[index]
 	home := m.home
 	return func() tea.Msg {
-		switch it.kind {
-		case kindDep:
-			result := deps.SyncOne(it.name, *it.dep, home)
-			if result.Err != nil {
-				return itemDoneMsg{index: index, err: result.Err}
-			}
-			action := string(result.Action)
-			if result.Built {
-				action += " + built"
-			}
-			return itemDoneMsg{index: index, action: action}
-
-		case kindExtension:
-			cmd := exec.Command("gemini", "extensions", "install", it.url, "--consent")
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				// "already installed" is not a real error
-				if strings.Contains(string(out), "already installed") {
-					return itemDoneMsg{index: index, action: "up to date"}
-				}
-				return itemDoneMsg{index: index, err: fmt.Errorf("%s", string(out))}
-			}
-			return itemDoneMsg{index: index, action: "installed"}
+		result := deps.SyncOne(it.name, it.dep, home)
+		if result.Err != nil {
+			return itemDoneMsg{index: index, err: result.Err}
 		}
-
-		return itemDoneMsg{index: index, err: fmt.Errorf("unknown item kind")}
+		action := string(result.Action)
+		if result.Built {
+			action += " + built"
+		}
+		return itemDoneMsg{index: index, action: action}
 	}
 }
 
@@ -295,15 +223,6 @@ func (m model) tick() tea.Cmd {
 }
 
 func sortedKeys(m map[string]config.Dep) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func sortedStringKeys(m map[string]string) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)

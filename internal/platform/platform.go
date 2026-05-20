@@ -9,7 +9,7 @@ import (
 type MCPFormat string
 
 const (
-	// MCPFormatStandard is the Claude / Gemini / Antigravity shape:
+	// MCPFormatStandard is the Claude / Antigravity shape:
 	//   {"command": "npx", "args": [...], "env": {...}, "cwd": "..."}
 	MCPFormatStandard MCPFormat = "standard"
 
@@ -30,7 +30,7 @@ const (
 type Platform struct {
 	Name             string
 	InstructionsPath string    // relative to home, e.g. ".claude/CLAUDE.md"
-	SkillsDir        string    // relative to home, e.g. ".claude/skills". May be shared across platforms (e.g. Gemini and Codex both target ".agents/skills").
+	SkillsDir        string    // relative to home, e.g. ".claude/skills". May be shared across platforms (e.g. Codex targets ".agents/skills").
 	AgentsDir        string    // relative to home, e.g. ".claude/subagents"; "" = platform has no markdown subagent target
 	MCPConfigPath    string    // relative to home, e.g. ".claude.json"
 	MCPKey           string    // JSON key for MCP servers, e.g. "mcpServers"
@@ -48,20 +48,6 @@ func All() []Platform {
 			MCPConfigPath:    ".claude.json",
 			MCPKey:           "mcpServers",
 			MCPFormat:        MCPFormatStandard,
-		},
-		{
-			Name:             "Gemini",
-			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
-			// Gemini auto-discovers skills from ~/.agents/skills/ (shared with Codex)
-			// in addition to ~/.gemini/skills/, with .agents/ taking precedence on
-			// conflict. Writing both paths produced "skill conflict" warnings on
-			// launch, so chai writes only the shared path. Works whether Codex is
-			// enabled or not.
-			SkillsDir:     filepath.Join(".agents", "skills"),
-			AgentsDir:     filepath.Join(".gemini", "agents"),
-			MCPConfigPath: filepath.Join(".gemini", "settings.json"),
-			MCPKey:        "mcpServers",
-			MCPFormat:     MCPFormatStandard,
 		},
 		{
 			Name:             "Antigravity",
@@ -92,9 +78,7 @@ func All() []Platform {
 		},
 		{
 			Name: "Codex",
-			// Codex reads ~/.agents/skills/ — a shared, non-namespaced path. If
-			// another tool starts writing there, dirty detection may flag files
-			// chai didn't write.
+			// Codex reads ~/.agents/skills/ — a shared, non-namespaced path.
 			InstructionsPath: filepath.Join(".codex", "AGENTS.md"),
 			SkillsDir:        filepath.Join(".agents", "skills"),
 			AgentsDir:        "", // Codex agents are TOML files; chai does not translate from markdown.

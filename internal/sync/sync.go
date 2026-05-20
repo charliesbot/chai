@@ -68,8 +68,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	status := newPlatformStatus(platforms)
 
 	// Group platforms by destination path so that platforms sharing an
-	// instructions file (e.g. Gemini + Antigravity both writing ~/.gemini/GEMINI.md)
-	// only trigger one write and one dirty-detection prompt.
+	// instructions file only trigger one write and one dirty-detection prompt.
 	destOrder := make([]string, 0, len(platforms))
 	destPlatforms := make(map[string][]platform.Platform, len(platforms))
 	for _, p := range platforms {
@@ -159,22 +158,6 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		if err := syncDroidCustomModels(cfg, home, opts.DryRun); err != nil {
 			return err
 		}
-	}
-
-	if len(cfg.Gemini.Extensions) > 0 && !opts.DryRun && platform.HasPlatform(cfg.Platforms, "gemini") {
-		names := make([]string, 0, len(cfg.Gemini.Extensions))
-		for name := range cfg.Gemini.Extensions {
-			names = append(names, name)
-		}
-		extStatus := make([]ui.PlatformStatus, len(platforms))
-		for i, p := range platforms {
-			if p.Name == "Gemini" {
-				extStatus[i] = ui.PlatformStatus{Name: p.Name, State: ui.PlatformOK}
-			} else {
-				extStatus[i] = ui.PlatformStatus{Name: p.Name, State: ui.PlatformNA}
-			}
-		}
-		fmt.Println(ui.Box("gemini extensions", len(names), extStatus, names))
 	}
 
 	if opts.DryRun {
