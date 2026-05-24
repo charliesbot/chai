@@ -270,7 +270,7 @@ func TestResolvePatterns_GlobChildren(t *testing.T) {
 	}
 }
 
-func TestSyncSkillsAndAgents_SeparateDirectories(t *testing.T) {
+func TestSyncSkills_CopiesSkillDirectories(t *testing.T) {
 	home := t.TempDir()
 
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
@@ -278,14 +278,9 @@ func TestSyncSkillsAndAgents_SeparateDirectories(t *testing.T) {
 	os.MkdirAll(webDevSrc, 0755)
 	os.WriteFile(filepath.Join(webDevSrc, "SKILL.md"), []byte("web"), 0644)
 
-	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
-	os.MkdirAll(agentsDir, 0755)
-	os.WriteFile(filepath.Join(agentsDir, "reviewer.md"), []byte("---\nname: reviewer\n---\n"), 0644)
-
 	hashDB := hash.DB{}
-	err := syncSkillsAndAgents(
+	err := syncSkills(
 		[]string{"~/dotfiles/ai/skills/*"},
-		[]string{"~/dotfiles/ai/subagents/*"},
 		home, platform.All(), false, hashDB,
 	)
 	if err != nil {
@@ -300,56 +295,6 @@ func TestSyncSkillsAndAgents_SeparateDirectories(t *testing.T) {
 		t.Error("web-dev missing from skills dir")
 	} else if info.Mode()&os.ModeSymlink != 0 {
 		t.Error("web-dev should be a copy, not a symlink")
-	}
-
-	// Agents are copied to agents dir
-	claudeAgents := filepath.Join(home, ".claude", "agents")
-	info, err = os.Lstat(filepath.Join(claudeAgents, "reviewer.md"))
-	if err != nil {
-		t.Error("reviewer.md missing from agents dir")
-	} else if info.Mode()&os.ModeSymlink != 0 {
-		t.Error("reviewer.md should be a copy, not a symlink")
-	}
-}
-
-func TestResolveFilePatterns(t *testing.T) {
-	home := t.TempDir()
-
-	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
-	os.MkdirAll(agentsDir, 0755)
-	for _, name := range []string{"reviewer.md", "planner.md", "architect.md"} {
-		os.WriteFile(filepath.Join(agentsDir, name), []byte("---\nname: test\n---\n"), 0644)
-	}
-	// Non-md file should be excluded
-	os.WriteFile(filepath.Join(agentsDir, "notes.txt"), []byte("ignore"), 0644)
-
-	patterns := []string{"~/dotfiles/ai/subagents/*"}
-	results, err := resolveFilePatterns(patterns, home)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(results) != 3 {
-		t.Errorf("got %d results, want 3: %v", len(results), results)
-	}
-}
-
-func TestResolveFilePatterns_SkipsHidden(t *testing.T) {
-	home := t.TempDir()
-
-	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
-	os.MkdirAll(agentsDir, 0755)
-	os.WriteFile(filepath.Join(agentsDir, "reviewer.md"), []byte("---\nname: test\n---\n"), 0644)
-	os.WriteFile(filepath.Join(agentsDir, ".hidden.md"), []byte("---\nname: hidden\n---\n"), 0644)
-
-	patterns := []string{"~/dotfiles/ai/subagents/*"}
-	results, err := resolveFilePatterns(patterns, home)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(results) != 1 {
-		t.Errorf("got %d results, want 1: %v", len(results), results)
 	}
 }
 
@@ -517,57 +462,7 @@ func TestSyncFileCopies_UpdatesContent(t *testing.T) {
 	}
 }
 
-func TestSyncSkillsAndAgents_SubagentFiles(t *testing.T) {
-	home := t.TempDir()
-
-	// Skills are directories
-	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
-	webDevSrc := filepath.Join(skillsDir, "web-dev")
-	os.MkdirAll(webDevSrc, 0755)
-	os.WriteFile(filepath.Join(webDevSrc, "SKILL.md"), []byte("web"), 0644)
-
-	// Subagents are .md files
-	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
-	os.MkdirAll(agentsDir, 0755)
-	os.WriteFile(filepath.Join(agentsDir, "reviewer.md"), []byte("---\nname: reviewer\n---\n"), 0644)
-	os.WriteFile(filepath.Join(agentsDir, "planner.md"), []byte("---\nname: planner\n---\n"), 0644)
-
-	hashDB := hash.DB{}
-	err := syncSkillsAndAgents(
-		[]string{"~/dotfiles/ai/skills/*"},
-		[]string{"~/dotfiles/ai/subagents/*"},
-		home, platform.All(), false, hashDB,
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Skills are copied to skills dir (not symlinked)
-	claudeSkills := filepath.Join(home, ".claude", "skills")
-	webDevDest := filepath.Join(claudeSkills, "web-dev")
-	info, err := os.Lstat(webDevDest)
-	if err != nil {
-		t.Error("web-dev missing from skills dir")
-	} else if info.Mode()&os.ModeSymlink != 0 {
-		t.Error("web-dev should be a copy, not a symlink")
-	}
-
-	// Subagent files are copied (not symlinked) to agents dir
-	claudeAgents := filepath.Join(home, ".claude", "agents")
-	for _, name := range []string{"reviewer.md", "planner.md"} {
-		path := filepath.Join(claudeAgents, name)
-		info, err := os.Lstat(path)
-		if err != nil {
-			t.Errorf("%s missing from claude agents dir", name)
-			continue
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			t.Errorf("%s should be a copy, not a symlink", name)
-		}
-	}
-}
-
-func TestSyncSkillsAndAgents_EmptyAgents(t *testing.T) {
+func TestSyncSkills_EmptyAgentsAreIrrelevant(t *testing.T) {
 	home := t.TempDir()
 
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
@@ -579,9 +474,8 @@ func TestSyncSkillsAndAgents_EmptyAgents(t *testing.T) {
 	os.MkdirAll(filepath.Join(home, "dotfiles", "ai", "subagents"), 0755)
 
 	hashDB := hash.DB{}
-	err := syncSkillsAndAgents(
+	err := syncSkills(
 		[]string{"~/dotfiles/ai/skills/*"},
-		[]string{"~/dotfiles/ai/subagents/*"},
 		home, platform.All(), false, hashDB,
 	)
 	if err != nil {
