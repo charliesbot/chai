@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 
+	"github.com/charliesbot/chai/internal/clean"
 	"github.com/charliesbot/chai/internal/config"
 	chaiinit "github.com/charliesbot/chai/internal/init"
 	"github.com/charliesbot/chai/internal/platform"
@@ -93,6 +94,30 @@ func main() {
 		},
 	}
 
+	cleanFlags := flag.NewFlagSet("chai clean", flag.ExitOnError)
+	cleanDryRun := cleanFlags.Bool("dry-run", false, "preview clean without deleting files")
+
+	cleanCmd := &ffcli.Command{
+		Name:       "clean",
+		ShortUsage: "chai clean [--dry-run]",
+		ShortHelp:  "Remove generated skills, subagents, and MCP config",
+		FlagSet:    cleanFlags,
+		Exec: func(ctx context.Context, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("clean does not accept positional arguments")
+			}
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			cfg, err := config.Load(filepath.Join(home, "chai.toml"))
+			if err != nil {
+				return err
+			}
+			return clean.RunWithHome(ctx, cfg, home, clean.Options{DryRun: *cleanDryRun})
+		},
+	}
+
 	updateCmd := &ffcli.Command{
 		Name:       "update",
 		ShortUsage: "chai update",
@@ -121,13 +146,13 @@ func main() {
 		ShortUsage:  "chai <command> [flags]",
 		ShortHelp:   "Keep AI coding agent configs in sync",
 		FlagSet:     rootFlags,
-		Subcommands: []*ffcli.Command{initCmd, syncCmd, updateCmd},
+		Subcommands: []*ffcli.Command{initCmd, syncCmd, cleanCmd, updateCmd},
 		Exec: func(ctx context.Context, args []string) error {
 			if *showVersion {
 				fmt.Println(resolveVersion())
 				return nil
 			}
-			fmt.Println("chai — run 'chai init', 'chai sync', or 'chai update'")
+			fmt.Println("chai — run 'chai init', 'chai sync', 'chai clean', or 'chai update'")
 			return nil
 		},
 	}
