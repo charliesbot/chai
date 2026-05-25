@@ -3,10 +3,12 @@ package sync
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 func TestSyncAgents_CopiesSubagentFiles(t *testing.T) {
@@ -14,7 +16,12 @@ func TestSyncAgents_CopiesSubagentFiles(t *testing.T) {
 
 	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
 	os.MkdirAll(agentsDir, 0755)
-	os.WriteFile(filepath.Join(agentsDir, "reviewer.md"), []byte("---\nname: reviewer\n---\n"), 0644)
+	os.WriteFile(filepath.Join(agentsDir, "reviewer.md"), []byte(`---
+name: reviewer
+description: Reviews code.
+---
+You review code.
+`), 0644)
 
 	hashDB := hash.DB{}
 	err := syncAgents(
@@ -39,8 +46,18 @@ func TestSyncAgents_SubagentFiles(t *testing.T) {
 
 	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
 	os.MkdirAll(agentsDir, 0755)
-	os.WriteFile(filepath.Join(agentsDir, "reviewer.md"), []byte("---\nname: reviewer\n---\n"), 0644)
-	os.WriteFile(filepath.Join(agentsDir, "planner.md"), []byte("---\nname: planner\n---\n"), 0644)
+	os.WriteFile(filepath.Join(agentsDir, "reviewer.md"), []byte(`---
+name: reviewer
+description: Reviews code.
+---
+You review code.
+`), 0644)
+	os.WriteFile(filepath.Join(agentsDir, "planner.md"), []byte(`---
+name: planner
+description: Plans work.
+---
+You plan work.
+`), 0644)
 
 	hashDB := hash.DB{}
 	err := syncAgents(
@@ -102,5 +119,129 @@ func TestResolveFilePatterns_SkipsHidden(t *testing.T) {
 
 	if len(results) != 1 {
 		t.Errorf("got %d results, want 1: %v", len(results), results)
+	}
+}
+
+func TestSyncAgents_WritesCodexTOML(t *testing.T) {
+	home := t.TempDir()
+
+	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
+	os.MkdirAll(agentsDir, 0755)
+	os.WriteFile(filepath.Join(agentsDir, "reviewer.md"), []byte(`---
+name: reviewer
+description: Reviews implementation against the plan.
+---
+You are a code reviewer.
+`), 0644)
+
+	hashDB := hash.DB{}
+	err := syncAgents(
+		[]string{"~/dotfiles/ai/subagents/*"},
+		home, platform.ForNames([]string{"codex"}), false, hashDB,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	path := filepath.Join(home, ".codex", "agents", "reviewer.toml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading codex agent: %v", err)
+	}
+	var got codexAgent
+	if err := toml.Unmarshal(data, &got); err != nil {
+		t.Fatalf("parsing codex agent TOML: %v\n%s", err, data)
+	}
+	if got.Name != "reviewer" {
+		t.Errorf("name = %q, want reviewer", got.Name)
+	}
+	if got.Description != "Reviews implementation against the plan." {
+		t.Errorf("description = %q", got.Description)
+	}
+	if got.DeveloperInstructions != "You are a code reviewer." {
+		t.Errorf("developer_instructions = %q", got.DeveloperInstructions)
+	}
+	if _, ok := hashDB[path]; !ok {
+		t.Error("codex agent hash was not recorded")
+	}
+}
+
+func TestCompileCodexAgent_SupportsCRLFFrontmatter(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "reviewer.md")
+	os.WriteFile(path, []byte("---\r\nname: reviewer\r\ndescription: Reviews code.\r\n---\r\nYou review code.\r\n"), 0644)
+
+	data, err := compileCodexAgent(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var got codexAgent
+	if err := toml.Unmarshal(data, &got); err != nil {
+		t.Fatalf("parsing codex agent TOML: %v\n%s", err, data)
+	}
+	if got.Name != "reviewer" || got.Description != "Reviews code." || got.DeveloperInstructions != "You review code." {
+		t.Fatalf("codex agent = %#v", got)
+	}
+}
+
+func TestSyncAgents_CodexValidationErrorDoesNotWrite(t *testing.T) {
+	home := t.TempDir()
+
+	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
+	os.MkdirAll(agentsDir, 0755)
+	os.WriteFile(filepath.Join(agentsDir, "reviewer.md"), []byte(`---
+name: reviewer
+---
+You are a code reviewer.
+`), 0644)
+
+	err := syncAgents(
+		[]string{"~/dotfiles/ai/subagents/*"},
+		home, platform.ForNames([]string{"codex"}), false, hash.DB{},
+	)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "missing required frontmatter field: description") {
+		t.Fatalf("error = %q", err.Error())
+	}
+
+	path := filepath.Join(home, ".codex", "agents", "reviewer.toml")
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("codex agent should not be written, stat err=%v", statErr)
+	}
+}
+
+func TestSyncAgents_CodexValidationErrorDoesNotPartiallyWrite(t *testing.T) {
+	home := t.TempDir()
+
+	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
+	os.MkdirAll(agentsDir, 0755)
+	os.WriteFile(filepath.Join(agentsDir, "reviewer.md"), []byte(`---
+name: reviewer
+description: Reviews code.
+---
+You are a code reviewer.
+`), 0644)
+	os.WriteFile(filepath.Join(agentsDir, "planner.md"), []byte(`---
+name: planner
+description: Plans work.
+---
+`), 0644)
+
+	err := syncAgents(
+		[]string{"~/dotfiles/ai/subagents/*"},
+		home, platform.ForNames([]string{"codex"}), false, hash.DB{},
+	)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "missing required body for developer_instructions") {
+		t.Fatalf("error = %q", err.Error())
+	}
+
+	destDir := filepath.Join(home, ".codex", "agents")
+	if _, statErr := os.Stat(filepath.Join(destDir, "reviewer.toml")); !os.IsNotExist(statErr) {
+		t.Fatalf("valid codex agent should not be written after another agent fails, stat err=%v", statErr)
 	}
 }

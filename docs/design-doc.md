@@ -106,7 +106,7 @@ args = ["--app", "desktop"]
 - `instructions` — path to AGENTS.md. Copied to each platform's expected location.
 - `[deps]` — external repos to clone. `name = "url"`. Cloned to `~/.chai/deps/<name>/`. Deps are clone-only — chai doesn't read or parse their contents. Only cloned/pulled via `chai update`, not during `chai sync`.
 - `[skills]` — skill directories. Supports globs, external paths (`~/`), and dep references (`@name/`). Copied to each platform's skills directory.
-- `[subagents]` — markdown subagent definitions. Same path resolution as skills; copied to platforms with a markdown subagent target.
+- `[subagents]` — markdown subagent definitions. Same path resolution as skills; copied to markdown-native platforms and compiled to TOML for Codex.
 - `[mcp.<name>]` — MCP server definitions. `command`, `args`, optional `env` and `cwd`. The section name becomes the key in the platform's `mcpServers` object. Use `@name` in `cwd` to reference a dep's local path. NPX-based MCPs don't need a `[deps]` entry.
 - `[[droid.custom_models]]` — Droid BYOK model definitions. Written to `~/.factory/settings.json` as `customModels`, preserving unrelated settings.
 
@@ -128,7 +128,7 @@ Defined in chai's source code, not by the user. Each platform specifies where fi
 | Antigravity-CLI | `~/.gemini/GEMINI.md` _(shared with Antigravity)_ | `~/.gemini/antigravity-cli/skills/` | _none (subagents live in plugins)_ | `~/.gemini/antigravity-cli/mcp_config.json` | `mcpServers` | replace key |
 | Droid    | `~/.factory/AGENTS.md`   | `~/.factory/skills/` | `~/.factory/droids/` | `~/.factory/mcp.json`       | `mcpServers`   | replace key with Droid stdio entries |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skills/` | `~/.config/opencode/agents/` | `~/.config/opencode/opencode.json` | `mcp` | replace key with OpenCode entries |
-| Codex    | `~/.codex/AGENTS.md`     | `~/.agents/skills/`  | _none_ | `~/.codex/config.toml` | `mcp_servers` | replace TOML table |
+| Codex    | `~/.codex/AGENTS.md`     | `~/.agents/skills/`  | `~/.codex/agents/` _(compiled TOML)_ | `~/.codex/config.toml` | `mcp_servers` | replace TOML table |
 
 - Instructions are **copied** (agents may edit their platform copy — dirty detection protects manual changes).
 - Skills and agents are **copied** and tracked so stale chai-managed files can be removed without touching user-created files.

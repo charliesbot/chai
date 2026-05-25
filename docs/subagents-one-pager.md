@@ -70,9 +70,10 @@ Real-world validation: [superpowers](https://github.com/obra/superpowers) ships 
 
 ### Sync strategy
 
-- **Copy** (same as skills) — files are written into each platform's agents dir. No transformation needed since subagents are portable as-is.
+- **Copy / compile** — markdown-native platforms receive the `.md` files as copies. Codex receives compiled `.toml` files under `~/.codex/agents/`.
 - Subagents are **individual `.md` files**, resolved via `resolveFilePatterns` (accepts `.md` files, unlike `resolvePatterns` used for skill directories).
 - Chai tracks ownership via an md5 in `~/.chai/hashes.json` keyed by the destination path. Stale chai-managed files are removed on re-sync; user-created files in the agents dir are left alone with a warning.
+- Codex compilation requires `name` and `description` in YAML frontmatter plus a non-empty body. These become `name`, `description`, and `developer_instructions` in the TOML output. If any required field is missing, `chai sync` fails before writing generated Codex agent files.
 - Platform-exclusive frontmatter fields are inert on the other platform (unknown keys are ignored).
 
 ### Why copy instead of symlink
