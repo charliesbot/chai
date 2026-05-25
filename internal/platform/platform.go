@@ -36,6 +36,7 @@ const (
 
 // Platform describes where a specific AI tool expects its config files.
 type Platform struct {
+	Key              string // config key, e.g. "antigravity"; multiple targets may share one key
 	Name             string
 	InstructionsPath string // relative to home, e.g. ".claude/CLAUDE.md"
 	SkillsDir        string // relative to home, e.g. ".claude/skills". May be shared across platforms (e.g. Codex targets ".agents/skills").
@@ -50,6 +51,7 @@ type Platform struct {
 func All() []Platform {
 	return []Platform{
 		{
+			Key:              "claude",
 			Name:             "Claude",
 			InstructionsPath: filepath.Join(".claude", "CLAUDE.md"),
 			SkillsDir:        filepath.Join(".claude", "skills"),
@@ -60,6 +62,18 @@ func All() []Platform {
 			MCPFormat:        MCPFormatStandard,
 		},
 		{
+			Key:              "antigravity",
+			Name:             "Antigravity IDE",
+			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
+			SkillsDir:        filepath.Join(".gemini", "antigravity-ide", "skills"),
+			AgentsDir:        "", // Antigravity does not expose a user subagents directory
+			AgentFormat:      AgentFormatMarkdown,
+			MCPConfigPath:    filepath.Join(".gemini", "antigravity-ide", "mcp_config.json"),
+			MCPKey:           "mcpServers",
+			MCPFormat:        MCPFormatStandard,
+		},
+		{
+			Key:              "antigravity",
 			Name:             "Antigravity",
 			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
 			SkillsDir:        filepath.Join(".gemini", "antigravity", "skills"),
@@ -70,11 +84,8 @@ func All() []Platform {
 			MCPFormat:        MCPFormatStandard,
 		},
 		{
-			// Antigravity CLI is the terminal counterpart to the IDE, replacing
-			// Gemini CLI (sunset 2026-06-18). Reads the same ~/.gemini/GEMINI.md
-			// as the IDE. Subagents live inside plugins, so there is no standalone
-			// agents directory.
-			Name:             "Antigravity-CLI",
+			Key:              "antigravity",
+			Name:             "Antigravity CLI",
 			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
 			SkillsDir:        filepath.Join(".gemini", "antigravity-cli", "skills"),
 			AgentsDir:        "",
@@ -84,6 +95,7 @@ func All() []Platform {
 			MCPFormat:        MCPFormatStandard,
 		},
 		{
+			Key:              "opencode",
 			Name:             "OpenCode",
 			InstructionsPath: filepath.Join(".config", "opencode", "AGENTS.md"),
 			SkillsDir:        filepath.Join(".config", "opencode", "skills"),
@@ -94,6 +106,7 @@ func All() []Platform {
 			MCPFormat:        MCPFormatOpenCode,
 		},
 		{
+			Key:              "droid",
 			Name:             "Droid",
 			InstructionsPath: filepath.Join(".factory", "AGENTS.md"),
 			SkillsDir:        filepath.Join(".factory", "skills"),
@@ -104,6 +117,7 @@ func All() []Platform {
 			MCPFormat:        MCPFormatDroid,
 		},
 		{
+			Key:  "codex",
 			Name: "Codex",
 			// Codex reads ~/.agents/skills/ — a shared, non-namespaced path.
 			InstructionsPath: filepath.Join(".codex", "AGENTS.md"),
@@ -127,7 +141,7 @@ func ForNames(names []string) []Platform {
 	all := All()
 	filtered := make([]Platform, 0, len(names))
 	for _, p := range all {
-		if allowed[strings.ToLower(p.Name)] {
+		if allowed[strings.ToLower(p.Key)] {
 			filtered = append(filtered, p)
 		}
 	}

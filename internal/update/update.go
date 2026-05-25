@@ -48,7 +48,7 @@ func RunWithHome(depMap map[string]config.Dep, plugins map[string]string, home s
 	return nil
 }
 
-// itemKind distinguishes deps from Antigravity-CLI plugins.
+// itemKind distinguishes deps from Antigravity plugins.
 type itemKind int
 
 const (
@@ -183,7 +183,7 @@ func (m model) View() string {
 		s += "\n"
 	}
 	if hasPlugins {
-		s += ui.Title.Render("antigravity-cli plugins") + "\n\n"
+		s += ui.Title.Render("antigravity plugins") + "\n\n"
 		for _, it := range m.items {
 			if it.kind == kindPlugin {
 				s += m.renderItem(it)

@@ -10,6 +10,8 @@ import (
 
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/hash"
+	"github.com/charliesbot/chai/internal/platform"
+	"github.com/charliesbot/chai/internal/ui"
 	toml "github.com/pelletier/go-toml/v2"
 )
 
@@ -248,11 +250,11 @@ func TestRunWithHome_SharedInstructionsDedup(t *testing.T) {
 	content := "shared instructions"
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte(content), 0644)
 
-	// Antigravity (IDE) and Antigravity-CLI both write to ~/.gemini/GEMINI.md.
+	// All Antigravity targets write to ~/.gemini/GEMINI.md.
 	// The prompt should fire at most once per unique destination.
 	promptCalls := 0
 	cfg := &config.Config{
-		Platforms:    []string{"antigravity", "antigravity-cli"},
+		Platforms:    []string{"antigravity"},
 		Instructions: "~/dotfiles/ai/agents.md",
 	}
 
@@ -293,6 +295,24 @@ func TestRunWithHome_SharedInstructionsDedup(t *testing.T) {
 	}
 }
 
+func TestPlatformStatus_CollapsesAntigravityTargets(t *testing.T) {
+	status := newPlatformStatus(platform.ForNames([]string{"claude", "antigravity", "opencode"}))
+
+	got := status.statuses()
+	if len(got) != 3 {
+		t.Fatalf("statuses count = %d, want 3: %#v", len(got), got)
+	}
+	if got[0].Name != "Claude" || got[1].Name != "Antigravity" || got[2].Name != "OpenCode" {
+		t.Fatalf("statuses = %#v, want Claude, Antigravity, OpenCode", got)
+	}
+
+	status.setFailed("Antigravity CLI")
+	got = status.statuses()
+	if got[1].State != ui.PlatformFailed {
+		t.Fatalf("Antigravity aggregate state = %v, want failed", got[1].State)
+	}
+}
+
 func TestRunWithHome_SharedInstructionsPromptDeclined(t *testing.T) {
 	home := t.TempDir()
 
@@ -301,7 +321,7 @@ func TestRunWithHome_SharedInstructionsPromptDeclined(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
 
 	cfg := &config.Config{
-		Platforms:    []string{"antigravity", "antigravity-cli"},
+		Platforms:    []string{"antigravity"},
 		Instructions: "~/dotfiles/ai/agents.md",
 	}
 
@@ -323,7 +343,7 @@ func TestRunWithHome_SharedInstructionsPromptDeclined(t *testing.T) {
 	}
 }
 
-func TestRunWithHome_AntigravityCLIPaths(t *testing.T) {
+func TestRunWithHome_AntigravityPaths(t *testing.T) {
 	home := t.TempDir()
 
 	srcDir := filepath.Join(home, "dotfiles", "ai")
@@ -339,7 +359,7 @@ func TestRunWithHome_AntigravityCLIPaths(t *testing.T) {
 	os.WriteFile(filepath.Join(agentDir, "reviewer.md"), []byte("reviewer body"), 0644)
 
 	cfg := &config.Config{
-		Platforms:    []string{"antigravity-cli"},
+		Platforms:    []string{"antigravity"},
 		Instructions: "~/dotfiles/ai/agents.md",
 	}
 	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
@@ -358,6 +378,8 @@ func TestRunWithHome_AntigravityCLIPaths(t *testing.T) {
 		body  string
 	}{
 		{"instructions", filepath.Join(home, ".gemini", "GEMINI.md"), "hello"},
+		{"ide skill", filepath.Join(home, ".gemini", "antigravity-ide", "skills", "greet", "SKILL.md"), "greet skill"},
+		{"legacy skill", filepath.Join(home, ".gemini", "antigravity", "skills", "greet", "SKILL.md"), "greet skill"},
 		{"skill", filepath.Join(home, ".gemini", "antigravity-cli", "skills", "greet", "SKILL.md"), "greet skill"},
 	}
 	for _, c := range cases {
@@ -371,26 +393,35 @@ func TestRunWithHome_AntigravityCLIPaths(t *testing.T) {
 		}
 	}
 
-	// MCP config lives in its own file under antigravity-cli/, not in settings.json.
-	mcpPath := filepath.Join(home, ".gemini", "antigravity-cli", "mcp_config.json")
-	mcp := readJSON(t, mcpPath)
-	servers, ok := mcp["mcpServers"].(map[string]any)
-	if !ok {
-		t.Fatalf("mcpServers missing or wrong type in %s: %#v", mcpPath, mcp["mcpServers"])
-	}
-	ctx7, ok := servers["context7"].(map[string]any)
-	if !ok {
-		t.Fatalf("context7 entry missing in %s", mcpPath)
-	}
-	if ctx7["command"] != "npx" {
-		t.Errorf("context7.command = %v, want npx", ctx7["command"])
+	for _, mcpPath := range []string{
+		filepath.Join(home, ".gemini", "antigravity-ide", "mcp_config.json"),
+		filepath.Join(home, ".gemini", "antigravity", "mcp_config.json"),
+		filepath.Join(home, ".gemini", "antigravity-cli", "mcp_config.json"),
+	} {
+		mcp := readJSON(t, mcpPath)
+		servers, ok := mcp["mcpServers"].(map[string]any)
+		if !ok {
+			t.Fatalf("mcpServers missing or wrong type in %s: %#v", mcpPath, mcp["mcpServers"])
+		}
+		ctx7, ok := servers["context7"].(map[string]any)
+		if !ok {
+			t.Fatalf("context7 entry missing in %s", mcpPath)
+		}
+		if ctx7["command"] != "npx" {
+			t.Errorf("%s context7.command = %v, want npx", mcpPath, ctx7["command"])
+		}
 	}
 
-	// Antigravity-CLI has no standalone subagents dir (subagents live in plugins).
-	// Nothing should be written under any agents/ path for this platform.
-	agentsDir := filepath.Join(home, ".gemini", "antigravity-cli", "agents")
-	if _, err := os.Stat(agentsDir); !os.IsNotExist(err) {
-		t.Errorf("antigravity-cli agents dir should not exist, got err=%v", err)
+	// Antigravity has no standalone subagents dir. Nothing should be written
+	// under any agents/ path for these targets.
+	for _, agentsDir := range []string{
+		filepath.Join(home, ".gemini", "antigravity-ide", "agents"),
+		filepath.Join(home, ".gemini", "antigravity", "agents"),
+		filepath.Join(home, ".gemini", "antigravity-cli", "agents"),
+	} {
+		if _, err := os.Stat(agentsDir); !os.IsNotExist(err) {
+			t.Errorf("%s should not exist, got err=%v", agentsDir, err)
+		}
 	}
 }
 
@@ -646,10 +677,15 @@ func TestRunWithHome_AntigravitySkipsSubagents(t *testing.T) {
 		t.Fatalf("sync: %v", err)
 	}
 
-	// Antigravity has no agents dir — nothing should be written under its skills tree
-	antigravityAgents := filepath.Join(home, ".gemini", "antigravity", "agents")
-	if _, err := os.Stat(antigravityAgents); !os.IsNotExist(err) {
-		t.Errorf("antigravity agents dir should not exist, got err=%v", err)
+	// Antigravity has no agents dir — nothing should be written under its target trees.
+	for _, antigravityAgents := range []string{
+		filepath.Join(home, ".gemini", "antigravity-ide", "agents"),
+		filepath.Join(home, ".gemini", "antigravity", "agents"),
+		filepath.Join(home, ".gemini", "antigravity-cli", "agents"),
+	} {
+		if _, err := os.Stat(antigravityAgents); !os.IsNotExist(err) {
+			t.Errorf("%s should not exist, got err=%v", antigravityAgents, err)
+		}
 	}
 }
 

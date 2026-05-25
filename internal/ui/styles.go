@@ -70,7 +70,7 @@ func ClaudeIcon() string {
 }
 
 func AntigravityIcon() string {
-	return AntigravityStyle.Render("▲")
+	return AntigravityStyle.Render("◆")
 }
 
 func AntigravityCLIIcon() string {
@@ -86,7 +86,7 @@ func DroidIcon() string {
 }
 
 func CodexIcon() string {
-	return CodexStyle.Render("⬢")
+	return CodexStyle.Render("▲")
 }
 
 // PlatformState represents whether a platform was synced, failed, or not applicable.
@@ -216,9 +216,9 @@ func platformIcon(name string) string {
 	switch name {
 	case "Claude":
 		return ClaudeIcon()
-	case "Antigravity":
+	case "Antigravity", "Antigravity IDE":
 		return AntigravityIcon()
-	case "Antigravity-CLI":
+	case "Antigravity CLI":
 		return AntigravityCLIIcon()
 	case "OpenCode":
 		return OpenCodeIcon()
