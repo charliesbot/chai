@@ -118,33 +118,9 @@ func syncFileCopies(sources []string, destDir string, hashDB hash.DB) error {
 		return fmt.Errorf("creating directory %s: %w", destDir, err)
 	}
 
-	// Build set of expected destination paths
-	expected := make(map[string]bool, len(sources))
-	for _, src := range sources {
-		dest := filepath.Join(destDir, filepath.Base(src))
-		expected[dest] = true
-	}
-
-	// Remove stale chai-managed files, warn about user-created ones
-	entries, err := os.ReadDir(destDir)
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", destDir, err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
-			continue
-		}
-		path := filepath.Join(destDir, entry.Name())
-		if expected[path] {
-			continue
-		}
-		if _, managed := hashDB[path]; managed {
-			// Chai put this here previously, now it's gone from sources — remove
-			os.Remove(path)
-			delete(hashDB, path)
-		} else {
-			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), entry.Name(), ui.Muted.Render("not managed by chai — skipping"))
-		}
+	expected := expectedDestinations(sources, destDir, filepath.Base)
+	if err := removeStaleManagedFiles(destDir, ".md", expected, hashDB); err != nil {
+		return err
 	}
 
 	// Copy files atomically and update hashes
@@ -157,16 +133,9 @@ func syncFileCopies(sources []string, destDir string, hashDB hash.DB) error {
 			return fmt.Errorf("reading %s: %w", src, err)
 		}
 
-		tmp := dest + ".tmp"
-		if err := os.WriteFile(tmp, data, 0644); err != nil {
-			return fmt.Errorf("writing %s: %w", tmp, err)
+		if err := writeManagedFile(dest, data, 0644, hashDB); err != nil {
+			return err
 		}
-		if err := os.Rename(tmp, dest); err != nil {
-			os.Remove(tmp)
-			return fmt.Errorf("renaming %s → %s: %w", tmp, dest, err)
-		}
-
-		hashDB[dest] = hash.Sum(data)
 	}
 
 	return nil
@@ -186,30 +155,9 @@ func syncDirCopies(sources []string, destDir string, hashDB hash.DB) error {
 		return fmt.Errorf("creating directory %s: %w", destDir, err)
 	}
 
-	expected := make(map[string]bool, len(sources))
-	for _, src := range sources {
-		dest := filepath.Join(destDir, filepath.Base(src))
-		expected[dest] = true
-	}
-
-	entries, err := os.ReadDir(destDir)
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", destDir, err)
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		path := filepath.Join(destDir, entry.Name())
-		if expected[path] {
-			continue
-		}
-		if _, managed := hashDB[path]; managed {
-			os.RemoveAll(path)
-			delete(hashDB, path)
-		} else {
-			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), entry.Name(), ui.Muted.Render("not managed by chai — skipping"))
-		}
+	expected := expectedDestinations(sources, destDir, filepath.Base)
+	if err := removeStaleManagedDirs(destDir, expected, hashDB); err != nil {
+		return err
 	}
 
 	for _, src := range sources {
