@@ -24,6 +24,10 @@ const (
 	// MCPFormatDroid is the Droid shape in ~/.factory/mcp.json:
 	//   {"type": "stdio", "command": "npx", "args": [...], "env": {...}, "disabled": false}
 	MCPFormatDroid MCPFormat = "droid"
+
+	// MCPFormatCursor is the Cursor shape in ~/.cursor/mcp.json:
+	//   {"type": "stdio", "command": "npx", "args": [...], "env": {...}}
+	MCPFormatCursor MCPFormat = "cursor"
 )
 
 // AgentFormat identifies how a platform expects subagent definitions on disk.
@@ -127,6 +131,17 @@ func All() []Platform {
 			MCPConfigPath:    filepath.Join(".codex", "config.toml"),
 			MCPKey:           "mcp_servers",
 			MCPFormat:        MCPFormatCodex,
+		},
+		{
+			Key:              "cursor",
+			Name:             "Cursor",
+			InstructionsPath: "", // Cursor does not document a user-level AGENTS.md path.
+			SkillsDir:        filepath.Join(".cursor", "skills"),
+			AgentsDir:        filepath.Join(".cursor", "agents"),
+			AgentFormat:      AgentFormatMarkdown,
+			MCPConfigPath:    filepath.Join(".cursor", "mcp.json"),
+			MCPKey:           "mcpServers",
+			MCPFormat:        MCPFormatCursor,
 		},
 	}
 }

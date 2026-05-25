@@ -36,9 +36,9 @@ Everything lives in `~/chai.toml`:
 
 ```toml
 # Which platforms to sync to. Only these get touched.
-platforms = ["claude", "antigravity", "droid", "opencode", "codex"]
+platforms = ["claude", "antigravity", "droid", "opencode", "codex", "cursor"]
 
-# Your shared instructions file. Copied to each platform with dirty detection.
+# Your shared instructions file. Copied to platforms with a global instructions file.
 instructions = "~/dotfiles/ai/instructions/AGENTS.md"
 
 [deps]
@@ -82,19 +82,20 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 
 ## Sync strategy
 
-- **Instructions, skills, and subagents** are **copied** with hash-based dirty detection. Agents may edit their copies. _chai_ detects changes and prompts before overwriting.
+- **Instructions, skills, and subagents** are **copied** with hash-based dirty detection. Instructions are only copied to platforms with a global instructions file. Agents may edit their copies. _chai_ detects changes and prompts before overwriting.
 - **MCP servers** are **merged** into platform config files. chai owns the `mcpServers` key (or `mcp` for OpenCode, `mcp_servers` for Codex) and preserves everything else.
 - **Droid custom models** are merged into `~/.factory/settings.json` under `customModels` and preserve unrelated settings.
 
 ### Supported platforms
 
-| Icon | Platform        | MCP | Skills | Subagents |
-| ---- | --------------- | --- | ------ | --------- |
-| ●    | Claude          | ✅  | ✅     | ✅        |
-| ◆    | Antigravity     | ✅  | ✅     | ❌        |
-| ✦    | Droid           | ✅  | ✅     | ✅        |
-| ■    | OpenCode        | ✅  | ✅     | ✅        |
-| ▲    | Codex           | ✅  | ✅     | ✅        |
+| Icon | Platform        | AGENTS.md | MCP | Skills | Subagents |
+| ---- | --------------- | --------- | --- | ------ | --------- |
+| ●    | Claude          | ✅        | ✅  | ✅     | ✅        |
+| ◆    | Antigravity     | ✅        | ✅  | ✅     | ❌        |
+| ✦    | Droid           | ✅        | ✅  | ✅     | ✅        |
+| ■    | OpenCode        | ✅        | ✅  | ✅     | ✅        |
+| ▲    | Codex           | ✅        | ✅  | ✅     | ✅        |
+| ◇    | Cursor          | ❌        | ✅  | ✅     | ✅        |
 
 ✅ full · ❌ not supported
 

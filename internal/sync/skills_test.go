@@ -55,6 +55,31 @@ func TestSyncDirCopies_CreatesCopies(t *testing.T) {
 	}
 }
 
+func TestSyncSkills_CopiesCursorSkills(t *testing.T) {
+	home := t.TempDir()
+	hashDB := hash.DB{}
+
+	skill := filepath.Join(home, "dotfiles", "ai", "skills", "web-dev")
+	os.MkdirAll(skill, 0755)
+	os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("skill web-dev"), 0644)
+
+	if err := syncSkills([]string{"~/dotfiles/ai/skills/*"}, home, platform.ForNames([]string{"cursor"}), false, hashDB); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dest := filepath.Join(home, ".cursor", "skills", "web-dev")
+	data, err := os.ReadFile(filepath.Join(dest, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("reading copied cursor skill: %v", err)
+	}
+	if string(data) != "skill web-dev" {
+		t.Fatalf("content = %q, want %q", string(data), "skill web-dev")
+	}
+	if _, ok := hashDB[dest]; !ok {
+		t.Fatal("cursor skill hash was not recorded")
+	}
+}
+
 func TestSyncDirCopies_CopiesNestedFiles(t *testing.T) {
 	home := t.TempDir()
 	hashDB := hash.DB{}

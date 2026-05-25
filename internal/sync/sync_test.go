@@ -58,6 +58,7 @@ func TestRunWithHome_MissingInstructionsFile(t *testing.T) {
 	home := t.TempDir()
 
 	cfg := &config.Config{
+		Platforms:    []string{"claude"},
 		Instructions: "~/nonexistent/agents.md",
 	}
 
@@ -73,7 +74,7 @@ func TestRunWithHome_MissingInstructionsFile(t *testing.T) {
 func TestRunWithHome_EmptyInstructionsPath(t *testing.T) {
 	home := t.TempDir()
 
-	cfg := &config.Config{}
+	cfg := &config.Config{Platforms: []string{"claude"}}
 
 	err := RunWithHome(context.Background(), cfg, home, Options{})
 	if err == nil {
@@ -81,6 +82,19 @@ func TestRunWithHome_EmptyInstructionsPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no instructions path") {
 		t.Errorf("error = %q, want it to contain 'no instructions path'", err.Error())
+	}
+}
+
+func TestRunWithHome_CursorOnlyDoesNotRequireInstructions(t *testing.T) {
+	home := t.TempDir()
+	cfg := &config.Config{Platforms: []string{"cursor"}}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(home, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("cursor-only sync should not write instructions to home, stat err=%v", err)
 	}
 }
 

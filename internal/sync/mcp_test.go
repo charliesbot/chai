@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -486,6 +487,120 @@ func TestSyncMCP_WritesDroidFormat(t *testing.T) {
 		if _, ok := entry[forbidden]; ok {
 			t.Errorf("Droid entry should not contain %q field, got %v", forbidden, entry[forbidden])
 		}
+	}
+}
+
+func TestBuildCursorMCPServers_UsesStdioShape(t *testing.T) {
+	standard := map[string]mcpEntry{
+		"ctx7": {
+			Command: "npx",
+			Args:    []string{"-y", "@upstash/context7-mcp"},
+			Env:     map[string]string{"FOO": "bar"},
+			CWD:     "/ignored/by/cursor",
+		},
+	}
+
+	got := buildCursorMCPServers(standard)
+	entry, ok := got["ctx7"]
+	if !ok {
+		t.Fatalf("ctx7 missing from output")
+	}
+	if entry.Type != "stdio" {
+		t.Errorf("type = %q, want %q", entry.Type, "stdio")
+	}
+	if entry.Command != "npx" {
+		t.Errorf("command = %q, want %q", entry.Command, "npx")
+	}
+	wantArgs := []string{"-y", "@upstash/context7-mcp"}
+	if len(entry.Args) != len(wantArgs) {
+		t.Fatalf("args = %v, want %v", entry.Args, wantArgs)
+	}
+	for i, v := range wantArgs {
+		if entry.Args[i] != v {
+			t.Errorf("args[%d] = %q, want %q", i, entry.Args[i], v)
+		}
+	}
+	if entry.Env["FOO"] != "bar" {
+		t.Errorf("env.FOO = %q, want %q", entry.Env["FOO"], "bar")
+	}
+}
+
+func TestSyncMCP_WritesCursorFormat(t *testing.T) {
+	home := t.TempDir()
+
+	cfg := &config.Config{
+		MCP: map[string]config.MCP{
+			"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
+		},
+	}
+	cursor := platform.ForNames([]string{"cursor"})
+	if len(cursor) != 1 {
+		t.Fatalf("expected one platform match for cursor, got %d", len(cursor))
+	}
+
+	if err := syncMCP(cfg, home, cursor, false); err != nil {
+		t.Fatalf("syncMCP: %v", err)
+	}
+
+	path := filepath.Join(home, ".cursor", "mcp.json")
+	got := readJSON(t, path)
+	mcpServers, ok := got["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatalf("mcpServers key missing or wrong type in %v", got)
+	}
+
+	entry, ok := mcpServers["ctx7"].(map[string]any)
+	if !ok {
+		t.Fatalf("ctx7 missing from mcpServers")
+	}
+	if entry["type"] != "stdio" {
+		t.Errorf("type = %v, want %q", entry["type"], "stdio")
+	}
+	if entry["command"] != "npx" {
+		t.Errorf("command = %v, want %q", entry["command"], "npx")
+	}
+	args, ok := entry["args"].([]any)
+	if !ok {
+		t.Fatalf("args = %v, want array", entry["args"])
+	}
+	want := []string{"-y", "@upstash/context7-mcp"}
+	if len(args) != len(want) {
+		t.Fatalf("args length = %d, want %d", len(args), len(want))
+	}
+	for i, v := range want {
+		if args[i] != v {
+			t.Errorf("args[%d] = %v, want %q", i, args[i], v)
+		}
+	}
+	for _, forbidden := range []string{"cwd", "disabled", "enabled"} {
+		if _, ok := entry[forbidden]; ok {
+			t.Errorf("Cursor entry should not contain %q field, got %v", forbidden, entry[forbidden])
+		}
+	}
+}
+
+func TestSyncMCP_ReturnsCursorWriteError(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".cursor", "mcp.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("creating parent dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("{"), 0644); err != nil {
+		t.Fatalf("writing invalid cursor config: %v", err)
+	}
+
+	cfg := &config.Config{
+		MCP: map[string]config.MCP{
+			"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
+		},
+	}
+
+	err := syncMCP(cfg, home, platform.ForNames([]string{"cursor"}), false)
+	if err == nil {
+		t.Fatal("expected cursor MCP write error")
+	}
+	if !strings.Contains(err.Error(), "syncing mcp servers") {
+		t.Fatalf("error = %q, want syncing mcp servers", err.Error())
 	}
 }
 
