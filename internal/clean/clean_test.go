@@ -135,6 +135,67 @@ func TestRunWithHome_DryRunDoesNotRemoveOutputs(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_RefusesToRemoveConfiguredSourceTree(t *testing.T) {
+	home := t.TempDir()
+	cfg := &config.Config{Platforms: []string{"codex"}}
+	cfg.Skills.Paths = []string{"~/.agents/skills/*"}
+
+	sourcePath := filepath.Join(home, ".agents", "skills", "managed", "SKILL.md")
+	writeFile(t, sourcePath, "source")
+
+	err := RunWithHome(context.Background(), cfg, home, Options{})
+	if err == nil {
+		t.Fatal("clean should refuse to remove configured source tree")
+	}
+	if _, statErr := os.Stat(sourcePath); statErr != nil {
+		t.Fatalf("configured source file should remain: %v", statErr)
+	}
+}
+
+func TestRunWithHome_RefusesToRemoveRelativeConfiguredSourceTree(t *testing.T) {
+	home := t.TempDir()
+	cfg := &config.Config{Platforms: []string{"codex"}}
+	cfg.Skills.Paths = []string{".agents/skills/*"}
+
+	sourcePath := filepath.Join(home, ".agents", "skills", "managed", "SKILL.md")
+	writeFile(t, sourcePath, "source")
+
+	err := RunWithHome(context.Background(), cfg, home, Options{})
+	if err == nil {
+		t.Fatal("clean should refuse to remove relative configured source tree")
+	}
+	if _, statErr := os.Stat(sourcePath); statErr != nil {
+		t.Fatalf("configured source file should remain: %v", statErr)
+	}
+}
+
+func TestRunWithHome_RefusesToRemoveSymlinkedConfiguredSourceTree(t *testing.T) {
+	home := t.TempDir()
+	cfg := &config.Config{Platforms: []string{"codex"}}
+	cfg.Skills.Paths = []string{"~/source-skills/*"}
+
+	sourceDir := filepath.Join(home, ".agents", "skills")
+	sourcePath := filepath.Join(sourceDir, "managed", "SKILL.md")
+	writeFile(t, sourcePath, "source")
+	if err := os.Symlink(sourceDir, filepath.Join(home, "source-skills")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	err := RunWithHome(context.Background(), cfg, home, Options{})
+	if err == nil {
+		t.Fatal("clean should refuse to remove symlinked configured source tree")
+	}
+	if _, statErr := os.Stat(sourcePath); statErr != nil {
+		t.Fatalf("configured source file should remain: %v", statErr)
+	}
+}
+
+func TestPathsOverlapIgnoresCase(t *testing.T) {
+	if !pathsOverlap("/Users/example/.agents/skills", "/users/example/.agents/skills/web-dev") {
+		t.Fatal("pathsOverlap should treat case-only path differences as overlapping")
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

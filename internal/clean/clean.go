@@ -13,6 +13,7 @@ import (
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
+	"github.com/charliesbot/chai/internal/resolve"
 	"github.com/charliesbot/chai/internal/ui"
 )
 
@@ -42,6 +43,9 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	if len(targets.dirs) == 0 && len(targets.mcps) == 0 {
 		fmt.Println(ui.Muted.Render("nothing to clean"))
 		return nil
+	}
+	if err := rejectSourceOverlaps(cfg, home, targets.dirs); err != nil {
+		return err
 	}
 
 	if opts.DryRun {
@@ -108,6 +112,133 @@ func cleanTargets(home string, platforms []platform.Platform) targets {
 	}
 
 	return out
+}
+
+func rejectSourceOverlaps(cfg *config.Config, home string, dirs []string) error {
+	patterns := make([]string, 0, len(cfg.Skills.Paths)+len(cfg.Subagents.Paths))
+	patterns = append(patterns, cfg.Skills.Paths...)
+	patterns = append(patterns, cfg.Subagents.Paths...)
+
+	sources, err := configuredSourcePaths(home, patterns)
+	if err != nil {
+		return err
+	}
+	cleanDirs := expandedPaths(dirs)
+	sourcePaths := expandedPaths(sources)
+
+	for _, dir := range cleanDirs {
+		for _, source := range sourcePaths {
+			if pathsOverlap(dir, source) {
+				return fmt.Errorf("refusing to clean %s because it overlaps configured source path %s", dir, source)
+			}
+		}
+	}
+	return nil
+}
+
+func configuredSourcePaths(home string, patterns []string) ([]string, error) {
+	seen := make(map[string]bool)
+	var sources []string
+
+	for _, pattern := range patterns {
+		resolved, err := resolve.PathWithHome(pattern, home)
+		if err != nil {
+			return nil, fmt.Errorf("resolving source path %q: %w", pattern, err)
+		}
+		resolved = absPath(home, resolved)
+
+		if !hasGlobMeta(resolved) {
+			if !seen[resolved] {
+				seen[resolved] = true
+				sources = append(sources, resolved)
+			}
+			continue
+		}
+
+		base := globBase(resolved)
+		if base != "" && !seen[base] {
+			seen[base] = true
+			sources = append(sources, base)
+		}
+
+		matches, err := filepath.Glob(resolved)
+		if err != nil {
+			return nil, fmt.Errorf("resolving source pattern %q: %w", pattern, err)
+		}
+		for _, match := range matches {
+			if !seen[match] {
+				seen[match] = true
+				sources = append(sources, match)
+			}
+		}
+	}
+
+	return sources, nil
+}
+
+func expandedPaths(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		addPath(&out, seen, filepath.Clean(path))
+		if real, err := filepath.EvalSymlinks(path); err == nil {
+			addPath(&out, seen, filepath.Clean(real))
+		}
+	}
+	return out
+}
+
+func addPath(paths *[]string, seen map[string]bool, path string) {
+	if seen[path] {
+		return
+	}
+	seen[path] = true
+	*paths = append(*paths, path)
+}
+
+func absPath(home, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(home, path)
+}
+
+func hasGlobMeta(path string) bool {
+	return strings.ContainsAny(path, "*?[")
+}
+
+func globBase(pattern string) string {
+	volume := filepath.VolumeName(pattern)
+	rest := strings.TrimPrefix(pattern, volume)
+	rooted := strings.HasPrefix(rest, string(filepath.Separator))
+	rest = strings.TrimPrefix(rest, string(filepath.Separator))
+
+	parts := strings.Split(rest, string(filepath.Separator))
+	for i, part := range parts {
+		if hasGlobMeta(part) {
+			if i == 0 {
+				if rooted {
+					return volume + string(filepath.Separator)
+				}
+				return volume
+			}
+			base := filepath.Join(parts[:i]...)
+			if rooted {
+				base = string(filepath.Separator) + base
+			}
+			return volume + base
+		}
+	}
+	return pattern
+}
+
+func pathsOverlap(a, b string) bool {
+	if pathWithin(a, b) || pathWithin(b, a) {
+		return true
+	}
+	a = strings.ToLower(a)
+	b = strings.ToLower(b)
+	return pathWithin(a, b) || pathWithin(b, a)
 }
 
 func printDryRun(targets targets) {

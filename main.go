@@ -103,6 +103,9 @@ func main() {
 		ShortHelp:  "Remove generated skills, subagents, and MCP config",
 		FlagSet:    cleanFlags,
 		Exec: func(ctx context.Context, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("clean does not accept positional arguments")
+			}
 			home, err := os.UserHomeDir()
 			if err != nil {
 				return err
