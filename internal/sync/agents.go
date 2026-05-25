@@ -135,36 +135,18 @@ func syncCodexAgentCopies(sources []string, destDir string, hashDB hash.DB) erro
 		return fmt.Errorf("creating directory %s: %w", destDir, err)
 	}
 
-	entries, err := os.ReadDir(destDir)
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", destDir, err)
+	expected := make(map[string]bool, len(generated))
+	for dest := range generated {
+		expected[dest] = true
 	}
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".toml" {
-			continue
-		}
-		path := filepath.Join(destDir, entry.Name())
-		if _, ok := generated[path]; ok {
-			continue
-		}
-		if _, managed := hashDB[path]; managed {
-			os.Remove(path)
-			delete(hashDB, path)
-		} else {
-			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), entry.Name(), ui.Muted.Render("not managed by chai — skipping"))
-		}
+	if err := removeStaleManagedFiles(destDir, ".toml", expected, hashDB); err != nil {
+		return err
 	}
 
 	for dest, data := range generated {
-		tmp := dest + ".tmp"
-		if err := os.WriteFile(tmp, data, 0644); err != nil {
-			return fmt.Errorf("writing %s: %w", tmp, err)
+		if err := writeManagedFile(dest, data, 0644, hashDB); err != nil {
+			return err
 		}
-		if err := os.Rename(tmp, dest); err != nil {
-			os.Remove(tmp)
-			return fmt.Errorf("renaming %s → %s: %w", tmp, dest, err)
-		}
-		hashDB[dest] = hash.Sum(data)
 	}
 
 	return nil
