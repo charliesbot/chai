@@ -177,32 +177,54 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 
 // platformStatus tracks success/failure per platform, preserving order for UI rendering.
 type platformStatus struct {
-	order []string
-	state map[string]ui.PlatformState
+	order         []string
+	state         map[string]ui.PlatformState
+	displayByName map[string]string
 }
 
 func newPlatformStatus(platforms []platform.Platform) platformStatus {
 	ps := platformStatus{
-		order: make([]string, 0, len(platforms)),
-		state: make(map[string]ui.PlatformState, len(platforms)),
+		order:         make([]string, 0, len(platforms)),
+		state:         make(map[string]ui.PlatformState, len(platforms)),
+		displayByName: make(map[string]string, len(platforms)),
 	}
 	for _, p := range platforms {
-		ps.order = append(ps.order, p.Name)
-		ps.state[p.Name] = ui.PlatformOK
+		display := platformDisplayName(p)
+		ps.displayByName[p.Name] = display
+		if _, ok := ps.state[display]; !ok {
+			ps.order = append(ps.order, display)
+			ps.state[display] = ui.PlatformOK
+		}
 	}
 	return ps
 }
 
+func platformDisplayName(p platform.Platform) string {
+	if p.Key == "antigravity" {
+		return "Antigravity"
+	}
+	return p.Name
+}
+
 func (ps platformStatus) setFailed(name string) {
-	if _, ok := ps.state[name]; ok {
-		ps.state[name] = ui.PlatformFailed
+	display := ps.displayName(name)
+	if _, ok := ps.state[display]; ok {
+		ps.state[display] = ui.PlatformFailed
 	}
 }
 
 func (ps platformStatus) setNA(name string) {
-	if _, ok := ps.state[name]; ok {
-		ps.state[name] = ui.PlatformNA
+	display := ps.displayName(name)
+	if _, ok := ps.state[display]; ok {
+		ps.state[display] = ui.PlatformNA
 	}
+}
+
+func (ps platformStatus) displayName(name string) string {
+	if display, ok := ps.displayByName[name]; ok {
+		return display
+	}
+	return name
 }
 
 func (ps platformStatus) statuses() []ui.PlatformStatus {

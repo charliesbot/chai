@@ -8,17 +8,17 @@ import (
 )
 
 type Config struct {
-	Platforms      []string             `toml:"platforms"`
-	Instructions   string               `toml:"instructions"`
-	Deps           map[string]Dep       `toml:"-"`
-	Skills         Skills               `toml:"skills"`
-	Subagents      Subagents            `toml:"subagents"`
-	MCP            map[string]MCP       `toml:"mcp"`
-	AntigravityCLI AntigravityCLIConfig `toml:"antigravity-cli"`
-	Droid          DroidConfig          `toml:"droid"`
+	Platforms    []string          `toml:"platforms"`
+	Instructions string            `toml:"instructions"`
+	Deps         map[string]Dep    `toml:"-"`
+	Skills       Skills            `toml:"skills"`
+	Subagents    Subagents         `toml:"subagents"`
+	MCP          map[string]MCP    `toml:"mcp"`
+	Antigravity  AntigravityConfig `toml:"antigravity"`
+	Droid        DroidConfig       `toml:"droid"`
 }
 
-type AntigravityCLIConfig struct {
+type AntigravityConfig struct {
 	Plugins map[string]string `toml:"plugins"`
 }
 
@@ -58,14 +58,14 @@ type MCP struct {
 
 // rawConfig is the intermediate TOML representation.
 type rawConfig struct {
-	Platforms      []string             `toml:"platforms"`
-	Instructions   string               `toml:"instructions"`
-	Deps           map[string]any       `toml:"deps"`
-	Skills         Skills               `toml:"skills"`
-	Subagents      Subagents            `toml:"subagents"`
-	MCP            map[string]MCP       `toml:"mcp"`
-	AntigravityCLI AntigravityCLIConfig `toml:"antigravity-cli"`
-	Droid          DroidConfig          `toml:"droid"`
+	Platforms    []string          `toml:"platforms"`
+	Instructions string            `toml:"instructions"`
+	Deps         map[string]any    `toml:"deps"`
+	Skills       Skills            `toml:"skills"`
+	Subagents    Subagents         `toml:"subagents"`
+	MCP          map[string]MCP    `toml:"mcp"`
+	Antigravity  AntigravityConfig `toml:"antigravity"`
+	Droid        DroidConfig       `toml:"droid"`
 }
 
 func Load(path string) (*Config, error) {
@@ -88,14 +88,14 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg := &Config{
-		Platforms:      raw.Platforms,
-		Instructions:   raw.Instructions,
-		Deps:           deps,
-		Skills:         raw.Skills,
-		Subagents:      raw.Subagents,
-		MCP:            raw.MCP,
-		AntigravityCLI: raw.AntigravityCLI,
-		Droid:          raw.Droid,
+		Platforms:    raw.Platforms,
+		Instructions: raw.Instructions,
+		Deps:         deps,
+		Skills:       raw.Skills,
+		Subagents:    raw.Subagents,
+		MCP:          raw.MCP,
+		Antigravity:  raw.Antigravity,
+		Droid:        raw.Droid,
 	}
 
 	return cfg, nil

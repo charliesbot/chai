@@ -24,7 +24,7 @@ Download the latest binary from [GitHub Releases](https://github.com/charliesbot
 
 ```bash
 chai init    # Scaffold ~/chai.toml
-chai update  # Clone or pull deps, install Antigravity-CLI plugins
+chai update  # Clone or pull deps, install Antigravity plugins
 chai sync    # Distribute config to all platforms
 ```
 
@@ -36,7 +36,7 @@ Everything lives in `~/chai.toml`:
 
 ```toml
 # Which platforms to sync to. Only these get touched.
-platforms = ["claude", "antigravity-cli", "droid", "opencode", "codex"]
+platforms = ["claude", "antigravity", "droid", "opencode", "codex"]
 
 # Your shared instructions file. Copied to each platform with dirty detection.
 instructions = "~/dotfiles/ai/instructions/AGENTS.md"
@@ -64,8 +64,8 @@ paths = ["~/dotfiles/ai/subagents/*"]
 command = "npx"
 args = ["-y", "@angular/cli", "mcp"]
 
-[antigravity-cli.plugins]
-# Antigravity-CLI plugins installed via 'agy plugin install' on 'chai update'.
+[antigravity.plugins]
+# Antigravity plugins installed via 'agy plugin install' on 'chai update'.
 workspace = "https://github.com/gemini-cli-extensions/workspace"
 
 [[droid.custom_models]]
@@ -91,13 +91,14 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 | Icon | Platform        | MCP | Skills | Subagents |
 | ---- | --------------- | --- | ------ | --------- |
 | ●    | Claude          | ✅  | ✅     | ✅        |
-| ▲    | Antigravity     | ✅  | ✅     | ❌        |
-| ◆    | Antigravity-CLI | ✅  | ✅     | ❌        |
+| ◆    | Antigravity     | ✅  | ✅     | ❌        |
 | ✦    | Droid           | ✅  | ✅     | ✅        |
 | ■    | OpenCode        | ✅  | ✅     | ✅        |
-| ⬢    | Codex           | ✅  | ✅     | ✅        |
+| ▲    | Codex           | ✅  | ✅     | ✅        |
 
 ✅ full · ❌ not supported
+
+`antigravity` syncs the IDE, legacy IDE, and CLI user-level Antigravity directories.
 
 ## License
 

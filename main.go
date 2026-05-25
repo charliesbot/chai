@@ -106,8 +106,8 @@ func main() {
 			if err != nil {
 				return err
 			}
-			plugins := cfg.AntigravityCLI.Plugins
-			if !platform.HasPlatform(cfg.Platforms, "antigravity-cli") {
+			plugins := cfg.Antigravity.Plugins
+			if !platform.HasPlatform(cfg.Platforms, "antigravity") {
 				plugins = nil
 			}
 			return update.Run(cfg.Deps, plugins)

@@ -36,7 +36,7 @@ args = ["scripts/start.js"]
 cwd = "@workspace"
 env = { GOOGLE_API_KEY = "key123" }
 
-[antigravity-cli.plugins]
+[antigravity.plugins]
 workspace = "https://github.com/gemini-cli-extensions/workspace"
 `
 
@@ -98,11 +98,11 @@ func TestLoad_Full(t *testing.T) {
 		t.Errorf("mcp[google-workspace].env[GOOGLE_API_KEY] = %q", gw.Env["GOOGLE_API_KEY"])
 	}
 
-	if len(cfg.AntigravityCLI.Plugins) != 1 {
-		t.Errorf("antigravity-cli plugins count = %d, want 1", len(cfg.AntigravityCLI.Plugins))
+	if len(cfg.Antigravity.Plugins) != 1 {
+		t.Errorf("antigravity plugins count = %d, want 1", len(cfg.Antigravity.Plugins))
 	}
-	if cfg.AntigravityCLI.Plugins["workspace"] != "https://github.com/gemini-cli-extensions/workspace" {
-		t.Errorf("antigravity-cli.plugins[workspace] = %q", cfg.AntigravityCLI.Plugins["workspace"])
+	if cfg.Antigravity.Plugins["workspace"] != "https://github.com/gemini-cli-extensions/workspace" {
+		t.Errorf("antigravity.plugins[workspace] = %q", cfg.Antigravity.Plugins["workspace"])
 	}
 }
 
