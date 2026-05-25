@@ -66,7 +66,7 @@ Built into source code (not user-configured). Each platform specifies:
 | Antigravity-CLI | `~/.gemini/GEMINI.md` _(shared with Antigravity)_ | `~/.gemini/antigravity-cli/skills/` | _none (subagents live in plugins)_ | `~/.gemini/antigravity-cli/mcp_config.json` | replace key |
 | Droid           | `~/.factory/AGENTS.md`            | `~/.factory/skills/`               | `~/.factory/droids/`               | `~/.factory/mcp.json`                     | replace `mcpServers` with Droid stdio entries |
 | OpenCode        | `~/.config/opencode/AGENTS.md`    | `~/.config/opencode/skills/`       | `~/.config/opencode/agents/`       | `~/.config/opencode/opencode.json`        | replace `mcp` (OpenCode-format entries) |
-| Codex           | `~/.codex/AGENTS.md`              | `~/.agents/skills/`                | _none_                             | `~/.codex/config.toml`                    | replace `mcp_servers` table (TOML, no cwd) |
+| Codex           | `~/.codex/AGENTS.md`              | `~/.agents/skills/`                | `~/.codex/agents/` _(compiled TOML)_ | `~/.codex/config.toml`                    | replace `mcp_servers` table (TOML, no cwd) |
 
 ### Key Design Decisions
 

@@ -10,7 +10,15 @@ import (
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
 	"github.com/charliesbot/chai/internal/ui"
+	toml "github.com/pelletier/go-toml/v2"
+	"gopkg.in/yaml.v3"
 )
+
+type codexAgent struct {
+	Name                  string `toml:"name"`
+	Description           string `toml:"description"`
+	DeveloperInstructions string `toml:"developer_instructions"`
+}
 
 // syncAgents resolves subagent patterns, then copies them to each platform's
 // agents directory.
@@ -44,11 +52,22 @@ func syncAgents(agentPatterns []string, home string, platforms []platform.Platfo
 		if dryRun {
 			for _, src := range agents {
 				name := filepath.Base(src)
+				if p.AgentFormat == platform.AgentFormatCodexTOML {
+					name = strings.TrimSuffix(name, filepath.Ext(name)) + ".toml"
+				}
 				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, name)), ui.Muted.Render("→ "+src))
 			}
 		} else {
-			if err := syncFileCopies(agents, destDir, hashDB); err != nil {
+			var err error
+			switch p.AgentFormat {
+			case platform.AgentFormatCodexTOML:
+				err = syncCodexAgentCopies(agents, destDir, hashDB)
+			default:
+				err = syncFileCopies(agents, destDir, hashDB)
+			}
+			if err != nil {
 				status.setFailed(p.Name)
+				return fmt.Errorf("syncing %s subagents: %w", p.Name, err)
 			}
 		}
 	}
@@ -99,4 +118,113 @@ func resolveFilePatterns(patterns []string, home string) ([]string, error) {
 	}
 
 	return all, nil
+}
+
+func syncCodexAgentCopies(sources []string, destDir string, hashDB hash.DB) error {
+	generated := make(map[string][]byte, len(sources))
+	for _, src := range sources {
+		data, err := compileCodexAgent(src)
+		if err != nil {
+			return err
+		}
+		name := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src)) + ".toml"
+		generated[filepath.Join(destDir, name)] = data
+	}
+
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("creating directory %s: %w", destDir, err)
+	}
+
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", destDir, err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".toml" {
+			continue
+		}
+		path := filepath.Join(destDir, entry.Name())
+		if _, ok := generated[path]; ok {
+			continue
+		}
+		if _, managed := hashDB[path]; managed {
+			os.Remove(path)
+			delete(hashDB, path)
+		} else {
+			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), entry.Name(), ui.Muted.Render("not managed by chai — skipping"))
+		}
+	}
+
+	for dest, data := range generated {
+		tmp := dest + ".tmp"
+		if err := os.WriteFile(tmp, data, 0644); err != nil {
+			return fmt.Errorf("writing %s: %w", tmp, err)
+		}
+		if err := os.Rename(tmp, dest); err != nil {
+			os.Remove(tmp)
+			return fmt.Errorf("renaming %s → %s: %w", tmp, dest, err)
+		}
+		hashDB[dest] = hash.Sum(data)
+	}
+
+	return nil
+}
+
+func compileCodexAgent(src string) ([]byte, error) {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", src, err)
+	}
+
+	frontmatter, body, err := splitFrontmatter(string(data))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", src, err)
+	}
+
+	var meta struct {
+		Name        string `yaml:"name"`
+		Description string `yaml:"description"`
+	}
+	if err := yaml.Unmarshal([]byte(frontmatter), &meta); err != nil {
+		return nil, fmt.Errorf("%s: parsing frontmatter: %w", src, err)
+	}
+
+	agent := codexAgent{
+		Description:           strings.TrimSpace(meta.Description),
+		DeveloperInstructions: strings.TrimSpace(body),
+		Name:                  strings.TrimSpace(meta.Name),
+	}
+	if agent.Name == "" {
+		return nil, fmt.Errorf("%s: missing required frontmatter field: name", src)
+	}
+	if agent.Description == "" {
+		return nil, fmt.Errorf("%s: missing required frontmatter field: description", src)
+	}
+	if agent.DeveloperInstructions == "" {
+		return nil, fmt.Errorf("%s: missing required body for developer_instructions", src)
+	}
+
+	out, err := toml.Marshal(agent)
+	if err != nil {
+		return nil, fmt.Errorf("%s: marshaling Codex agent TOML: %w", src, err)
+	}
+	return append(out, '\n'), nil
+}
+
+func splitFrontmatter(data string) (string, string, error) {
+	data = strings.TrimPrefix(data, "\ufeff")
+	data = strings.ReplaceAll(data, "\r\n", "\n")
+	if !strings.HasPrefix(data, "---\n") {
+		return "", "", fmt.Errorf("missing YAML frontmatter")
+	}
+	rest := strings.TrimPrefix(data, "---\n")
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return "", "", fmt.Errorf("unterminated YAML frontmatter")
+	}
+	frontmatter := rest[:end]
+	body := rest[end+len("\n---"):]
+	body = strings.TrimPrefix(body, "\r\n")
+	body = strings.TrimPrefix(body, "\n")
+	return frontmatter, body, nil
 }

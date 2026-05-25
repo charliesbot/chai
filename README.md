@@ -95,7 +95,7 @@ Paths support `~` (home directory) and `@name` (resolves to `~/.chai/deps/<name>
 | ◆    | Antigravity-CLI | ✅  | ✅     | ❌        |
 | ✦    | Droid           | ✅  | ✅     | ✅        |
 | ■    | OpenCode        | ✅  | ✅     | ✅        |
-| ⬢    | Codex           | ✅  | ✅     | ❌        |
+| ⬢    | Codex           | ✅  | ✅     | ✅        |
 
 ✅ full · ❌ not supported
 

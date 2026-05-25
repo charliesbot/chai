@@ -10,6 +10,7 @@ import (
 
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/hash"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 func TestRunWithHome_CopiesInstructions(t *testing.T) {
@@ -575,7 +576,11 @@ func TestRunWithHome_CodexPaths(t *testing.T) {
 
 	agentDir := filepath.Join(srcDir, "subagents")
 	os.MkdirAll(agentDir, 0755)
-	os.WriteFile(filepath.Join(agentDir, "reviewer.md"), []byte("reviewer body"), 0644)
+	os.WriteFile(filepath.Join(agentDir, "reviewer.md"), []byte(`---
+name: reviewer
+description: Reviews code.
+---
+reviewer body`), 0644)
 
 	cfg := &config.Config{
 		Platforms:    []string{"codex"},
@@ -607,10 +612,16 @@ func TestRunWithHome_CodexPaths(t *testing.T) {
 		}
 	}
 
-	// Codex has no markdown subagent target — nothing should be written under .codex/agents.
-	codexAgents := filepath.Join(home, ".codex", "agents")
-	if _, err := os.Stat(codexAgents); !os.IsNotExist(err) {
-		t.Errorf("codex agents dir should not exist, got err=%v", err)
+	data, err := os.ReadFile(filepath.Join(home, ".codex", "agents", "reviewer.toml"))
+	if err != nil {
+		t.Fatalf("reading codex subagent: %v", err)
+	}
+	var got codexAgent
+	if err := toml.Unmarshal(data, &got); err != nil {
+		t.Fatalf("parsing codex subagent: %v\n%s", err, data)
+	}
+	if got.Name != "reviewer" || got.Description != "Reviews code." || got.DeveloperInstructions != "reviewer body" {
+		t.Fatalf("codex subagent = %#v", got)
 	}
 }
 
