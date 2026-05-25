@@ -52,6 +52,15 @@ type droidMCPEntry struct {
 	Disabled bool              `json:"disabled"`
 }
 
+// cursorMCPEntry is the JSON structure Cursor expects in ~/.cursor/mcp.json
+// under "mcpServers" for local stdio servers. Cursor has no cwd field.
+type cursorMCPEntry struct {
+	Type    string            `json:"type"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+}
+
 // syncMCP writes MCP server definitions to each platform's config file,
 // using each platform's preferred entry shape.
 func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dryRun bool) error {
@@ -66,12 +75,13 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 	opencode := buildOpenCodeMCPServers(standard)
 	codex := buildCodexMCPServers(standard)
 	droid := buildDroidMCPServers(standard)
+	cursor := buildCursorMCPServers(standard)
 
-	// OpenCode, Codex, and Droid have no cwd equivalent — flag servers that define one
+	// OpenCode, Codex, Droid, and Cursor have no cwd equivalent — flag servers that define one
 	// so users don't silently get a different working directory across platforms.
-	cwdDropTargets := make([]string, 0, 2)
+	cwdDropTargets := make([]string, 0, 4)
 	for _, p := range platforms {
-		if p.MCPFormat == platform.MCPFormatOpenCode || p.MCPFormat == platform.MCPFormatCodex || p.MCPFormat == platform.MCPFormatDroid {
+		if p.MCPFormat == platform.MCPFormatOpenCode || p.MCPFormat == platform.MCPFormatCodex || p.MCPFormat == platform.MCPFormatDroid || p.MCPFormat == platform.MCPFormatCursor {
 			cwdDropTargets = append(cwdDropTargets, p.Name)
 		}
 	}
@@ -103,6 +113,10 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 			}
 		case platform.MCPFormatDroid:
 			for name, e := range droid {
+				out[name] = e
+			}
+		case platform.MCPFormatCursor:
+			for name, e := range cursor {
 				out[name] = e
 			}
 		default:
@@ -171,6 +185,7 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 		seen[t] = append(seen[t], p)
 	}
 
+	var mergeErrors []string
 	for _, t := range order {
 		entries := entriesFor(seen[t][0])
 		var mergeErr error
@@ -185,6 +200,7 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 				status.setFailed(p.Name)
 				names[i] = p.Name
 			}
+			mergeErrors = append(mergeErrors, strings.Join(names, " + ")+": "+mergeErr.Error())
 			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), ui.Bold.Render(strings.Join(names, " + ")), ui.Muted.Render(mergeErr.Error()))
 		}
 	}
@@ -197,6 +213,9 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 	sort.Strings(names)
 
 	fmt.Println(ui.Box("mcp servers", len(standard), status.statuses(), names))
+	if len(mergeErrors) > 0 {
+		return fmt.Errorf("syncing mcp servers: %s", strings.Join(mergeErrors, "; "))
+	}
 
 	return nil
 }
@@ -295,6 +314,22 @@ func buildDroidMCPServers(standard map[string]mcpEntry) map[string]droidMCPEntry
 			Args:     e.Args,
 			Env:      e.Env,
 			Disabled: false,
+		}
+	}
+	return out
+}
+
+// buildCursorMCPServers translates standard entries into Cursor's stdio MCP shape.
+// Cursor supports remote MCP servers too, but chai's current MCP schema models
+// local command-based servers, so every generated entry is a stdio server.
+func buildCursorMCPServers(standard map[string]mcpEntry) map[string]cursorMCPEntry {
+	out := make(map[string]cursorMCPEntry, len(standard))
+	for name, e := range standard {
+		out[name] = cursorMCPEntry{
+			Type:    "stdio",
+			Command: e.Command,
+			Args:    e.Args,
+			Env:     e.Env,
 		}
 	}
 	return out

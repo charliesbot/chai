@@ -82,6 +82,39 @@ You plan work.
 	}
 }
 
+func TestSyncAgents_CopiesCursorSubagentFiles(t *testing.T) {
+	home := t.TempDir()
+
+	agentsDir := filepath.Join(home, "dotfiles", "ai", "subagents")
+	os.MkdirAll(agentsDir, 0755)
+	os.WriteFile(filepath.Join(agentsDir, "reviewer.md"), []byte(`---
+name: reviewer
+description: Reviews code.
+---
+You review code.
+`), 0644)
+
+	hashDB := hash.DB{}
+	if err := syncAgents(
+		[]string{"~/dotfiles/ai/subagents/*"},
+		home, platform.ForNames([]string{"cursor"}), false, hashDB,
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	path := filepath.Join(home, ".cursor", "agents", "reviewer.md")
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("reviewer.md missing from cursor agents dir: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("reviewer.md should be a copy, not a symlink")
+	}
+	if _, ok := hashDB[path]; !ok {
+		t.Fatal("cursor agent hash was not recorded")
+	}
+}
+
 func TestResolveFilePatterns(t *testing.T) {
 	home := t.TempDir()
 

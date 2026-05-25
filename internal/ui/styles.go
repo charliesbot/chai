@@ -62,6 +62,9 @@ var (
 
 	CodexStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("46")) // bright green
+
+	CursorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("111")) // blue
 )
 
 // Platform icons
@@ -87,6 +90,10 @@ func DroidIcon() string {
 
 func CodexIcon() string {
 	return CodexStyle.Render("▲")
+}
+
+func CursorIcon() string {
+	return CursorStyle.Render("◇")
 }
 
 // PlatformState represents whether a platform was synced, failed, or not applicable.
@@ -226,6 +233,8 @@ func platformIcon(name string) string {
 		return DroidIcon()
 	case "Codex":
 		return CodexIcon()
+	case "Cursor":
+		return CursorIcon()
 	default:
 		return "○"
 	}

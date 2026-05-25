@@ -15,7 +15,7 @@ import (
 
 func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 	home := t.TempDir()
-	cfg := &config.Config{Platforms: []string{"antigravity", "codex"}}
+	cfg := &config.Config{Platforms: []string{"antigravity", "codex", "cursor"}}
 
 	dirs := []string{
 		filepath.Join(home, ".gemini", "antigravity-ide", "skills"),
@@ -23,6 +23,8 @@ func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 		filepath.Join(home, ".gemini", "antigravity-cli", "skills"),
 		filepath.Join(home, ".agents", "skills"),
 		filepath.Join(home, ".codex", "agents"),
+		filepath.Join(home, ".cursor", "skills"),
+		filepath.Join(home, ".cursor", "agents"),
 	}
 	for _, dir := range dirs {
 		writeFile(t, filepath.Join(dir, "managed", "SKILL.md"), "managed")
@@ -34,6 +36,8 @@ func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 		filepath.Join(home, ".gemini", "antigravity", "skills", "managed"): "hash",
 		filepath.Join(home, ".agents", "skills", "managed"):                "hash",
 		filepath.Join(home, ".codex", "agents", "reviewer.toml"):           "hash",
+		filepath.Join(home, ".cursor", "skills", "managed"):                "hash",
+		filepath.Join(home, ".cursor", "agents", "reviewer.md"):            "hash",
 		filepath.Join(home, ".claude", "skills", "keep"):                   "hash",
 	}
 	if err := db.Save(home); err != nil {
@@ -51,6 +55,10 @@ func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 	writeTOML(t, filepath.Join(home, ".codex", "config.toml"), map[string]any{
 		"mcp_servers": map[string]any{"ctx": map[string]any{"command": "npx"}},
 		"model":       "gpt-5",
+	})
+	writeJSON(t, filepath.Join(home, ".cursor", "mcp.json"), map[string]any{
+		"mcpServers": map[string]any{"ctx": map[string]any{"command": "npx"}},
+		"other":      "cursor",
 	})
 	writeJSON(t, filepath.Join(home, ".claude.json"), map[string]any{
 		"mcpServers": map[string]any{"keep": map[string]any{"command": "npx"}},
@@ -83,6 +91,14 @@ func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 	}
 	if codex["model"] != "gpt-5" {
 		t.Fatalf("unrelated codex key was not preserved: %#v", codex)
+	}
+
+	cursor := readJSON(t, filepath.Join(home, ".cursor", "mcp.json"))
+	if _, ok := cursor["mcpServers"]; ok {
+		t.Fatal("cursor mcpServers should have been removed")
+	}
+	if cursor["other"] != "cursor" {
+		t.Fatalf("unrelated cursor key was not preserved: %#v", cursor)
 	}
 
 	claude := readJSON(t, filepath.Join(home, ".claude.json"))

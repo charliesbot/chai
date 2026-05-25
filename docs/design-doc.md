@@ -21,7 +21,7 @@ Minimal first. Nail the basics, then think about complexity.
 ## Core Concepts
 
 - **Manifest** (`~/chai.toml`) — global config file that lives at `~`. Declares instructions path, deps, skills, agents, and MCP servers. All paths are absolute or use `~` / `@name`.
-- **Instructions** (`AGENTS.md`) — single source of truth for agent instructions (persistent instructions). Copied to each platform's expected file. Agents may edit their platform copy, so dirty detection protects manual changes.
+- **Instructions** (`AGENTS.md`) — single source of truth for agent instructions (persistent instructions). Copied to each platform with a global instructions file. Agents may edit their platform copy, so dirty detection protects manual changes.
 - **Skills** — reusable prompt/capability directories copied to each platform's skills directory. Chai tracks managed copies in the hash DB and leaves user-created files alone.
 - **Agents** — subagent definitions. Copied to each platform's markdown subagent directory when supported.
 - **Dependencies** — external repos that chai clones to `~/.chai/deps/`. Referenced in paths via `@name` prefix. Deps are clone-only — no magic, no manifest parsing. Updated explicitly via `chai update`, not during `chai sync`.
@@ -35,6 +35,7 @@ Minimal first. Nail the basics, then think about complexity.
 - Droid
 - OpenCode
 - Codex
+- Cursor
 
 ## Expected Folder Structure
 
@@ -102,7 +103,7 @@ command = "/Applications/Pencil.app/Contents/Resources/app.asar.unpacked/out/mcp
 args = ["--app", "desktop"]
 ```
 
-- `instructions` — path to AGENTS.md. Copied to each platform's expected location.
+- `instructions` — path to AGENTS.md. Copied to each platform with a global instructions file.
 - `[deps]` — external repos to clone. `name = "url"`. Cloned to `~/.chai/deps/<name>/`. Deps are clone-only — chai doesn't read or parse their contents. Only cloned/pulled via `chai update`, not during `chai sync`.
 - `[skills]` — skill directories. Supports globs, external paths (`~/`), and dep references (`@name/`). Copied to each platform's skills directory.
 - `[subagents]` — markdown subagent definitions. Same path resolution as skills; copied to markdown-native platforms and compiled to TOML for Codex.
@@ -127,10 +128,11 @@ Defined in chai's source code, not by the user. Each platform specifies where fi
 | Droid    | `~/.factory/AGENTS.md`   | `~/.factory/skills/` | `~/.factory/droids/` | `~/.factory/mcp.json`       | `mcpServers`   | replace key with Droid stdio entries |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skills/` | `~/.config/opencode/agents/` | `~/.config/opencode/opencode.json` | `mcp` | replace key with OpenCode entries |
 | Codex    | `~/.codex/AGENTS.md`     | `~/.agents/skills/`  | `~/.codex/agents/` _(compiled TOML)_ | `~/.codex/config.toml` | `mcp_servers` | replace TOML table |
+| Cursor   | _none_                   | `~/.cursor/skills/`  | `~/.cursor/agents/` | `~/.cursor/mcp.json` | `mcpServers` | replace key with Cursor stdio entries |
 
-- Instructions are **copied** (agents may edit their platform copy — dirty detection protects manual changes).
+- Instructions are **copied** where the platform has a global instructions file (agents may edit their platform copy — dirty detection protects manual changes).
 - Skills and agents are **copied** and tracked so stale chai-managed files can be removed without touching user-created files.
-- MCPs are transformed per platform when needed. Droid uses `type: "stdio"`, `command`, `args`, `env`, and `disabled: false` in `~/.factory/mcp.json`.
+- MCPs are transformed per platform when needed. Droid uses `type: "stdio"`, `command`, `args`, `env`, and `disabled: false` in `~/.factory/mcp.json`. Cursor uses `type: "stdio"`, `command`, `args`, and `env` in `~/.cursor/mcp.json`.
 
 ### MCP Write Strategy
 
