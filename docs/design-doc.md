@@ -105,7 +105,7 @@ args = ["--app", "desktop"]
 
 - `instructions` — path to AGENTS.md. Copied to each platform with a global instructions file.
 - `[deps]` — external repos to clone. `name = "url"`. Cloned to `~/.chai/deps/<name>/`. Deps are clone-only — chai doesn't read or parse their contents. Only cloned/pulled via `chai update`, not during `chai sync`.
-- `[skills]` — skill directories. Supports globs, external paths (`~/`), and dep references (`@name/`). Copied to each platform's skills directory.
+- `[skills]` — skill directories. Supports globs, external paths (`~/`), and dep references (`@name/`). A path ending in `SKILL.md` is copied as a single-file skill named after its parent directory. Copied to each platform's skills directory.
 - `[subagents]` — markdown subagent definitions. Same path resolution as skills; copied to markdown-native platforms and compiled to TOML for Codex.
 - `[mcp.<name>]` — MCP server definitions. `command`, `args`, optional `env` and `cwd`. The section name becomes the key in the platform's `mcpServers` object. Use `@name` in `cwd` to reference a dep's local path. NPX-based MCPs don't need a `[deps]` entry.
 - `[[droid.custom_models]]` — Droid BYOK model definitions. Written to `~/.factory/settings.json` as `customModels`, preserving unrelated settings.

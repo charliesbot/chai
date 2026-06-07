@@ -113,6 +113,39 @@ func TestSyncDirCopies_CopiesNestedFiles(t *testing.T) {
 	}
 }
 
+func TestSyncSkills_CopiesRootSkillMDAsNamedSkill(t *testing.T) {
+	home := t.TempDir()
+	hashDB := hash.DB{}
+
+	repo := filepath.Join(home, ".chai", "deps", "herdr")
+	os.MkdirAll(filepath.Join(repo, "vendor"), 0755)
+	os.WriteFile(filepath.Join(repo, "SKILL.md"), []byte("herdr skill"), 0644)
+	os.WriteFile(filepath.Join(repo, "README.md"), []byte("repo readme"), 0644)
+	os.WriteFile(filepath.Join(repo, "vendor", "large.txt"), []byte("do not copy"), 0644)
+
+	if err := syncSkills([]string{"@herdr/SKILL.md"}, home, platform.ForNames([]string{"codex"}), false, hashDB); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	dest := filepath.Join(home, ".agents", "skills", "herdr")
+	data, err := os.ReadFile(filepath.Join(dest, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("reading copied SKILL.md: %v", err)
+	}
+	if string(data) != "herdr skill" {
+		t.Errorf("content = %q, want %q", string(data), "herdr skill")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "README.md")); !os.IsNotExist(err) {
+		t.Error("repo sibling files should not be copied for file-backed skills")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "vendor")); !os.IsNotExist(err) {
+		t.Error("repo sibling directories should not be copied for file-backed skills")
+	}
+	if _, ok := hashDB[dest]; !ok {
+		t.Fatal("skill hash was not recorded")
+	}
+}
+
 func TestSyncDirCopies_RemovesStaleChaiManaged(t *testing.T) {
 	home := t.TempDir()
 	hashDB := hash.DB{}
