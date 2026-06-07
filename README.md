@@ -53,7 +53,8 @@ build = "npm install"
 [skills]
 # Directories copied to each platform's skills folder.
 # Use /* to include all children, or a bare path for a single skill.
-paths = ["~/dotfiles/ai/skills/*", "@angular-skills/*"]
+# Use @repo/SKILL.md for repos that expose a single root skill file.
+paths = ["~/dotfiles/ai/skills/*", "@angular-skills/*", "@some-tool/SKILL.md"]
 
 [subagents]
 # Files copied to each platform's agents folder.
