@@ -266,68 +266,6 @@ func TestSyncDirCopies_RemovesFilesDeletedFromSource(t *testing.T) {
 	}
 }
 
-func TestResolvePatterns(t *testing.T) {
-	home := t.TempDir()
-
-	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
-	for _, name := range []string{"web-dev", "android-dev", "slidev"} {
-		os.MkdirAll(filepath.Join(skillsDir, name), 0755)
-	}
-	os.WriteFile(filepath.Join(skillsDir, "README.md"), []byte("hi"), 0644)
-
-	patterns := []string{"~/dotfiles/ai/skills/*"}
-	results, err := resolvePatterns(patterns, home)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(results) != 3 {
-		t.Errorf("got %d results, want 3: %v", len(results), results)
-	}
-}
-
-func TestResolvePatterns_DirectoryPath(t *testing.T) {
-	home := t.TempDir()
-
-	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
-	os.MkdirAll(skillsDir, 0755)
-	os.WriteFile(filepath.Join(skillsDir, "SKILL.md"), []byte("skill"), 0644)
-
-	// A bare directory path should resolve to the directory itself
-	patterns := []string{"~/dotfiles/ai/skills"}
-	results, err := resolvePatterns(patterns, home)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(results) != 1 {
-		t.Errorf("got %d results, want 1: %v", len(results), results)
-	}
-	if len(results) > 0 && results[0] != skillsDir {
-		t.Errorf("got %q, want %q", results[0], skillsDir)
-	}
-}
-
-func TestResolvePatterns_GlobChildren(t *testing.T) {
-	home := t.TempDir()
-
-	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
-	for _, name := range []string{"web-dev", "android-dev"} {
-		os.MkdirAll(filepath.Join(skillsDir, name), 0755)
-	}
-
-	// Use explicit glob to get children
-	patterns := []string{"~/dotfiles/ai/skills/*"}
-	results, err := resolvePatterns(patterns, home)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(results) != 2 {
-		t.Errorf("got %d results, want 2: %v", len(results), results)
-	}
-}
-
 func TestSyncSkills_CopiesSkillDirectories(t *testing.T) {
 	home := t.TempDir()
 
