@@ -7,7 +7,7 @@ Keep AI coding agent configs in sync. One manifest, distributed to every platfor
 ### Homebrew
 
 ```bash
-brew install --cask charliesbot/tap/chai
+brew install charliesbot/tap/chai
 ```
 
 ### Go
