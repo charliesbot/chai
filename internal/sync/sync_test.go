@@ -491,6 +491,93 @@ func TestRunWithHome_OpenCodePaths(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_PiPathsAndSkipsUnsupportedFeatures(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+
+	skillDir := filepath.Join(srcDir, "skills", "greet")
+	os.MkdirAll(skillDir, 0755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
+
+	agentDir := filepath.Join(srcDir, "subagents")
+	os.MkdirAll(agentDir, 0755)
+	os.WriteFile(filepath.Join(agentDir, "reviewer.md"), []byte("reviewer body"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"pi"},
+		Instructions: "~/dotfiles/ai/agents.md",
+		MCP: map[string]config.MCP{
+			"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
+		},
+	}
+	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
+	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	cases := []struct {
+		label string
+		path  string
+		body  string
+	}{
+		{"instructions", filepath.Join(home, ".pi", "agent", "AGENTS.md"), "hello"},
+		{"skill", filepath.Join(home, ".pi", "agent", "skills", "greet", "SKILL.md"), "greet skill"},
+	}
+	for _, c := range cases {
+		got, err := os.ReadFile(c.path)
+		if err != nil {
+			t.Errorf("%s at %s: %v", c.label, c.path, err)
+			continue
+		}
+		if string(got) != c.body {
+			t.Errorf("%s body = %q, want %q", c.label, string(got), c.body)
+		}
+	}
+
+	for _, unsupported := range []string{
+		filepath.Join(home, ".pi", "agent", "agents"),
+		filepath.Join(home, ".pi", "agent", "mcp.json"),
+	} {
+		if _, err := os.Stat(unsupported); !os.IsNotExist(err) {
+			t.Errorf("unsupported Pi target %s should not exist, got err=%v", unsupported, err)
+		}
+	}
+}
+
+func TestRunWithHome_PiDoesNotBlockClaudeMCP(t *testing.T) {
+	home := t.TempDir()
+
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	os.MkdirAll(srcDir, 0755)
+	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+
+	cfg := &config.Config{
+		Platforms:    []string{"pi", "claude"},
+		Instructions: "~/dotfiles/ai/agents.md",
+		MCP: map[string]config.MCP{
+			"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
+		},
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	claude := readJSON(t, filepath.Join(home, ".claude.json"))
+	servers, ok := claude["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatalf("mcpServers = %#v, want object", claude["mcpServers"])
+	}
+	if _, ok := servers["ctx7"]; !ok {
+		t.Fatalf("mcpServers = %#v, want ctx7", servers)
+	}
+}
+
 func TestRunWithHome_DroidSkipsCustomModelsWhenUnconfigured(t *testing.T) {
 	home := t.TempDir()
 

@@ -89,7 +89,11 @@ func cleanTargets(home string, platforms []platform.Platform) targets {
 	seenMCPs := make(map[mcpTarget]bool)
 
 	for _, p := range platforms {
-		for _, dir := range []string{p.SkillsDir, p.AgentsDir} {
+		dirs := []string{p.SkillsDir}
+		if p.Agents != nil {
+			dirs = append(dirs, p.Agents.Dir)
+		}
+		for _, dir := range dirs {
 			if dir == "" {
 				continue
 			}
@@ -100,10 +104,13 @@ func cleanTargets(home string, platforms []platform.Platform) targets {
 			}
 		}
 
+		if p.MCP == nil {
+			continue
+		}
 		target := mcpTarget{
-			path:   filepath.Join(home, p.MCPConfigPath),
-			key:    p.MCPKey,
-			format: p.MCPFormat,
+			path:   filepath.Join(home, p.MCP.ConfigPath),
+			key:    p.MCP.Key,
+			format: p.MCP.Format,
 		}
 		if !seenMCPs[target] {
 			seenMCPs[target] = true

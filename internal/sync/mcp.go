@@ -67,6 +67,10 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 	if len(cfg.MCP) == 0 {
 		return nil
 	}
+	platforms = platformsWithMCP(platforms)
+	if len(platforms) == 0 {
+		return nil
+	}
 
 	standard, err := buildMCPServers(cfg.MCP, home)
 	if err != nil {
@@ -81,7 +85,7 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 	// so users don't silently get a different working directory across platforms.
 	cwdDropTargets := make([]string, 0, 4)
 	for _, p := range platforms {
-		if p.MCPFormat == platform.MCPFormatOpenCode || p.MCPFormat == platform.MCPFormatCodex || p.MCPFormat == platform.MCPFormatDroid || p.MCPFormat == platform.MCPFormatCursor {
+		if p.MCP.Format == platform.MCPFormatOpenCode || p.MCP.Format == platform.MCPFormatCodex || p.MCP.Format == platform.MCPFormatDroid || p.MCP.Format == platform.MCPFormatCursor {
 			cwdDropTargets = append(cwdDropTargets, p.Name)
 		}
 	}
@@ -102,7 +106,7 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 
 	entriesFor := func(p platform.Platform) map[string]any {
 		out := make(map[string]any, len(standard))
-		switch p.MCPFormat {
+		switch p.MCP.Format {
 		case platform.MCPFormatOpenCode:
 			for name, e := range opencode {
 				out[name] = e
@@ -134,16 +138,16 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 		formatOrder := make([]platform.MCPFormat, 0)
 		byFormat := make(map[platform.MCPFormat][]platform.Platform)
 		for _, p := range platforms {
-			if _, ok := byFormat[p.MCPFormat]; !ok {
-				formatOrder = append(formatOrder, p.MCPFormat)
+			if _, ok := byFormat[p.MCP.Format]; !ok {
+				formatOrder = append(formatOrder, p.MCP.Format)
 			}
-			byFormat[p.MCPFormat] = append(byFormat[p.MCPFormat], p)
+			byFormat[p.MCP.Format] = append(byFormat[p.MCP.Format], p)
 		}
 
 		for _, f := range formatOrder {
 			group := byFormat[f]
 			fmt.Printf("  %s\n", ui.Muted.Render(platformNames(group)+":"))
-			payload := map[string]any{group[0].MCPKey: entriesFor(group[0])}
+			payload := map[string]any{group[0].MCP.Key: entriesFor(group[0])}
 			var preview []byte
 			if f == platform.MCPFormatCodex {
 				preview, err = toml.Marshal(payload)
@@ -159,7 +163,7 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 
 		fmt.Println(ui.Label.Render("  targets"))
 		for _, p := range platforms {
-			dest := filepath.Join(home, p.MCPConfigPath)
+			dest := filepath.Join(home, p.MCP.ConfigPath)
 			fmt.Printf("  %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(dest))
 		}
 		fmt.Println()
@@ -178,7 +182,7 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 	seen := make(map[mcpTarget][]platform.Platform)
 	order := make([]mcpTarget, 0, len(platforms))
 	for _, p := range platforms {
-		t := mcpTarget{path: filepath.Join(home, p.MCPConfigPath), key: p.MCPKey, format: p.MCPFormat}
+		t := mcpTarget{path: filepath.Join(home, p.MCP.ConfigPath), key: p.MCP.Key, format: p.MCP.Format}
 		if _, ok := seen[t]; !ok {
 			order = append(order, t)
 		}
@@ -218,6 +222,16 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 	}
 
 	return nil
+}
+
+func platformsWithMCP(platforms []platform.Platform) []platform.Platform {
+	out := make([]platform.Platform, 0, len(platforms))
+	for _, p := range platforms {
+		if p.MCP != nil {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // buildMCPServers resolves @name in cwd fields and builds the servers map.

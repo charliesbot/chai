@@ -147,6 +147,27 @@ func TestRunWithHome_DryRunDoesNotRemoveOutputs(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_PiSkipsUnsupportedMCP(t *testing.T) {
+	home := t.TempDir()
+	cfg := &config.Config{Platforms: []string{"pi"}}
+
+	skillsDir := filepath.Join(home, ".pi", "agent", "skills")
+	writeFile(t, filepath.Join(skillsDir, "managed", "SKILL.md"), "managed")
+	sentinel := filepath.Join(home, "keep.txt")
+	writeFile(t, sentinel, "keep")
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+
+	if _, err := os.Stat(skillsDir); !os.IsNotExist(err) {
+		t.Fatalf("Pi skills should have been removed, stat err=%v", err)
+	}
+	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "keep" {
+		t.Fatalf("home contents should remain untouched, got %q, err=%v", got, err)
+	}
+}
+
 func TestRunWithHome_RefusesToRemoveConfiguredSourceTree(t *testing.T) {
 	home := t.TempDir()
 	cfg := &config.Config{Platforms: []string{"codex"}}

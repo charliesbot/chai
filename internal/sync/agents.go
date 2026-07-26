@@ -41,25 +41,25 @@ func syncAgents(agentPatterns []string, home string, platforms []platform.Platfo
 
 	status := newPlatformStatus(platforms)
 	for _, p := range platforms {
-		if p.AgentsDir == "" {
+		if p.Agents == nil {
 			status.setNA(p.Name)
 			if !dryRun {
 				fmt.Printf("  %s %s %s\n", ui.Skip(), ui.Bold.Render(p.Name), ui.Muted.Render("subagents not supported — skipping"))
 			}
 			continue
 		}
-		destDir := filepath.Join(home, p.AgentsDir)
+		destDir := filepath.Join(home, p.Agents.Dir)
 		if dryRun {
 			for _, src := range agents {
 				name := filepath.Base(src)
-				if p.AgentFormat == platform.AgentFormatCodexTOML {
+				if p.Agents.Format == platform.AgentFormatCodexTOML {
 					name = strings.TrimSuffix(name, filepath.Ext(name)) + ".toml"
 				}
 				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, name)), ui.Muted.Render("→ "+src))
 			}
 		} else {
 			var err error
-			switch p.AgentFormat {
+			switch p.Agents.Format {
 			case platform.AgentFormatCodexTOML:
 				err = syncCodexAgentCopies(agents, destDir, hashDB)
 			default:
