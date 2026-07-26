@@ -12,7 +12,7 @@ import (
 const defaultPath = "~/dotfiles/ai"
 
 const tomlTemplate = `platforms = ["claude", "antigravity", "droid", "opencode", "codex", "cursor"]
-instructions = "%s/instructions/AGENTS.md"
+instructions = ["%s/instructions/AGENTS.md"]
 
 [deps]
 

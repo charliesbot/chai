@@ -7,7 +7,7 @@ import (
 )
 
 const fullTOML = `
-instructions = "~/dotfiles/ai/agents.md"
+instructions = ["~/dotfiles/ai/agents.md"]
 
 [deps]
 angular-skills = "https://github.com/angular/skills"
@@ -48,8 +48,8 @@ func TestLoad_Full(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.Instructions != "~/dotfiles/ai/agents.md" {
-		t.Errorf("instructions = %q, want %q", cfg.Instructions, "~/dotfiles/ai/agents.md")
+	if len(cfg.Instructions) != 1 || cfg.Instructions[0] != "~/dotfiles/ai/agents.md" {
+		t.Errorf("instructions = %v, want [\"~/dotfiles/ai/agents.md\"]", cfg.Instructions)
 	}
 
 	if len(cfg.Deps) != 2 {
@@ -107,21 +107,70 @@ func TestLoad_Full(t *testing.T) {
 }
 
 func TestLoad_MinimalConfig(t *testing.T) {
-	path := writeTempFile(t, "chai.toml", `instructions = "~/agents.md"`)
+	path := writeTempFile(t, "chai.toml", `instructions = ["~/agents.md"]`)
 
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.Instructions != "~/agents.md" {
-		t.Errorf("instructions = %q, want %q", cfg.Instructions, "~/agents.md")
+	if len(cfg.Instructions) != 1 || cfg.Instructions[0] != "~/agents.md" {
+		t.Errorf("instructions = %v, want [\"~/agents.md\"]", cfg.Instructions)
 	}
 	if len(cfg.Deps) != 0 {
 		t.Errorf("deps should be empty, got %d", len(cfg.Deps))
 	}
 	if len(cfg.MCP) != 0 {
 		t.Errorf("mcp should be empty, got %d", len(cfg.MCP))
+	}
+}
+
+func TestLoad_InstructionsArray(t *testing.T) {
+	path := writeTempFile(t, "chai.toml", `instructions = ["~/core.md", "~/git.md", "@dep/rules/*.md"]`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"~/core.md", "~/git.md", "@dep/rules/*.md"}
+	if len(cfg.Instructions) != len(want) {
+		t.Fatalf("instructions len = %d, want %d", len(cfg.Instructions), len(want))
+	}
+	for i, p := range want {
+		if cfg.Instructions[i] != p {
+			t.Errorf("instructions[%d] = %q, want %q", i, cfg.Instructions[i], p)
+		}
+	}
+}
+
+func TestLoad_InvalidInstructions(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "single string",
+			content: `instructions = "~/agents.md"`,
+		},
+		{
+			name:    "integer",
+			content: `instructions = 123`,
+		},
+		{
+			name:    "non-string array item",
+			content: `instructions = ["~/core.md", 123]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeTempFile(t, "chai.toml", tt.content)
+			_, err := Load(path)
+			if err == nil {
+				t.Errorf("expected error for invalid instructions format in %s", tt.name)
+			}
+		})
 	}
 }
 

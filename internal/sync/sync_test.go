@@ -27,7 +27,7 @@ func TestRunWithHome_CopiesInstructions(t *testing.T) {
 
 	cfg := &config.Config{
 		Platforms:    []string{"claude", "antigravity"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
 
 	err := RunWithHome(context.Background(), cfg, home, Options{})
@@ -59,7 +59,7 @@ func TestRunWithHome_MissingInstructionsFile(t *testing.T) {
 
 	cfg := &config.Config{
 		Platforms:    []string{"claude"},
-		Instructions: "~/nonexistent/agents.md",
+		Instructions: []string{"~/nonexistent/agents.md"},
 	}
 
 	err := RunWithHome(context.Background(), cfg, home, Options{})
@@ -129,7 +129,7 @@ func TestRunWithHome_DirtyDetection(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
 
-	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: []string{"~/dotfiles/ai/agents.md"}}
 
 	// First sync: should succeed and store hashes
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -169,7 +169,7 @@ func TestRunWithHome_PromptOverwrite(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
 
-	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: []string{"~/dotfiles/ai/agents.md"}}
 
 	// First sync
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -199,7 +199,7 @@ func TestRunWithHome_PromptSkip(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("original"), 0644)
 
-	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: []string{"~/dotfiles/ai/agents.md"}}
 
 	// First sync
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -236,7 +236,7 @@ func TestRunWithHome_CancelledContext(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("content"), 0644)
 
-	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: []string{"~/dotfiles/ai/agents.md"}}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
@@ -269,7 +269,7 @@ func TestRunWithHome_SharedInstructionsDedup(t *testing.T) {
 	promptCalls := 0
 	cfg := &config.Config{
 		Platforms:    []string{"antigravity"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
 
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -336,7 +336,7 @@ func TestRunWithHome_SharedInstructionsPromptDeclined(t *testing.T) {
 
 	cfg := &config.Config{
 		Platforms:    []string{"antigravity"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
 
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -374,7 +374,7 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 
 	cfg := &config.Config{
 		Platforms:    []string{"antigravity"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
 	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
 	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
@@ -461,7 +461,7 @@ func TestRunWithHome_OpenCodePaths(t *testing.T) {
 
 	cfg := &config.Config{
 		Platforms:    []string{"opencode"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
 	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
 	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
@@ -508,7 +508,7 @@ func TestRunWithHome_PiPathsAndSkipsUnsupportedFeatures(t *testing.T) {
 
 	cfg := &config.Config{
 		Platforms:    []string{"pi"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 		MCP: map[string]config.MCP{
 			"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
 		},
@@ -558,7 +558,7 @@ func TestRunWithHome_PiDoesNotBlockClaudeMCP(t *testing.T) {
 
 	cfg := &config.Config{
 		Platforms:    []string{"pi", "claude"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 		MCP: map[string]config.MCP{
 			"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
 		},
@@ -587,7 +587,7 @@ func TestRunWithHome_DroidSkipsCustomModelsWhenUnconfigured(t *testing.T) {
 
 	cfg := &config.Config{
 		Platforms:    []string{"droid"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
 
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -613,7 +613,7 @@ func TestRunWithHome_DroidConfiguredCustomModels(t *testing.T) {
 
 	cfg := &config.Config{
 		Platforms:    []string{"droid"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 		Droid: config.DroidConfig{CustomModels: []config.CustomModel{
 			{
 				Model:           "openai/gpt-4o-mini",
@@ -670,7 +670,7 @@ func TestRunWithHome_DroidPaths(t *testing.T) {
 
 	cfg := &config.Config{
 		Platforms:    []string{"droid"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
 	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
 	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
@@ -721,7 +721,7 @@ reviewer body`), 0644)
 
 	cfg := &config.Config{
 		Platforms:    []string{"codex"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
 	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
 	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
@@ -775,7 +775,7 @@ func TestRunWithHome_AntigravitySkipsSubagents(t *testing.T) {
 
 	cfg := &config.Config{
 		Platforms:    []string{"antigravity"},
-		Instructions: "~/dotfiles/ai/agents.md",
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
 	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
 
@@ -802,7 +802,7 @@ func TestRunWithHome_DryRun(t *testing.T) {
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("content"), 0644)
 
-	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: "~/dotfiles/ai/agents.md"}
+	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: []string{"~/dotfiles/ai/agents.md"}}
 
 	err := RunWithHome(context.Background(), cfg, home, Options{DryRun: true})
 	if err != nil {

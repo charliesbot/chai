@@ -21,7 +21,7 @@ func TestScaffold_CreatesToml(t *testing.T) {
 		t.Fatalf("reading chai.toml: %v", err)
 	}
 	tomlContent := string(data)
-	if !strings.Contains(tomlContent, `instructions = "~/dotfiles/ai/instructions/AGENTS.md"`) {
+	if !strings.Contains(tomlContent, `instructions = ["~/dotfiles/ai/instructions/AGENTS.md"]`) {
 		t.Errorf("chai.toml missing instructions line, got:\n%s", tomlContent)
 	}
 	for _, p := range []string{`"claude"`, `"antigravity"`, `"droid"`, `"opencode"`, `"codex"`, `"cursor"`} {
