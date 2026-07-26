@@ -72,7 +72,7 @@ func All() []Platform {
 			SkillsDir:        filepath.Join(".gemini", "antigravity-ide", "skills"),
 			AgentsDir:        "", // Antigravity does not expose a user subagents directory
 			AgentFormat:      AgentFormatMarkdown,
-			MCPConfigPath:    filepath.Join(".gemini", "antigravity-ide", "mcp_config.json"),
+			MCPConfigPath:    filepath.Join(".gemini", "config", "mcp_config.json"),
 			MCPKey:           "mcpServers",
 			MCPFormat:        MCPFormatStandard,
 		},
@@ -83,7 +83,7 @@ func All() []Platform {
 			SkillsDir:        filepath.Join(".gemini", "antigravity", "skills"),
 			AgentsDir:        "", // Antigravity does not expose a user subagents directory
 			AgentFormat:      AgentFormatMarkdown,
-			MCPConfigPath:    filepath.Join(".gemini", "antigravity", "mcp_config.json"),
+			MCPConfigPath:    filepath.Join(".gemini", "config", "mcp_config.json"),
 			MCPKey:           "mcpServers",
 			MCPFormat:        MCPFormatStandard,
 		},
@@ -94,7 +94,7 @@ func All() []Platform {
 			SkillsDir:        filepath.Join(".gemini", "antigravity-cli", "skills"),
 			AgentsDir:        "",
 			AgentFormat:      AgentFormatMarkdown,
-			MCPConfigPath:    filepath.Join(".gemini", "antigravity-cli", "mcp_config.json"),
+			MCPConfigPath:    filepath.Join(".gemini", "config", "mcp_config.json"),
 			MCPKey:           "mcpServers",
 			MCPFormat:        MCPFormatStandard,
 		},

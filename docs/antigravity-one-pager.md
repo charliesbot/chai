@@ -11,7 +11,7 @@ Google's agentic coding IDE, released late 2025. Runs on Gemini models and compe
 | Instructions  | `~/.claude/CLAUDE.md`           | `~/.gemini/GEMINI.md`                    | `~/.gemini/GEMINI.md` **(shared w/ Gemini)**           |
 | Skills dir    | `~/.claude/skills/`             | `~/.gemini/skills/`                      | `~/.gemini/antigravity-ide/skills/`, `~/.gemini/antigravity/skills/`, `~/.gemini/antigravity-cli/skills/` |
 | Subagents dir | `~/.claude/agents/`             | `~/.gemini/agents/`                      | **not supported**                                      |
-| MCP config    | `~/.claude.json` (`mcpServers`) | `~/.gemini/settings.json` (`mcpServers`) | matching `mcp_config.json` files under each Antigravity directory |
+| MCP config    | `~/.claude.json` (`mcpServers`) | `~/.gemini/settings.json` (`mcpServers`) | `~/.gemini/config/mcp_config.json` (`mcpServers`) |
 
 Sources: [antigravity.google/docs/mcp](https://antigravity.google/docs/mcp), [Antigravity Skills codelab](https://codelabs.developers.google.com/getting-started-with-antigravity-skills), [Google AI forum — custom subagents](https://discuss.ai.google.dev/t/antigravity-sub-agents/114381) (Google confirmed March 2026 that user-defined subagents are escalated as a feature request — not shipped).
 
@@ -33,7 +33,7 @@ No-op. Antigravity has no user-defined subagents as of 2026-04. When Google ship
 
 ### MCP
 
-Write `mcpServers` key to matching `mcp_config.json` files under `~/.gemini/antigravity-ide/`, `~/.gemini/antigravity/`, and `~/.gemini/antigravity-cli/`. Same `replace key` strategy chai uses for Claude/Gemini. The files may not exist on first sync — create them.
+Write the `mcpServers` key to `~/.gemini/config/mcp_config.json`. The IDE and CLI share this global file. Use the same `replace key` strategy chai uses for Claude/Gemini, creating the file if it does not exist.
 
 ## The overlap problem
 
@@ -56,7 +56,7 @@ The Antigravity IDE and CLI targets all share `~/.gemini/GEMINI.md` for instruct
     InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
     SkillsDir:        filepath.Join(".gemini", "antigravity-ide", "skills"),
     AgentsDir:        "", // not supported; sync skips empty dirs
-    MCPConfigPath:    filepath.Join(".gemini", "antigravity-ide", "mcp_config.json"),
+    MCPConfigPath:    filepath.Join(".gemini", "config", "mcp_config.json"),
     MCPKey:           "mcpServers",
 }
 ```

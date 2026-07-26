@@ -72,7 +72,7 @@ func TestMergeMCPIntoFile_NewFile(t *testing.T) {
 }
 
 func TestMergeMCPIntoFile_EmptyFile(t *testing.T) {
-	// Antigravity creates ~/.gemini/antigravity/mcp_config.json as a zero-byte
+	// Antigravity may create ~/.gemini/config/mcp_config.json as a zero-byte
 	// file on first launch. We should treat that like a missing file.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
