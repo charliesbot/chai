@@ -39,7 +39,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 
 	platforms := platform.ForNames(cfg.Platforms)
 	instructionPlatforms := platformsWithInstructions(platforms)
-	if len(instructionPlatforms) > 0 && cfg.Instructions == "" {
+	if len(instructionPlatforms) > 0 && len(cfg.Instructions) == 0 {
 		return fmt.Errorf("no instructions path set in config")
 	}
 
@@ -58,7 +58,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	var content []byte
 	if len(instructionPlatforms) > 0 {
 		var err error
-		srcPath, err = resolve.PathWithHome(cfg.Instructions, home)
+		srcPath, err = resolve.PathWithHome(cfg.Instructions[0], home)
 		if err != nil {
 			return fmt.Errorf("resolving instructions path: %w", err)
 		}

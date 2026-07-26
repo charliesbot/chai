@@ -9,7 +9,7 @@ import (
 
 type Config struct {
 	Platforms    []string          `toml:"platforms"`
-	Instructions string            `toml:"instructions"`
+	Instructions []string          `toml:"instructions"`
 	Deps         map[string]Dep    `toml:"-"`
 	Skills       Skills            `toml:"skills"`
 	Subagents    Subagents         `toml:"subagents"`
@@ -59,7 +59,7 @@ type MCP struct {
 // rawConfig is the intermediate TOML representation.
 type rawConfig struct {
 	Platforms    []string          `toml:"platforms"`
-	Instructions string            `toml:"instructions"`
+	Instructions []string          `toml:"instructions"`
 	Deps         map[string]any    `toml:"deps"`
 	Skills       Skills            `toml:"skills"`
 	Subagents    Subagents         `toml:"subagents"`

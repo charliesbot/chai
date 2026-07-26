@@ -65,7 +65,7 @@ Dependencies are cloned to:
 ## TOML Schema
 
 ```toml
-instructions = "~/dotfiles/ai/instructions/AGENTS.md"
+instructions = ["~/dotfiles/ai/instructions/AGENTS.md"]
 
 [deps]
 workspace = "https://github.com/gemini-cli-extensions/workspace"
