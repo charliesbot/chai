@@ -62,7 +62,7 @@ Built into source code (not user-configured). Each platform specifies:
 | Platform | Instructions target               | Skills directory                   | Subagents directory                | MCP config file                       | MCP strategy  |
 |----------|-----------------------------------|------------------------------------|------------------------------------|---------------------------------------|---------------|
 | Claude          | `~/.claude/CLAUDE.md`             | `~/.claude/skills/`                | `~/.claude/agents/`                | `~/.claude.json`                          | replace key   |
-| Antigravity     | `~/.gemini/GEMINI.md`             | `~/.gemini/antigravity-ide/skills/`, `~/.gemini/antigravity/skills/`, `~/.gemini/antigravity-cli/skills/` | _none_ | matching `mcp_config.json` files under each Antigravity directory | replace key |
+| Antigravity     | `~/.gemini/GEMINI.md`             | `~/.gemini/antigravity-ide/skills/`, `~/.gemini/antigravity/skills/`, `~/.gemini/antigravity-cli/skills/` | _none_ | `~/.gemini/config/mcp_config.json` | replace key |
 | Droid           | `~/.factory/AGENTS.md`            | `~/.factory/skills/`               | `~/.factory/droids/`               | `~/.factory/mcp.json`                     | replace `mcpServers` with Droid stdio entries |
 | OpenCode        | `~/.config/opencode/AGENTS.md`    | `~/.config/opencode/skills/`       | `~/.config/opencode/agents/`       | `~/.config/opencode/opencode.json`        | replace `mcp` (OpenCode-format entries) |
 | Codex           | `~/.codex/AGENTS.md`              | `~/.agents/skills/`                | `~/.codex/agents/` _(compiled TOML)_ | `~/.codex/config.toml`                    | replace `mcp_servers` table (TOML, no cwd) |

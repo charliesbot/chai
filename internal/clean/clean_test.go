@@ -44,13 +44,9 @@ func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 		t.Fatalf("saving hash DB: %v", err)
 	}
 
-	writeJSON(t, filepath.Join(home, ".gemini", "antigravity", "mcp_config.json"), map[string]any{
+	writeJSON(t, filepath.Join(home, ".gemini", "config", "mcp_config.json"), map[string]any{
 		"mcpServers": map[string]any{"ctx": map[string]any{"command": "npx"}},
 		"other":      true,
-	})
-	writeJSON(t, filepath.Join(home, ".gemini", "antigravity-ide", "mcp_config.json"), map[string]any{
-		"mcpServers": map[string]any{"ctx": map[string]any{"command": "npx"}},
-		"other":      "ide",
 	})
 	writeTOML(t, filepath.Join(home, ".codex", "config.toml"), map[string]any{
 		"mcp_servers": map[string]any{"ctx": map[string]any{"command": "npx"}},
@@ -77,7 +73,7 @@ func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 		t.Fatalf("unselected platform output should remain: %v", err)
 	}
 
-	antigravity := readJSON(t, filepath.Join(home, ".gemini", "antigravity", "mcp_config.json"))
+	antigravity := readJSON(t, filepath.Join(home, ".gemini", "config", "mcp_config.json"))
 	if _, ok := antigravity["mcpServers"]; ok {
 		t.Fatal("antigravity mcpServers should have been removed")
 	}

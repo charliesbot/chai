@@ -407,22 +407,27 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 		}
 	}
 
-	for _, mcpPath := range []string{
+	mcpPath := filepath.Join(home, ".gemini", "config", "mcp_config.json")
+	mcp := readJSON(t, mcpPath)
+	servers, ok := mcp["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatalf("mcpServers missing or wrong type in %s: %#v", mcpPath, mcp["mcpServers"])
+	}
+	ctx7, ok := servers["context7"].(map[string]any)
+	if !ok {
+		t.Fatalf("context7 entry missing in %s", mcpPath)
+	}
+	if ctx7["command"] != "npx" {
+		t.Errorf("%s context7.command = %v, want npx", mcpPath, ctx7["command"])
+	}
+
+	for _, obsoletePath := range []string{
 		filepath.Join(home, ".gemini", "antigravity-ide", "mcp_config.json"),
 		filepath.Join(home, ".gemini", "antigravity", "mcp_config.json"),
 		filepath.Join(home, ".gemini", "antigravity-cli", "mcp_config.json"),
 	} {
-		mcp := readJSON(t, mcpPath)
-		servers, ok := mcp["mcpServers"].(map[string]any)
-		if !ok {
-			t.Fatalf("mcpServers missing or wrong type in %s: %#v", mcpPath, mcp["mcpServers"])
-		}
-		ctx7, ok := servers["context7"].(map[string]any)
-		if !ok {
-			t.Fatalf("context7 entry missing in %s", mcpPath)
-		}
-		if ctx7["command"] != "npx" {
-			t.Errorf("%s context7.command = %v, want npx", mcpPath, ctx7["command"])
+		if _, err := os.Stat(obsoletePath); !os.IsNotExist(err) {
+			t.Errorf("obsolete MCP config %s should not exist, got err=%v", obsoletePath, err)
 		}
 	}
 
