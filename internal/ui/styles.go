@@ -146,6 +146,17 @@ func Skip() string {
 	return Warning.Render("⊘")
 }
 
+func ResultLine(name, summary string, statuses []PlatformStatus) string {
+	marker := Check()
+	for _, status := range statuses {
+		if status.State == PlatformFailed {
+			marker = Warning.Render("!")
+			break
+		}
+	}
+	return fmt.Sprintf(" %s %s  %s  %s", marker, Label.Render(name), summary, PlatformIcons(statuses))
+}
+
 // Box renders a boxed section with header, platform icons, and one item per line.
 //
 //	┌ skills (3) ───────────────── ● ▲

@@ -1,13 +1,145 @@
 package sync
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 )
+
+func TestSyncSkills_ReportsChangesAndCollapsesUnmanagedSkills(t *testing.T) {
+	home := t.TempDir()
+	hashDB := hash.DB{}
+	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
+	for _, skill := range []struct{ name, content string }{
+		{"agents-md", "v1"}, {"old-skill", "v1"}, {"web-dev", "v1"},
+	} {
+		writeSkillDir(t, filepath.Join(skillsDir, skill.name), skill.content)
+	}
+	syncCursorSkills(t, home, hashDB)
+
+	if err := os.RemoveAll(filepath.Join(skillsDir, "old-skill")); err != nil {
+		t.Fatalf("removing old skill: %v", err)
+	}
+	writeSkillDir(t, filepath.Join(skillsDir, "adaptive"), "v1")
+	writeSkillDir(t, filepath.Join(skillsDir, "web-dev"), "v2")
+
+	destDir := filepath.Join(home, ".cursor", "skills")
+	for _, name := range []string{"custom-one", "custom-two"} {
+		writeSkillDir(t, filepath.Join(destDir, name), "user managed")
+	}
+
+	output := syncCursorSkills(t, home, hashDB)
+
+	assertOutputContains(t, output,
+		"skills",
+		"1 added",
+		"1 updated",
+		"1 removed",
+		"1 unchanged",
+		"+ adaptive",
+		"~ web-dev",
+		"- old-skill",
+		"2 unmanaged skills preserved",
+	)
+	if strings.Contains(output, "custom-") || strings.Contains(output, "agents-md") {
+		t.Errorf("output should omit preserved and unchanged skill names:\n%s", output)
+	}
+}
+
+func TestSyncSkills_ReportsCompletedChangesWhenLaterCopyFails(t *testing.T) {
+	home := t.TempDir()
+	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
+	brokenSkill := filepath.Join(skillsDir, "broken-skill")
+	writeSkillDir(t, brokenSkill, "unreadable")
+	skillFile := filepath.Join(brokenSkill, "SKILL.md")
+	if err := os.Chmod(skillFile, 0000); err != nil {
+		t.Fatalf("making skill unreadable: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(skillFile, 0644) })
+
+	destDir := filepath.Join(home, ".cursor", "skills")
+	staleSkill := filepath.Join(destDir, "stale-skill")
+	writeSkillDir(t, staleSkill, "stale")
+	hashDB := hash.DB{staleSkill: "managed-hash"}
+
+	output := syncCursorSkills(t, home, hashDB)
+
+	assertOutputContains(t, output, "1 removed", "- stale-skill")
+}
+
+func TestSyncSkills_CapsChangedNames(t *testing.T) {
+	home := t.TempDir()
+	hashDB := hash.DB{}
+	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
+	for _, name := range []string{"a", "b", "c", "d", "e", "f", "g"} {
+		writeSkillDir(t, filepath.Join(skillsDir, name), name)
+	}
+
+	output := syncCursorSkills(t, home, hashDB)
+
+	if !strings.Contains(output, "7 added") || !strings.Contains(output, "... 2 more") ||
+		strings.Contains(output, "+ f") || strings.Contains(output, "+ g") {
+		t.Fatalf("output should show at most five changed names:\n%s", output)
+	}
+}
+
+func assertOutputContains(t *testing.T, output string, expected ...string) {
+	t.Helper()
+	for _, value := range expected {
+		if !strings.Contains(output, value) {
+			t.Errorf("output missing %q:\n%s", value, output)
+		}
+	}
+}
+
+func syncCursorSkills(t *testing.T, home string, hashDB hash.DB) string {
+	t.Helper()
+	output, err := captureStdout(t, func() error {
+		return syncSkills(
+			[]string{filepath.Join(home, "dotfiles", "ai", "skills", "*")},
+			home, platform.ForNames([]string{"cursor"}), false, hashDB,
+		)
+	})
+	if err != nil {
+		t.Fatalf("syncing skills: %v", err)
+	}
+	return output
+}
+
+func captureStdout(t *testing.T, run func() error) (string, error) {
+	t.Helper()
+
+	previous := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("creating stdout pipe: %v", err)
+	}
+	os.Stdout = writer
+	runErr := run()
+	os.Stdout = previous
+	_ = writer.Close()
+	output, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("reading stdout: %v", err)
+	}
+	_ = reader.Close()
+	return string(output), runErr
+}
+
+func writeSkillDir(t *testing.T, dir, content string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("creating skill directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0644); err != nil {
+		t.Fatalf("writing SKILL.md: %v", err)
+	}
+}
 
 func TestSyncDirCopies_CreatesCopies(t *testing.T) {
 	home := t.TempDir()
