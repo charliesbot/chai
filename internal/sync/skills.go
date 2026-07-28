@@ -163,7 +163,7 @@ func syncNamedDirCopies(
 	for _, src := range sources {
 		expected[filepath.Join(destDir, src.name)] = true
 	}
-	if err := removeStaleManagedDirs(destDir, expected, hashDB); err != nil {
+	if _, err := removeStaleManagedDirs(destDir, expected, hashDB); err != nil {
 		return err
 	}
 
