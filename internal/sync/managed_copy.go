@@ -19,15 +19,27 @@ func expectedDestinations(sources []string, destDir string, destName func(string
 }
 
 func removeStaleManagedFiles(destDir, ext string, expected map[string]bool, hashDB hash.DB) error {
-	return removeStaleManagedEntries(destDir, expected, hashDB, func(entry fs.DirEntry) bool {
+	result, err := removeStaleManagedEntries(destDir, expected, hashDB, func(entry fs.DirEntry) bool {
 		return !entry.IsDir() && filepath.Ext(entry.Name()) == ext
 	}, os.Remove)
+	if err != nil {
+		return err
+	}
+	for _, name := range result.preserved {
+		fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), name, ui.Muted.Render("not managed by chai — skipping"))
+	}
+	return nil
 }
 
-func removeStaleManagedDirs(destDir string, expected map[string]bool, hashDB hash.DB) error {
+func removeStaleManagedDirs(destDir string, expected map[string]bool, hashDB hash.DB) (managedEntryChanges, error) {
 	return removeStaleManagedEntries(destDir, expected, hashDB, func(entry fs.DirEntry) bool {
 		return entry.IsDir()
 	}, os.RemoveAll)
+}
+
+type managedEntryChanges struct {
+	removed   []string
+	preserved []string
 }
 
 func removeStaleManagedEntries(
@@ -36,10 +48,11 @@ func removeStaleManagedEntries(
 	hashDB hash.DB,
 	include func(fs.DirEntry) bool,
 	remove func(string) error,
-) error {
+) (managedEntryChanges, error) {
+	var result managedEntryChanges
 	entries, err := os.ReadDir(destDir)
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", destDir, err)
+		return result, fmt.Errorf("reading %s: %w", destDir, err)
 	}
 	for _, entry := range entries {
 		if !include(entry) {
@@ -50,13 +63,16 @@ func removeStaleManagedEntries(
 			continue
 		}
 		if _, managed := hashDB[path]; managed {
-			remove(path)
+			if err := remove(path); err != nil {
+				return result, fmt.Errorf("removing %s: %w", path, err)
+			}
 			delete(hashDB, path)
+			result.removed = append(result.removed, entry.Name())
 		} else {
-			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), entry.Name(), ui.Muted.Render("not managed by chai — skipping"))
+			result.preserved = append(result.preserved, entry.Name())
 		}
 	}
-	return nil
+	return result, nil
 }
 
 func writeManagedFile(dest string, data []byte, perm fs.FileMode, hashDB hash.DB) error {
