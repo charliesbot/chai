@@ -88,6 +88,10 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		}
 		destPlatforms[dest] = append(destPlatforms[dest], p)
 	}
+	instructionChanges := newItemChanges()
+	skippedInstructionTargets := 0
+	instructionName := filepath.Base(srcPath)
+	contentHash := hash.Sum(content)
 
 	for _, dest := range destOrder {
 		if err := ctx.Err(); err != nil {
@@ -95,6 +99,9 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		}
 
 		sharers := destPlatforms[dest]
+		previousHash, managed := hashDB[dest]
+		_, statErr := os.Stat(dest)
+		existed := statErr == nil
 
 		if !opts.Force && !opts.DryRun {
 			dirty, err := hashDB.IsDirty(dest)
@@ -110,6 +117,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 					return err
 				}
 				if !overwrite {
+					skippedInstructionTargets++
 					for _, p := range sharers {
 						status.setFailed(p.Name)
 					}
@@ -136,16 +144,31 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		if err := atomicWrite(dest, content); err != nil {
 			return fmt.Errorf("writing instructions to %s: %w", dest, err)
 		}
-		hashDB[dest] = hash.Sum(content)
+		hashDB[dest] = contentHash
+		switch {
+		case !managed:
+			instructionChanges.record(instructionName, itemAdded)
+		case !existed || previousHash != contentHash:
+			instructionChanges.record(instructionName, itemUpdated)
+		default:
+			instructionChanges.record(instructionName, itemUnchanged)
+		}
 	}
 
 	if !opts.DryRun && len(instructionPlatforms) > 0 {
-		instructionItems := make([]string, 0, len(destOrder)+1)
-		instructionItems = append(instructionItems, srcPath)
-		for _, dest := range destOrder {
-			instructionItems = append(instructionItems, "→ "+dest)
+		summary := instructionChanges.summary()
+		if skippedInstructionTargets > 0 {
+			skipped := fmt.Sprintf("%d %s skipped", skippedInstructionTargets, pluralize("target", skippedInstructionTargets))
+			if summary == "" {
+				summary = skipped
+			} else {
+				summary += " · " + skipped
+			}
 		}
-		fmt.Println(ui.Box("instructions", 0, status.statuses(), instructionItems))
+		fmt.Println(ui.ResultLine("instructions", summary, status.statuses()))
+		for _, detail := range instructionChanges.details() {
+			fmt.Printf("   %s %s\n", ui.Muted.Render(detail.symbol), ui.ItemStyle.Render(detail.name))
+		}
 	}
 
 	if opts.DryRun {

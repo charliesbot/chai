@@ -34,7 +34,7 @@ func syncSkills(skillPatterns []string, home string, platforms []platform.Platfo
 	}
 
 	status := newPlatformStatus(platforms)
-	changes := newSkillChanges()
+	changes := newItemChanges()
 	for _, p := range platforms {
 		destDir := filepath.Join(home, p.SkillsDir)
 		if dryRun {
@@ -80,33 +80,33 @@ type skillSource struct {
 	kind skillSourceKind
 }
 
-type skillChanges struct {
-	items     map[string]skillChange
+type itemChanges struct {
+	items     map[string]itemChange
 	preserved map[string]bool
 }
 
-type skillChange int
+type itemChange int
 
 const (
-	skillUnchanged skillChange = iota
-	skillRemoved
-	skillUpdated
-	skillAdded
+	itemUnchanged itemChange = iota
+	itemRemoved
+	itemUpdated
+	itemAdded
 )
 
-type skillChangeDetail struct {
+type itemChangeDetail struct {
 	symbol string
 	name   string
 }
 
-func newSkillChanges() skillChanges {
-	return skillChanges{
-		items:     make(map[string]skillChange),
+func newItemChanges() itemChanges {
+	return itemChanges{
+		items:     make(map[string]itemChange),
 		preserved: make(map[string]bool),
 	}
 }
 
-func (c *skillChanges) merge(other skillChanges) {
+func (c *itemChanges) merge(other itemChanges) {
 	for name, change := range other.items {
 		c.record(name, change)
 	}
@@ -115,27 +115,27 @@ func (c *skillChanges) merge(other skillChanges) {
 	}
 }
 
-func (c *skillChanges) record(name string, change skillChange) {
+func (c *itemChanges) record(name string, change itemChange) {
 	current, exists := c.items[name]
 	if !exists || change > current {
 		c.items[name] = change
 	}
 }
 
-func (c skillChanges) summary() string {
-	counts := make(map[skillChange]int)
+func (c itemChanges) summary() string {
+	counts := make(map[itemChange]int)
 	for _, change := range c.items {
 		counts[change]++
 	}
 	parts := make([]string, 0, 4)
 	for _, item := range []struct {
-		change skillChange
+		change itemChange
 		label  string
 	}{
-		{skillAdded, "added"},
-		{skillUpdated, "updated"},
-		{skillRemoved, "removed"},
-		{skillUnchanged, "unchanged"},
+		{itemAdded, "added"},
+		{itemUpdated, "updated"},
+		{itemRemoved, "removed"},
+		{itemUnchanged, "unchanged"},
 	} {
 		if count := counts[item.change]; count > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", count, item.label))
@@ -144,15 +144,15 @@ func (c skillChanges) summary() string {
 	return strings.Join(parts, " · ")
 }
 
-func (c skillChanges) details() []skillChangeDetail {
-	var details []skillChangeDetail
+func (c itemChanges) details() []itemChangeDetail {
+	var details []itemChangeDetail
 	for _, category := range []struct {
 		symbol string
-		change skillChange
+		change itemChange
 	}{
-		{"+", skillAdded},
-		{"~", skillUpdated},
-		{"-", skillRemoved},
+		{"+", itemAdded},
+		{"~", itemUpdated},
+		{"-", itemRemoved},
 	} {
 		var names []string
 		for name, change := range c.items {
@@ -162,7 +162,7 @@ func (c skillChanges) details() []skillChangeDetail {
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			details = append(details, skillChangeDetail{symbol: category.symbol, name: name})
+			details = append(details, itemChangeDetail{symbol: category.symbol, name: name})
 		}
 	}
 	return details
@@ -252,7 +252,7 @@ func isSkillMD(path string) bool {
 	return filepath.Base(path) == "SKILL.md"
 }
 
-func syncSkillCopies(sources []skillSource, destDir string, hashDB hash.DB) (skillChanges, error) {
+func syncSkillCopies(sources []skillSource, destDir string, hashDB hash.DB) (itemChanges, error) {
 	return syncNamedDirCopies(sources, destDir, hashDB, copySkillSource)
 }
 
@@ -261,8 +261,8 @@ func syncNamedDirCopies(
 	destDir string,
 	hashDB hash.DB,
 	copySource func(skillSource, string) (string, error),
-) (skillChanges, error) {
-	changes := newSkillChanges()
+) (itemChanges, error) {
+	changes := newItemChanges()
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return changes, fmt.Errorf("creating directory %s: %w", destDir, err)
 	}
@@ -273,7 +273,7 @@ func syncNamedDirCopies(
 	}
 	stale, err := removeStaleManagedDirs(destDir, expected, hashDB)
 	for _, name := range stale.removed {
-		changes.record(name, skillRemoved)
+		changes.record(name, itemRemoved)
 	}
 	for _, name := range stale.preserved {
 		changes.preserved[name] = true
@@ -299,11 +299,11 @@ func syncNamedDirCopies(
 		hashDB[dest] = sum
 		switch {
 		case !managed:
-			changes.record(src.name, skillAdded)
+			changes.record(src.name, itemAdded)
 		case !existed || previousHash != sum:
-			changes.record(src.name, skillUpdated)
+			changes.record(src.name, itemUpdated)
 		default:
-			changes.record(src.name, skillUnchanged)
+			changes.record(src.name, itemUnchanged)
 		}
 	}
 

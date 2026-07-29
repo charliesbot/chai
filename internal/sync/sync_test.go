@@ -54,6 +54,96 @@ func TestRunWithHome_CopiesInstructions(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_ReportsInstructionChanges(t *testing.T) {
+	home := t.TempDir()
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatalf("creating source directory: %v", err)
+	}
+	srcPath := filepath.Join(srcDir, "agents.md")
+	if err := os.WriteFile(srcPath, []byte("v1"), 0644); err != nil {
+		t.Fatalf("writing instructions: %v", err)
+	}
+	cfg := &config.Config{
+		Platforms:    []string{"antigravity"},
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
+	}
+
+	first := runSyncWithOutput(t, cfg, home, Options{})
+	assertOutputContains(t, first, "instructions", "1 added", "+ agents.md")
+	if strings.Contains(first, "3 added") {
+		t.Fatalf("shared Antigravity destination should count once:\n%s", first)
+	}
+
+	second := runSyncWithOutput(t, cfg, home, Options{})
+	assertOutputContains(t, second, "instructions", "1 unchanged")
+	if strings.Contains(second, "+ agents.md") || strings.Contains(second, "~ agents.md") {
+		t.Fatalf("unchanged instructions should not have a detail line:\n%s", second)
+	}
+
+	if err := os.WriteFile(srcPath, []byte("v2"), 0644); err != nil {
+		t.Fatalf("updating instructions: %v", err)
+	}
+	third := runSyncWithOutput(t, cfg, home, Options{})
+	assertOutputContains(t, third, "instructions", "1 updated", "~ agents.md")
+
+	geminiPath := filepath.Join(home, ".gemini", "GEMINI.md")
+	if err := os.Remove(geminiPath); err != nil {
+		t.Fatalf("removing managed target: %v", err)
+	}
+	recreated := runSyncWithOutput(t, cfg, home, Options{})
+	assertOutputContains(t, recreated, "1 updated", "~ agents.md")
+}
+
+func TestRunWithHome_ReportsUpdatedInstructionsWithSkippedTarget(t *testing.T) {
+	home := t.TempDir()
+	srcDir := filepath.Join(home, "dotfiles", "ai")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatalf("creating source directory: %v", err)
+	}
+	srcPath := filepath.Join(srcDir, "agents.md")
+	if err := os.WriteFile(srcPath, []byte("v1"), 0644); err != nil {
+		t.Fatalf("writing instructions: %v", err)
+	}
+	cfg := &config.Config{
+		Platforms:    []string{"claude", "antigravity"},
+		Instructions: []string{"~/dotfiles/ai/agents.md"},
+	}
+	runSyncWithOutput(t, cfg, home, Options{})
+
+	if err := os.WriteFile(srcPath, []byte("v2"), 0644); err != nil {
+		t.Fatalf("updating instructions: %v", err)
+	}
+	claudePath := filepath.Join(home, ".claude", "CLAUDE.md")
+	if err := os.WriteFile(claudePath, []byte("manual edit"), 0644); err != nil {
+		t.Fatalf("editing Claude target: %v", err)
+	}
+
+	output := runSyncWithOutput(t, cfg, home, Options{
+		Prompt: func(string) (bool, error) { return false, nil },
+	})
+	assertOutputContains(t, output, "! instructions", "1 updated", "1 target skipped", "~ agents.md")
+
+	if got, _ := os.ReadFile(claudePath); string(got) != "manual edit" {
+		t.Fatalf("Claude target = %q, want preserved manual edit", got)
+	}
+	geminiPath := filepath.Join(home, ".gemini", "GEMINI.md")
+	if got, _ := os.ReadFile(geminiPath); string(got) != "v2" {
+		t.Fatalf("Gemini target = %q, want v2", got)
+	}
+}
+
+func runSyncWithOutput(t *testing.T, cfg *config.Config, home string, opts Options) string {
+	t.Helper()
+	output, err := captureStdout(t, func() error {
+		return RunWithHome(context.Background(), cfg, home, opts)
+	})
+	if err != nil {
+		t.Fatalf("syncing: %v", err)
+	}
+	return output
+}
+
 func TestRunWithHome_MissingInstructionsFile(t *testing.T) {
 	home := t.TempDir()
 
@@ -89,8 +179,9 @@ func TestRunWithHome_CursorOnlyDoesNotRequireInstructions(t *testing.T) {
 	home := t.TempDir()
 	cfg := &config.Config{Platforms: []string{"cursor"}}
 
-	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	output := runSyncWithOutput(t, cfg, home, Options{})
+	if strings.Contains(output, "instructions") {
+		t.Fatalf("cursor-only sync should omit instructions output:\n%s", output)
 	}
 
 	if _, err := os.Stat(filepath.Join(home, "AGENTS.md")); !os.IsNotExist(err) {
@@ -214,9 +305,8 @@ func TestRunWithHome_PromptSkip(t *testing.T) {
 
 	// Sync with prompt that says no
 	alwaysNo := func(path string) (bool, error) { return false, nil }
-	if err := RunWithHome(context.Background(), cfg, home, Options{Prompt: alwaysNo}); err != nil {
-		t.Fatalf("prompt sync failed: %v", err)
-	}
+	output := runSyncWithOutput(t, cfg, home, Options{Prompt: alwaysNo})
+	assertOutputContains(t, output, "! instructions", "2 targets skipped")
 
 	// Both should still have the edited content
 	got, _ := os.ReadFile(claudePath)
@@ -804,9 +894,10 @@ func TestRunWithHome_DryRun(t *testing.T) {
 
 	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: []string{"~/dotfiles/ai/agents.md"}}
 
-	err := RunWithHome(context.Background(), cfg, home, Options{DryRun: true})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	output := runSyncWithOutput(t, cfg, home, Options{DryRun: true})
+	assertOutputContains(t, output, "instructions", "source:", "first sync")
+	if strings.Contains(output, "1 added") {
+		t.Fatalf("dry-run should keep detailed preview output:\n%s", output)
 	}
 
 	// No files should have been written
