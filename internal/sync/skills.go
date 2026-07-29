@@ -34,6 +34,7 @@ func syncSkills(skillPatterns []string, home string, platforms []platform.Platfo
 	}
 
 	status := newPlatformStatus(platforms)
+	changes := newSkillChanges()
 	for _, p := range platforms {
 		destDir := filepath.Join(home, p.SkillsDir)
 		if dryRun {
@@ -41,18 +42,29 @@ func syncSkills(skillPatterns []string, home string, platforms []platform.Platfo
 				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, src.name)), ui.Muted.Render("→ "+src.path))
 			}
 		} else {
-			if err := syncSkillCopies(skills, destDir, hashDB); err != nil {
+			platformChanges, err := syncSkillCopies(skills, destDir, hashDB)
+			changes.merge(platformChanges)
+			if err != nil {
 				status.setFailed(p.Name)
+				continue
 			}
 		}
 	}
 
 	if !dryRun {
-		names := make([]string, len(skills))
-		for i, s := range skills {
-			names[i] = s.name
+		fmt.Println(ui.ResultLine("skills", changes.summary(), status.statuses()))
+		details := changes.details()
+		const detailLimit = 5
+		for i, detail := range details {
+			if i == detailLimit {
+				fmt.Printf("   %s %s\n", ui.Muted.Render("..."), ui.ItemStyle.Render(fmt.Sprintf("%d more", len(details)-detailLimit)))
+				break
+			}
+			fmt.Printf("   %s %s\n", ui.Muted.Render(detail.symbol), ui.ItemStyle.Render(detail.name))
 		}
-		fmt.Println(ui.Box("skills", len(skills), status.statuses(), names))
+		if count := len(changes.preserved); count > 0 {
+			fmt.Printf(" %s %s\n", ui.Warning.Render("!"), ui.Muted.Render(fmt.Sprintf("%d unmanaged %s preserved", count, pluralize("skill", count))))
+		}
 	}
 
 	if dryRun {
@@ -66,6 +78,101 @@ type skillSource struct {
 	path string
 	name string
 	kind skillSourceKind
+}
+
+type skillChanges struct {
+	items     map[string]skillChange
+	preserved map[string]bool
+}
+
+type skillChange int
+
+const (
+	skillUnchanged skillChange = iota
+	skillRemoved
+	skillUpdated
+	skillAdded
+)
+
+type skillChangeDetail struct {
+	symbol string
+	name   string
+}
+
+func newSkillChanges() skillChanges {
+	return skillChanges{
+		items:     make(map[string]skillChange),
+		preserved: make(map[string]bool),
+	}
+}
+
+func (c *skillChanges) merge(other skillChanges) {
+	for name, change := range other.items {
+		c.record(name, change)
+	}
+	for name := range other.preserved {
+		c.preserved[name] = true
+	}
+}
+
+func (c *skillChanges) record(name string, change skillChange) {
+	current, exists := c.items[name]
+	if !exists || change > current {
+		c.items[name] = change
+	}
+}
+
+func (c skillChanges) summary() string {
+	counts := make(map[skillChange]int)
+	for _, change := range c.items {
+		counts[change]++
+	}
+	parts := make([]string, 0, 4)
+	for _, item := range []struct {
+		change skillChange
+		label  string
+	}{
+		{skillAdded, "added"},
+		{skillUpdated, "updated"},
+		{skillRemoved, "removed"},
+		{skillUnchanged, "unchanged"},
+	} {
+		if count := counts[item.change]; count > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", count, item.label))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+func (c skillChanges) details() []skillChangeDetail {
+	var details []skillChangeDetail
+	for _, category := range []struct {
+		symbol string
+		change skillChange
+	}{
+		{"+", skillAdded},
+		{"~", skillUpdated},
+		{"-", skillRemoved},
+	} {
+		var names []string
+		for name, change := range c.items {
+			if change == category.change {
+				names = append(names, name)
+			}
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			details = append(details, skillChangeDetail{symbol: category.symbol, name: name})
+		}
+	}
+	return details
+}
+
+func pluralize(noun string, count int) string {
+	if count == 1 {
+		return noun
+	}
+	return noun + "s"
 }
 
 type skillSourceKind int
@@ -145,7 +252,7 @@ func isSkillMD(path string) bool {
 	return filepath.Base(path) == "SKILL.md"
 }
 
-func syncSkillCopies(sources []skillSource, destDir string, hashDB hash.DB) error {
+func syncSkillCopies(sources []skillSource, destDir string, hashDB hash.DB) (skillChanges, error) {
 	return syncNamedDirCopies(sources, destDir, hashDB, copySkillSource)
 }
 
@@ -154,34 +261,53 @@ func syncNamedDirCopies(
 	destDir string,
 	hashDB hash.DB,
 	copySource func(skillSource, string) (string, error),
-) error {
+) (skillChanges, error) {
+	changes := newSkillChanges()
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("creating directory %s: %w", destDir, err)
+		return changes, fmt.Errorf("creating directory %s: %w", destDir, err)
 	}
 
 	expected := make(map[string]bool)
 	for _, src := range sources {
 		expected[filepath.Join(destDir, src.name)] = true
 	}
-	if _, err := removeStaleManagedDirs(destDir, expected, hashDB); err != nil {
-		return err
+	stale, err := removeStaleManagedDirs(destDir, expected, hashDB)
+	for _, name := range stale.removed {
+		changes.record(name, skillRemoved)
+	}
+	for _, name := range stale.preserved {
+		changes.preserved[name] = true
+	}
+	if err != nil {
+		return changes, err
 	}
 
 	for _, src := range sources {
 		dest := filepath.Join(destDir, src.name)
+		previousHash, managed := hashDB[dest]
+		_, statErr := os.Stat(dest)
+		existed := statErr == nil
 
 		if err := os.RemoveAll(dest); err != nil {
-			return fmt.Errorf("removing %s: %w", dest, err)
+			return changes, fmt.Errorf("removing %s: %w", dest, err)
 		}
 
 		sum, err := copySource(src, dest)
 		if err != nil {
-			return err
+			return changes, err
 		}
 		hashDB[dest] = sum
+		switch {
+		case !managed:
+			changes.record(src.name, skillAdded)
+		case !existed || previousHash != sum:
+			changes.record(src.name, skillUpdated)
+		default:
+			changes.record(src.name, skillUnchanged)
+		}
 	}
 
-	return nil
+	return changes, nil
 }
 
 func copySkillSource(src skillSource, dest string) (string, error) {
@@ -255,9 +381,10 @@ func syncDirCopies(sources []string, destDir string, hashDB hash.DB) error {
 		})
 	}
 
-	return syncNamedDirCopies(named, destDir, hashDB, func(src skillSource, dest string) (string, error) {
+	_, err := syncNamedDirCopies(named, destDir, hashDB, func(src skillSource, dest string) (string, error) {
 		return copyAndHashDir(src.path, dest)
 	})
+	return err
 }
 
 func copyAndHashDir(src, dest string) (string, error) {
