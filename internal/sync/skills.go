@@ -60,7 +60,7 @@ func syncSkills(skillPatterns []string, home string, platforms []platform.Platfo
 				fmt.Printf("   %s %s\n", ui.Muted.Render("..."), ui.ItemStyle.Render(fmt.Sprintf("%d more", len(details)-detailLimit)))
 				break
 			}
-			fmt.Printf("   %s %s\n", ui.Muted.Render(detail.symbol), ui.ItemStyle.Render(detail.name))
+			fmt.Printf("   %s\n", detail.render())
 		}
 		if count := len(changes.preserved); count > 0 {
 			fmt.Printf(" %s %s\n", ui.Warning.Render("!"), ui.Muted.Render(fmt.Sprintf("%d unmanaged %s preserved", count, pluralize("skill", count))))
@@ -97,6 +97,11 @@ const (
 type itemChangeDetail struct {
 	symbol string
 	name   string
+	change itemChange
+}
+
+func (detail itemChangeDetail) render() string {
+	return detail.change.render(detail.symbol + " " + detail.name)
 }
 
 func newItemChanges() itemChanges {
@@ -122,6 +127,19 @@ func (c *itemChanges) record(name string, change itemChange) {
 	}
 }
 
+func (change itemChange) render(text string) string {
+	switch change {
+	case itemAdded:
+		return ui.Added.Render(text)
+	case itemUpdated:
+		return ui.Updated.Render(text)
+	case itemRemoved:
+		return ui.Removed.Render(text)
+	default:
+		return ui.Muted.Render(text)
+	}
+}
+
 func (c itemChanges) summary() string {
 	counts := make(map[itemChange]int)
 	for _, change := range c.items {
@@ -138,7 +156,7 @@ func (c itemChanges) summary() string {
 		{itemUnchanged, "unchanged"},
 	} {
 		if count := counts[item.change]; count > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", count, item.label))
+			parts = append(parts, item.change.render(fmt.Sprintf("%d %s", count, item.label)))
 		}
 	}
 	return strings.Join(parts, " · ")
@@ -162,7 +180,7 @@ func (c itemChanges) details() []itemChangeDetail {
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			details = append(details, itemChangeDetail{symbol: category.symbol, name: name})
+			details = append(details, itemChangeDetail{symbol: category.symbol, name: name, change: category.change})
 		}
 	}
 	return details
