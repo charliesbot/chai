@@ -167,7 +167,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		}
 		fmt.Println(ui.ResultLine("instructions", summary, status.statuses()))
 		for _, detail := range instructionChanges.details() {
-			fmt.Printf("   %s %s\n", ui.Muted.Render(detail.symbol), ui.ItemStyle.Render(detail.name))
+			fmt.Printf("   %s\n", detail.render())
 		}
 	}
 

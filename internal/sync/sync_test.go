@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
@@ -55,6 +58,10 @@ func TestRunWithHome_CopiesInstructions(t *testing.T) {
 }
 
 func TestRunWithHome_ReportsInstructionChanges(t *testing.T) {
+	previousProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previousProfile) })
+
 	home := t.TempDir()
 	srcDir := filepath.Join(home, "dotfiles", "ai")
 	if err := os.MkdirAll(srcDir, 0755); err != nil {
@@ -70,13 +77,17 @@ func TestRunWithHome_ReportsInstructionChanges(t *testing.T) {
 	}
 
 	first := runSyncWithOutput(t, cfg, home, Options{})
-	assertOutputContains(t, first, "instructions", "1 added", "+ agents.md")
+	assertOutputContains(t, first,
+		"instructions",
+		"\x1b[38;5;42m1 added\x1b[0m",
+		"\x1b[38;5;42m+ agents.md\x1b[0m",
+	)
 	if strings.Contains(first, "3 added") {
 		t.Fatalf("shared Antigravity destination should count once:\n%s", first)
 	}
 
 	second := runSyncWithOutput(t, cfg, home, Options{})
-	assertOutputContains(t, second, "instructions", "1 unchanged")
+	assertOutputContains(t, second, "instructions", "\x1b[38;5;241m1 unchanged\x1b[0m")
 	if strings.Contains(second, "+ agents.md") || strings.Contains(second, "~ agents.md") {
 		t.Fatalf("unchanged instructions should not have a detail line:\n%s", second)
 	}
@@ -85,7 +96,11 @@ func TestRunWithHome_ReportsInstructionChanges(t *testing.T) {
 		t.Fatalf("updating instructions: %v", err)
 	}
 	third := runSyncWithOutput(t, cfg, home, Options{})
-	assertOutputContains(t, third, "instructions", "1 updated", "~ agents.md")
+	assertOutputContains(t, third,
+		"instructions",
+		"\x1b[38;5;220m1 updated\x1b[0m",
+		"\x1b[38;5;220m~ agents.md\x1b[0m",
+	)
 
 	geminiPath := filepath.Join(home, ".gemini", "GEMINI.md")
 	if err := os.Remove(geminiPath); err != nil {

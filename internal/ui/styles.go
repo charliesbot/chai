@@ -17,6 +17,15 @@ var (
 	Success = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("42")) // green
 
+	Added = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("42")) // green
+
+	Updated = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("220")) // yellow
+
+	Removed = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196")) // red
+
 	Warning = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("214")) // orange
 

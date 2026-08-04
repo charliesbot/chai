@@ -7,11 +7,37 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 )
 
+func TestItemChangesSummary_ColorsChangeTypes(t *testing.T) {
+	previousProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previousProfile) })
+
+	changes := newItemChanges()
+	changes.record("added", itemAdded)
+	changes.record("updated", itemUpdated)
+	changes.record("removed", itemRemoved)
+	changes.record("unchanged", itemUnchanged)
+
+	assertOutputContains(t, changes.summary(),
+		"\x1b[38;5;42m1 added\x1b[0m",
+		"\x1b[38;5;220m1 updated\x1b[0m",
+		"\x1b[38;5;196m1 removed\x1b[0m",
+		"\x1b[38;5;241m1 unchanged\x1b[0m",
+	)
+}
+
 func TestSyncSkills_ReportsChangesAndCollapsesUnmanagedSkills(t *testing.T) {
+	previousProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previousProfile) })
+
 	home := t.TempDir()
 	hashDB := hash.DB{}
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
@@ -41,9 +67,9 @@ func TestSyncSkills_ReportsChangesAndCollapsesUnmanagedSkills(t *testing.T) {
 		"1 updated",
 		"1 removed",
 		"1 unchanged",
-		"+ adaptive",
-		"~ web-dev",
-		"- old-skill",
+		"\x1b[38;5;42m+ adaptive\x1b[0m",
+		"\x1b[38;5;220m~ web-dev\x1b[0m",
+		"\x1b[38;5;196m- old-skill\x1b[0m",
 		"2 unmanaged skills preserved",
 	)
 	if strings.Contains(output, "custom-") || strings.Contains(output, "agents-md") {
