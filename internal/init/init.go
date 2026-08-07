@@ -17,7 +17,7 @@ instructions = ["%s/instructions/AGENTS.md"]
 [deps]
 
 [skills]
-paths = ["%s/skills"]
+local = ["%s/skills"]
 
 [subagents]
 paths = ["%s/subagents"]
