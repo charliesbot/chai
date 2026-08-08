@@ -11,6 +11,7 @@ import (
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
+	"github.com/charliesbot/chai/internal/skill"
 	"github.com/charliesbot/chai/internal/ui"
 )
 
@@ -21,8 +22,31 @@ func syncSkills(skillPatterns []string, home string, platforms []platform.Platfo
 	if err != nil {
 		return err
 	}
+	return syncResolvedSkills(skills, len(skillPatterns) > 0, home, platforms, dryRun, hashDB)
+}
 
-	if len(skills) == 0 {
+func syncLocalSkills(roots []string, baseDir, home string, platforms []platform.Platform, dryRun bool, hashDB hash.DB) error {
+	skills, err := resolveLocalSkillSources(roots, baseDir, home)
+	if err != nil {
+		return err
+	}
+	return syncResolvedSkills(skills, len(roots) > 0, home, platforms, dryRun, hashDB)
+}
+
+func resolveLocalSkillSources(roots []string, baseDir, home string) ([]skillSource, error) {
+	discovered, err := skill.DiscoverLocal(roots, baseDir, home)
+	if err != nil {
+		return nil, err
+	}
+	skills := make([]skillSource, len(discovered))
+	for i, source := range discovered {
+		skills[i] = skillSource{path: source.Path, name: source.Name, kind: skillSourceDir}
+	}
+	return skills, nil
+}
+
+func syncResolvedSkills(skills []skillSource, configured bool, home string, platforms []platform.Platform, dryRun bool, hashDB hash.DB) error {
+	if len(skills) == 0 && !configured {
 		return nil
 	}
 
