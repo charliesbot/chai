@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	platformpkg "github.com/charliesbot/chai/internal/platform"
+	"github.com/charliesbot/chai/internal/skill"
 	toml "github.com/pelletier/go-toml/v2"
 )
 
@@ -50,10 +50,6 @@ type Dep struct {
 type Skills struct {
 	Local  []string       `toml:"local"`
 	GitHub []GitHubSkills `toml:"github"`
-
-	// Paths keeps existing sync callers buildable until local source resolution
-	// moves to the v2 source model in the next stack layer.
-	Paths []string `toml:"-"`
 }
 
 type GitHubSkills struct {
@@ -164,8 +160,6 @@ func parseDeps(raw map[string]any) (map[string]Dep, error) {
 	return deps, nil
 }
 
-var skillNamePattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
-
 func validate(cfg *Config) error {
 	if len(cfg.Platforms) == 0 {
 		return fmt.Errorf("platforms must contain at least one platform")
@@ -217,7 +211,7 @@ func validateSkills(skills Skills) error {
 
 		seenIncludes := make(map[string]bool, len(source.Include))
 		for j, name := range source.Include {
-			if len(name) > 64 || !skillNamePattern.MatchString(name) {
+			if !skill.ValidName(name) {
 				return fmt.Errorf("invalid skill name %q at skills.github[%d].include[%d]", name, i, j)
 			}
 			if seenIncludes[name] {
