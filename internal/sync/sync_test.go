@@ -18,6 +18,8 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
+const greetSkillContent = "---\nname: greet\n---\ngreet skill"
+
 func TestRunWithHome_CopiesInstructions(t *testing.T) {
 	home := t.TempDir()
 
@@ -471,8 +473,7 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 
 	skillDir := filepath.Join(srcDir, "skills", "greet")
 	os.MkdirAll(skillDir, 0755)
-	skillContent := "---\nname: greet\n---\ngreet skill"
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0644)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(greetSkillContent), 0644)
 
 	agentDir := filepath.Join(srcDir, "subagents")
 	os.MkdirAll(agentDir, 0755)
@@ -498,9 +499,9 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 		body  string
 	}{
 		{"instructions", filepath.Join(home, ".gemini", "GEMINI.md"), "hello"},
-		{"ide skill", filepath.Join(home, ".gemini", "antigravity-ide", "skills", "greet", "SKILL.md"), skillContent},
-		{"legacy skill", filepath.Join(home, ".gemini", "antigravity", "skills", "greet", "SKILL.md"), skillContent},
-		{"skill", filepath.Join(home, ".gemini", "antigravity-cli", "skills", "greet", "SKILL.md"), skillContent},
+		{"ide skill", filepath.Join(home, ".gemini", "antigravity-ide", "skills", "greet", "SKILL.md"), greetSkillContent},
+		{"legacy skill", filepath.Join(home, ".gemini", "antigravity", "skills", "greet", "SKILL.md"), greetSkillContent},
+		{"skill", filepath.Join(home, ".gemini", "antigravity-cli", "skills", "greet", "SKILL.md"), greetSkillContent},
 	}
 	for _, c := range cases {
 		got, err := os.ReadFile(c.path)
@@ -576,6 +577,28 @@ func TestRunWithHome_InvalidLocalSkillDoesNotWriteInstructions(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_NoConfiguredSkillsRemovesManagedSkill(t *testing.T) {
+	home := t.TempDir()
+	dest := filepath.Join(home, ".cursor", "skills", "old-skill")
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "SKILL.md"), []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := (hash.DB{dest: "managed"}).Save(home); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{Platforms: []string{"cursor"}}
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Errorf("stale managed skill should be removed, got err=%v", err)
+	}
+}
+
 func TestRunWithHome_OpenCodePaths(t *testing.T) {
 	home := t.TempDir()
 
@@ -585,7 +608,7 @@ func TestRunWithHome_OpenCodePaths(t *testing.T) {
 
 	skillDir := filepath.Join(srcDir, "skills", "greet")
 	os.MkdirAll(skillDir, 0755)
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(greetSkillContent), 0644)
 
 	agentDir := filepath.Join(srcDir, "subagents")
 	os.MkdirAll(agentDir, 0755)
@@ -595,7 +618,7 @@ func TestRunWithHome_OpenCodePaths(t *testing.T) {
 		Platforms:    []string{"opencode"},
 		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
-	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
+	cfg.Skills.Local = []string{"~/dotfiles/ai/skills"}
 	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
 
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -608,7 +631,7 @@ func TestRunWithHome_OpenCodePaths(t *testing.T) {
 		body  string
 	}{
 		{"instructions", filepath.Join(home, ".config", "opencode", "AGENTS.md"), "hello"},
-		{"skill", filepath.Join(home, ".config", "opencode", "skills", "greet", "SKILL.md"), "greet skill"},
+		{"skill", filepath.Join(home, ".config", "opencode", "skills", "greet", "SKILL.md"), greetSkillContent},
 		{"subagent", filepath.Join(home, ".config", "opencode", "agents", "reviewer.md"), "reviewer body"},
 	}
 	for _, c := range cases {
@@ -632,7 +655,7 @@ func TestRunWithHome_PiPathsAndSkipsUnsupportedFeatures(t *testing.T) {
 
 	skillDir := filepath.Join(srcDir, "skills", "greet")
 	os.MkdirAll(skillDir, 0755)
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(greetSkillContent), 0644)
 
 	agentDir := filepath.Join(srcDir, "subagents")
 	os.MkdirAll(agentDir, 0755)
@@ -645,7 +668,7 @@ func TestRunWithHome_PiPathsAndSkipsUnsupportedFeatures(t *testing.T) {
 			"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
 		},
 	}
-	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
+	cfg.Skills.Local = []string{"~/dotfiles/ai/skills"}
 	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
 
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -658,7 +681,7 @@ func TestRunWithHome_PiPathsAndSkipsUnsupportedFeatures(t *testing.T) {
 		body  string
 	}{
 		{"instructions", filepath.Join(home, ".pi", "agent", "AGENTS.md"), "hello"},
-		{"skill", filepath.Join(home, ".pi", "agent", "skills", "greet", "SKILL.md"), "greet skill"},
+		{"skill", filepath.Join(home, ".pi", "agent", "skills", "greet", "SKILL.md"), greetSkillContent},
 	}
 	for _, c := range cases {
 		got, err := os.ReadFile(c.path)
@@ -794,7 +817,7 @@ func TestRunWithHome_DroidPaths(t *testing.T) {
 
 	skillDir := filepath.Join(srcDir, "skills", "greet")
 	os.MkdirAll(skillDir, 0755)
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(greetSkillContent), 0644)
 
 	agentDir := filepath.Join(srcDir, "subagents")
 	os.MkdirAll(agentDir, 0755)
@@ -804,7 +827,7 @@ func TestRunWithHome_DroidPaths(t *testing.T) {
 		Platforms:    []string{"droid"},
 		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
-	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
+	cfg.Skills.Local = []string{"~/dotfiles/ai/skills"}
 	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
 
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -817,7 +840,7 @@ func TestRunWithHome_DroidPaths(t *testing.T) {
 		body  string
 	}{
 		{"instructions", filepath.Join(home, ".factory", "AGENTS.md"), "hello"},
-		{"skill", filepath.Join(home, ".factory", "skills", "greet", "SKILL.md"), "greet skill"},
+		{"skill", filepath.Join(home, ".factory", "skills", "greet", "SKILL.md"), greetSkillContent},
 		{"droid subagent", filepath.Join(home, ".factory", "droids", "reviewer.md"), "reviewer body"},
 	}
 	for _, c := range cases {
@@ -841,7 +864,7 @@ func TestRunWithHome_CodexPaths(t *testing.T) {
 
 	skillDir := filepath.Join(srcDir, "skills", "greet")
 	os.MkdirAll(skillDir, 0755)
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(greetSkillContent), 0644)
 
 	agentDir := filepath.Join(srcDir, "subagents")
 	os.MkdirAll(agentDir, 0755)
@@ -855,7 +878,7 @@ reviewer body`), 0644)
 		Platforms:    []string{"codex"},
 		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
-	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
+	cfg.Skills.Local = []string{"~/dotfiles/ai/skills"}
 	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
 
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
@@ -868,7 +891,7 @@ reviewer body`), 0644)
 		body  string
 	}{
 		{"instructions", filepath.Join(home, ".codex", "AGENTS.md"), "hello"},
-		{"skill", filepath.Join(home, ".agents", "skills", "greet", "SKILL.md"), "greet skill"},
+		{"skill", filepath.Join(home, ".agents", "skills", "greet", "SKILL.md"), greetSkillContent},
 	}
 	for _, c := range cases {
 		got, err := os.ReadFile(c.path)
