@@ -127,6 +127,19 @@ func TestValidName_LengthBoundary(t *testing.T) {
 	}
 }
 
+func TestParseMetadata(t *testing.T) {
+	metadata, err := ParseMetadata([]byte("---\nname: test-skill\ndescription: A useful skill\n---\nBody\n"))
+	if err != nil {
+		t.Fatalf("ParseMetadata: %v", err)
+	}
+	if metadata.Name != "test-skill" || metadata.Description != "A useful skill" {
+		t.Fatalf("metadata = %+v", metadata)
+	}
+	if _, err := ParseMetadata([]byte("---\nname: test-skill\ndescription: true\n---\n")); err == nil {
+		t.Fatal("non-string description should fail")
+	}
+}
+
 func writeSkill(t *testing.T, dir, name string) {
 	t.Helper()
 	writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: "+name+"\n---\nBody\n")
