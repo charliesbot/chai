@@ -122,8 +122,8 @@ func cleanTargets(home string, platforms []platform.Platform) targets {
 }
 
 func rejectSourceOverlaps(cfg *config.Config, home string, dirs []string) error {
-	patterns := make([]string, 0, len(cfg.Skills.Paths)+len(cfg.Subagents.Paths))
-	patterns = append(patterns, cfg.Skills.Paths...)
+	patterns := make([]string, 0, len(cfg.Skills.Local)+len(cfg.Subagents.Paths))
+	patterns = append(patterns, cfg.Skills.Local...)
 	patterns = append(patterns, cfg.Subagents.Paths...)
 
 	sources, err := configuredSourcePaths(home, patterns)
