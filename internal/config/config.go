@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	platformpkg "github.com/charliesbot/chai/internal/platform"
 	toml "github.com/pelletier/go-toml/v2"
 )
 
@@ -165,16 +166,6 @@ func parseDeps(raw map[string]any) (map[string]Dep, error) {
 
 var skillNamePattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
-var supportedPlatforms = map[string]bool{
-	"antigravity": true,
-	"claude":      true,
-	"codex":       true,
-	"cursor":      true,
-	"droid":       true,
-	"opencode":    true,
-	"pi":          true,
-}
-
 func validate(cfg *Config) error {
 	if len(cfg.Platforms) == 0 {
 		return fmt.Errorf("platforms must contain at least one platform")
@@ -182,7 +173,7 @@ func validate(cfg *Config) error {
 	seenPlatforms := make(map[string]bool, len(cfg.Platforms))
 	for _, platform := range cfg.Platforms {
 		key := strings.ToLower(platform)
-		if !supportedPlatforms[key] {
+		if !platformpkg.IsSupported(platform) {
 			return fmt.Errorf("unsupported platform %q", platform)
 		}
 		if seenPlatforms[key] {
