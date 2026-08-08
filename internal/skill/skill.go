@@ -18,6 +18,11 @@ type Source struct {
 	Path string
 }
 
+type Metadata struct {
+	Name        string
+	Description string
+}
+
 func ValidName(name string) bool {
 	return len(name) <= 64 && namePattern.MatchString(name)
 }
@@ -89,18 +94,18 @@ func sourceFromDir(dir string) (Source, bool, error) {
 		return Source{}, false, fmt.Errorf("reading %s: %w", path, err)
 	}
 
-	name, err := parseName(data)
+	metadata, err := ParseMetadata(data)
 	if err != nil {
 		return Source{}, false, fmt.Errorf("%s: %w", path, err)
 	}
-	return Source{Name: name, Path: dir}, true, nil
+	return Source{Name: metadata.Name, Path: dir}, true, nil
 }
 
-func parseName(data []byte) (string, error) {
+func ParseMetadata(data []byte) (Metadata, error) {
 	text := strings.TrimPrefix(string(data), "\ufeff")
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	if !strings.HasPrefix(text, "---\n") {
-		return "", fmt.Errorf("missing YAML frontmatter")
+		return Metadata{}, fmt.Errorf("missing YAML frontmatter")
 	}
 	lines := strings.Split(text, "\n")
 	end := -1
@@ -111,26 +116,30 @@ func parseName(data []byte) (string, error) {
 		}
 	}
 	if end == -1 {
-		return "", fmt.Errorf("unterminated YAML frontmatter")
+		return Metadata{}, fmt.Errorf("unterminated YAML frontmatter")
 	}
 
 	var metadata struct {
-		Name yaml.Node `yaml:"name"`
+		Name        yaml.Node `yaml:"name"`
+		Description yaml.Node `yaml:"description"`
 	}
 	if err := yaml.Unmarshal([]byte(strings.Join(lines[1:end], "\n")), &metadata); err != nil {
-		return "", fmt.Errorf("parsing YAML frontmatter: %w", err)
+		return Metadata{}, fmt.Errorf("parsing YAML frontmatter: %w", err)
 	}
 	if metadata.Name.Kind != 0 && metadata.Name.Tag != "!!str" {
-		return "", fmt.Errorf("frontmatter field name must be a string")
+		return Metadata{}, fmt.Errorf("frontmatter field name must be a string")
 	}
 	name := metadata.Name.Value
 	if name == "" {
-		return "", fmt.Errorf("missing required frontmatter field: name")
+		return Metadata{}, fmt.Errorf("missing required frontmatter field: name")
 	}
 	if !ValidName(name) {
-		return "", fmt.Errorf("invalid skill name %q", name)
+		return Metadata{}, fmt.Errorf("invalid skill name %q", name)
 	}
-	return name, nil
+	if metadata.Description.Kind != 0 && metadata.Description.Tag != "!!str" {
+		return Metadata{}, fmt.Errorf("frontmatter field description must be a string")
+	}
+	return Metadata{Name: name, Description: strings.TrimSpace(metadata.Description.Value)}, nil
 }
 
 func rejectDuplicateNames(sources []Source) error {
