@@ -471,7 +471,8 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 
 	skillDir := filepath.Join(srcDir, "skills", "greet")
 	os.MkdirAll(skillDir, 0755)
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("greet skill"), 0644)
+	skillContent := "---\nname: greet\n---\ngreet skill"
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0644)
 
 	agentDir := filepath.Join(srcDir, "subagents")
 	os.MkdirAll(agentDir, 0755)
@@ -481,7 +482,7 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 		Platforms:    []string{"antigravity"},
 		Instructions: []string{"~/dotfiles/ai/agents.md"},
 	}
-	cfg.Skills.Paths = []string{"~/dotfiles/ai/skills/*"}
+	cfg.Skills.Local = []string{"~/dotfiles/ai/skills"}
 	cfg.Subagents.Paths = []string{"~/dotfiles/ai/subagents/*"}
 	cfg.MCP = map[string]config.MCP{
 		"context7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
@@ -497,9 +498,9 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 		body  string
 	}{
 		{"instructions", filepath.Join(home, ".gemini", "GEMINI.md"), "hello"},
-		{"ide skill", filepath.Join(home, ".gemini", "antigravity-ide", "skills", "greet", "SKILL.md"), "greet skill"},
-		{"legacy skill", filepath.Join(home, ".gemini", "antigravity", "skills", "greet", "SKILL.md"), "greet skill"},
-		{"skill", filepath.Join(home, ".gemini", "antigravity-cli", "skills", "greet", "SKILL.md"), "greet skill"},
+		{"ide skill", filepath.Join(home, ".gemini", "antigravity-ide", "skills", "greet", "SKILL.md"), skillContent},
+		{"legacy skill", filepath.Join(home, ".gemini", "antigravity", "skills", "greet", "SKILL.md"), skillContent},
+		{"skill", filepath.Join(home, ".gemini", "antigravity-cli", "skills", "greet", "SKILL.md"), skillContent},
 	}
 	for _, c := range cases {
 		got, err := os.ReadFile(c.path)
@@ -546,6 +547,32 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 		if _, err := os.Stat(agentsDir); !os.IsNotExist(err) {
 			t.Errorf("%s should not exist, got err=%v", agentsDir, err)
 		}
+	}
+}
+
+func TestRunWithHome_InvalidLocalSkillDoesNotWriteInstructions(t *testing.T) {
+	home := t.TempDir()
+	srcDir := filepath.Join(home, "sources")
+	if err := os.MkdirAll(filepath.Join(srcDir, "skills", "broken"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "AGENTS.md"), []byte("instructions"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "skills", "broken", "SKILL.md"), []byte("missing frontmatter"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Platforms:    []string{"claude"},
+		Instructions: []string{filepath.Join(srcDir, "AGENTS.md")},
+		Skills:       config.Skills{Local: []string{filepath.Join(srcDir, "skills")}},
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err == nil {
+		t.Fatal("expected invalid local skill error")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Errorf("instructions changed before skill validation completed, got err=%v", err)
 	}
 }
 
