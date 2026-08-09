@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charliesbot/chai/internal/githubskill"
 	platformpkg "github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/skill"
 	toml "github.com/pelletier/go-toml/v2"
@@ -262,7 +263,7 @@ func validateSkills(skills Skills) error {
 	seenRepositories := make(map[string]bool, len(skills.GitHub))
 	var selectedSkills []skill.Source
 	for i, source := range skills.GitHub {
-		if !isCanonicalGitHubURL(source.URL) {
+		if _, err := githubskill.ParseCanonical(source.URL); err != nil {
 			return fmt.Errorf("skills.github[%d].url must be a canonical https://github.com/owner/repo URL", i)
 		}
 		if seenRepositories[source.URL] {
@@ -287,26 +288,4 @@ func validateSkills(skills Skills) error {
 	}
 
 	return skill.ValidateUniqueNames(selectedSkills)
-}
-
-func isCanonicalGitHubURL(rawURL string) bool {
-	const prefix = "https://github.com/"
-	if !strings.HasPrefix(rawURL, prefix) {
-		return false
-	}
-	parts := strings.Split(strings.TrimPrefix(rawURL, prefix), "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return false
-	}
-	for _, part := range parts {
-		if part != strings.ToLower(part) || part == "." || part == ".." {
-			return false
-		}
-		for _, r := range part {
-			if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '-' && r != '_' && r != '.' {
-				return false
-			}
-		}
-	}
-	return !strings.HasSuffix(parts[1], ".git")
 }

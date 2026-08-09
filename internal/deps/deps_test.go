@@ -10,31 +10,20 @@ import (
 	"github.com/charliesbot/chai/internal/config"
 )
 
-func TestSyncWithHome_CloneAndPull(t *testing.T) {
+func TestSyncOne_CloneAndPull(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not in PATH")
 	}
 
 	home := t.TempDir()
 
-	bareRepo := filepath.Join(t.TempDir(), "bare.git")
-	run(t, "", "git", "init", "--bare", bareRepo)
-
-	tmp := filepath.Join(t.TempDir(), "work")
-	run(t, "", "git", "clone", bareRepo, tmp)
-	os.WriteFile(filepath.Join(tmp, "README.md"), []byte("hello"), 0644)
-	run(t, tmp, "git", "add", ".")
-	run(t, tmp, "git", "-c", "user.name=test", "-c", "user.email=test@test.com", "commit", "-m", "init")
-	run(t, tmp, "git", "push")
-
-	depMap := map[string]config.Dep{
-		"myrepo": {URL: bareRepo},
-	}
+	bareRepo := testRepository(t)
+	dep := config.Dep{URL: bareRepo}
 
 	// First sync: should clone
-	err := SyncWithHome(depMap, home)
-	if err != nil {
-		t.Fatalf("clone failed: %v", err)
+	result := SyncOne("myrepo", dep, home)
+	if result.Err != nil {
+		t.Fatalf("clone failed: %v", result.Err)
 	}
 
 	clonedPath := filepath.Join(home, ".chai", "deps", "myrepo")
@@ -43,36 +32,24 @@ func TestSyncWithHome_CloneAndPull(t *testing.T) {
 	}
 
 	// Second sync: should pull (no error)
-	err = SyncWithHome(depMap, home)
-	if err != nil {
-		t.Fatalf("pull failed: %v", err)
+	result = SyncOne("myrepo", dep, home)
+	if result.Err != nil {
+		t.Fatalf("pull failed: %v", result.Err)
 	}
 }
 
-func TestSyncWithHome_NoDeps(t *testing.T) {
-	home := t.TempDir()
-	err := SyncWithHome(nil, home)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestSyncWithHome_InvalidURL(t *testing.T) {
+func TestSyncOne_InvalidURL(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not in PATH")
 	}
 
 	home := t.TempDir()
-	depMap := map[string]config.Dep{
-		"bad": {URL: "https://invalid.example.com/nonexistent.git"},
-	}
-
-	err := SyncWithHome(depMap, home)
-	if err == nil {
+	result := SyncOne("bad", config.Dep{URL: "https://invalid.example.com/nonexistent.git"}, home)
+	if result.Err == nil {
 		t.Fatal("expected error for invalid URL")
 	}
-	if !strings.Contains(err.Error(), "cloning") {
-		t.Errorf("error = %q, want it to contain 'cloning'", err.Error())
+	if !strings.Contains(result.Err.Error(), "cloning") {
+		t.Errorf("error = %q, want it to contain 'cloning'", result.Err)
 	}
 }
 
@@ -83,15 +60,7 @@ func TestSyncOne_WithBuild(t *testing.T) {
 
 	home := t.TempDir()
 
-	bareRepo := filepath.Join(t.TempDir(), "bare.git")
-	run(t, "", "git", "init", "--bare", bareRepo)
-
-	tmp := filepath.Join(t.TempDir(), "work")
-	run(t, "", "git", "clone", bareRepo, tmp)
-	os.WriteFile(filepath.Join(tmp, "README.md"), []byte("hello"), 0644)
-	run(t, tmp, "git", "add", ".")
-	run(t, tmp, "git", "-c", "user.name=test", "-c", "user.email=test@test.com", "commit", "-m", "init")
-	run(t, tmp, "git", "push")
+	bareRepo := testRepository(t)
 
 	dep := config.Dep{URL: bareRepo, Build: "touch built.txt"}
 
@@ -120,6 +89,21 @@ func TestSyncOne_WithBuild(t *testing.T) {
 	if result.Built {
 		t.Error("build should not run on pull")
 	}
+}
+
+func testRepository(t *testing.T) string {
+	t.Helper()
+	bareRepo := filepath.Join(t.TempDir(), "bare.git")
+	run(t, "", "git", "init", "--bare", bareRepo)
+	tmp := filepath.Join(t.TempDir(), "work")
+	run(t, "", "git", "clone", bareRepo, tmp)
+	if err := os.WriteFile(filepath.Join(tmp, "README.md"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, tmp, "git", "add", ".")
+	run(t, tmp, "git", "-c", "user.name=test", "-c", "user.email=test@test.com", "commit", "-m", "init")
+	run(t, tmp, "git", "push")
+	return bareRepo
 }
 
 func run(t *testing.T, dir string, name string, args ...string) {
