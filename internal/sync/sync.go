@@ -191,7 +191,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return fmt.Errorf("sync interrupted: %w", err)
 	}
 
-	if err := syncResolvedSkills(resolvedSkills, true, home, platforms, opts, hashDB); err != nil {
+	if err := syncResolvedSkills(resolvedSkills, home, platforms, opts, hashDB); err != nil {
 		return persistHashError(hashDB, home, opts.DryRun, err)
 	}
 
@@ -227,15 +227,12 @@ func persistHashError(hashDB hash.DB, home string, dryRun bool, operationErr err
 	return errors.Join(operationErr, hashDB.Save(home))
 }
 
-func resolveConfiguredSkills(cfg *config.Config, home string) ([]skillSource, error) {
+func resolveConfiguredSkills(cfg *config.Config, home string) ([]skill.Source, error) {
 	resolved, err := resolveLocalSkillSources(cfg.Skills.Local, home, home)
 	if err != nil {
 		return nil, err
 	}
-	configuredSources := make([]skill.Source, 0, len(resolved))
-	for _, source := range resolved {
-		configuredSources = append(configuredSources, skill.Source{Name: source.name, Path: source.path})
-	}
+	configuredSources := append([]skill.Source(nil), resolved...)
 	for _, remote := range cfg.Skills.GitHub {
 		for _, name := range remote.Include {
 			configuredSources = append(configuredSources, skill.Source{Name: name, Path: remote.URL})
@@ -256,13 +253,13 @@ func resolveConfiguredSkills(cfg *config.Config, home string) ([]skillSource, er
 			continue
 		}
 		for _, source := range cached {
-			resolved = append(resolved, skillSource{path: source.Path, name: source.Name, kind: skillSourceDir})
+			resolved = append(resolved, source)
 		}
 	}
 	if len(sourceErrors) > 0 {
 		return nil, errors.Join(sourceErrors...)
 	}
-	sort.Slice(resolved, func(i, j int) bool { return resolved[i].name < resolved[j].name })
+	sort.Slice(resolved, func(i, j int) bool { return resolved[i].Name < resolved[j].Name })
 	return resolved, nil
 }
 
