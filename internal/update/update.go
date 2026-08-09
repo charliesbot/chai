@@ -40,10 +40,10 @@ func Run(ctx context.Context, cfg *config.Config, opts Options) error {
 
 func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Options) error {
 	var cleanupWarnings []error
+	if err := validateSourceNames(cfg, home); err != nil {
+		return err
+	}
 	if len(cfg.Skills.GitHub) > 0 {
-		if err := validateSourceNames(cfg, home); err != nil {
-			return err
-		}
 		checkGit := opts.CheckGit
 		if checkGit == nil {
 			checkGit = func(ctx context.Context) error {
@@ -104,22 +104,16 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 }
 
 func validateSourceNames(cfg *config.Config, home string) error {
-	locals, err := skill.DiscoverLocal(cfg.Skills.Local, home, home)
+	sources, err := skill.DiscoverLocal(cfg.Skills.Local, home, home)
 	if err != nil {
 		return err
 	}
-	localNames := make(map[string]string, len(locals))
-	for _, source := range locals {
-		localNames[source.Name] = source.Path
-	}
 	for _, remote := range cfg.Skills.GitHub {
 		for _, name := range remote.Include {
-			if localPath, exists := localNames[name]; exists {
-				return fmt.Errorf("duplicate skill name %q from %s and %s", name, localPath, remote.URL)
-			}
+			sources = append(sources, skill.Source{Name: name, Path: remote.URL})
 		}
 	}
-	return nil
+	return skill.ValidateUniqueNames(sources)
 }
 
 func reportAvailableSkills(source config.GitHubSkills, discovery githubskill.Discovery) {

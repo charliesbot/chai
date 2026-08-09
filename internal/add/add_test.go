@@ -1,6 +1,7 @@
 package add
 
 import (
+	"bytes"
 	"context"
 	"net/url"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/githubskill"
+	"github.com/charliesbot/chai/internal/skill"
 	chaisync "github.com/charliesbot/chai/internal/sync"
 )
 
@@ -69,6 +71,38 @@ func TestRunWithHomeAddsLocalSourceAndSyncs(t *testing.T) {
 	}
 }
 
+func TestRunWithHomeLocalSummaryShowsTrackedSkillsAndManifestDelta(t *testing.T) {
+	home := t.TempDir()
+	manifest := filepath.Join(home, "chai.toml")
+	root := filepath.Join(home, "skills")
+	writeSkill(t, filepath.Join(root, "two"), "two")
+	writeSkill(t, filepath.Join(root, "one"), "one")
+	cfg := &config.Config{Platforms: []string{"cursor", "claude"}}
+	var output bytes.Buffer
+	opts := Options{
+		Confirm: func(string) (bool, error) { return true, nil },
+		Sync:    func(context.Context, *config.Config, string, chaisync.Options) error { return nil },
+		Output:  &output,
+	}
+
+	if err := RunWithHome(context.Background(), cfg, manifest, home, []string{root}, opts); err != nil {
+		t.Fatal(err)
+	}
+	for _, detail := range []string{"~/skills", "tracked skills: one, two", "manifest: add local source", "sync to cursor, claude"} {
+		if !strings.Contains(output.String(), detail) {
+			t.Errorf("summary %q does not contain %q", output.String(), detail)
+		}
+	}
+
+	output.Reset()
+	if err := RunWithHome(context.Background(), cfg, manifest, home, []string{root}, opts); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "manifest: no changes") {
+		t.Errorf("idempotent summary = %q", output.String())
+	}
+}
+
 func TestRunWithHomeDeclineLeavesRemoteStateUnchanged(t *testing.T) {
 	home := t.TempDir()
 	manifest := filepath.Join(home, "chai.toml")
@@ -100,6 +134,7 @@ func TestRunWithHomeAddsSelectedRemoteAndIsIdempotent(t *testing.T) {
 	source := testRepository(t)
 	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
 	syncs := 0
+	var output bytes.Buffer
 	opts := Options{
 		CheckGit: func(context.Context) error { return nil },
 		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
@@ -109,25 +144,67 @@ func TestRunWithHomeAddsSelectedRemoteAndIsIdempotent(t *testing.T) {
 			syncs++
 			return nil
 		},
+		Output: &output,
 	}
-	args := []string{"example/skills", "--skill", "two", "one", "--yes"}
-	if err := RunWithHome(context.Background(), cfg, manifest, home, args, opts); err != nil {
+	firstArgs := []string{"example/skills", "--skill", "one", "--yes"}
+	if err := RunWithHome(context.Background(), cfg, manifest, home, firstArgs, opts); err != nil {
 		t.Fatal(err)
+	}
+	for _, detail := range []string{"https://github.com/example/skills", "selected skills: one", "manifest: add GitHub source", "sync to cursor"} {
+		if !strings.Contains(output.String(), detail) {
+			t.Errorf("summary %q does not contain %q", output.String(), detail)
+		}
 	}
 	loaded, err := config.Load(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := RunWithHome(context.Background(), loaded, manifest, home, args, opts); err != nil {
+	output.Reset()
+	mergeArgs := []string{"example/skills", "--skill", "two", "--yes"}
+	if err := RunWithHome(context.Background(), loaded, manifest, home, mergeArgs, opts); err != nil {
 		t.Fatal(err)
+	}
+	for _, detail := range []string{"selected skills: one, two", "manifest: add skills two"} {
+		if !strings.Contains(output.String(), detail) {
+			t.Errorf("merge summary %q does not contain %q", output.String(), detail)
+		}
+	}
+	loaded, err = config.Load(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output.Reset()
+	if err := RunWithHome(context.Background(), loaded, manifest, home, mergeArgs, opts); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "manifest: no changes") {
+		t.Errorf("idempotent summary = %q", output.String())
 	}
 	loaded, err = config.Load(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"one", "two"}
-	if syncs != 2 || len(loaded.Skills.GitHub) != 1 || !reflect.DeepEqual(loaded.Skills.GitHub[0].Include, want) {
+	if syncs != 3 || len(loaded.Skills.GitHub) != 1 || !reflect.DeepEqual(loaded.Skills.GitHub[0].Include, want) {
 		t.Fatalf("syncs=%d github=%#v", syncs, loaded.Skills.GitHub)
+	}
+}
+
+func TestRejectNameConflictsReportsEveryLocation(t *testing.T) {
+	selected := []skill.Source{{Name: "one", Path: "new-source"}, {Name: "two", Path: "new-source"}}
+	locals := []skill.Source{{Name: "one", Path: "local-one"}}
+	cfg := &config.Config{Skills: config.Skills{GitHub: []config.GitHubSkills{
+		{URL: "https://github.com/example/existing", Include: []string{"two"}},
+	}}}
+
+	err := rejectNameConflicts(selected, locals, cfg, "")
+	if err == nil {
+		t.Fatal("expected name conflicts")
+	}
+	for _, detail := range []string{`"one": local-one, new-source`, `"two": https://github.com/example/existing, new-source`} {
+		if !strings.Contains(err.Error(), detail) {
+			t.Errorf("error %q does not contain %q", err, detail)
+		}
 	}
 }
 

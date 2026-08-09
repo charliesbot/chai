@@ -64,9 +64,6 @@ func DiscoverLocal(roots []string, baseDir, home string) ([]Source, error) {
 		}
 	}
 
-	if err := rejectDuplicateNames(sources); err != nil {
-		return nil, err
-	}
 	sort.Slice(sources, func(i, j int) bool { return sources[i].Name < sources[j].Name })
 	return sources, nil
 }
@@ -142,7 +139,15 @@ func ParseMetadata(data []byte) (Metadata, error) {
 	return Metadata{Name: name, Description: strings.TrimSpace(metadata.Description.Value)}, nil
 }
 
-func rejectDuplicateNames(sources []Source) error {
+func ValidateUniqueNames(sources []Source) error {
+	conflicts := duplicateNameConflicts(sources)
+	if len(conflicts) == 0 {
+		return nil
+	}
+	return fmt.Errorf("duplicate skill name conflicts: %s", strings.Join(conflicts, "; "))
+}
+
+func duplicateNameConflicts(sources []Source) []string {
 	locations := make(map[string][]string)
 	for _, source := range sources {
 		locations[source.Name] = append(locations[source.Name], source.Path)
@@ -154,9 +159,6 @@ func rejectDuplicateNames(sources []Source) error {
 			conflicts = append(conflicts, fmt.Sprintf("%q: %s", name, strings.Join(paths, ", ")))
 		}
 	}
-	if len(conflicts) == 0 {
-		return nil
-	}
 	sort.Strings(conflicts)
-	return fmt.Errorf("duplicate local skill name conflicts: %s", strings.Join(conflicts, "; "))
+	return conflicts
 }

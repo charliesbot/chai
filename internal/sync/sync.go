@@ -14,6 +14,7 @@ import (
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
+	"github.com/charliesbot/chai/internal/skill"
 	"github.com/charliesbot/chai/internal/ui"
 )
 
@@ -231,10 +232,19 @@ func resolveConfiguredSkills(cfg *config.Config, home string) ([]skillSource, er
 	if err != nil {
 		return nil, err
 	}
-	locations := make(map[string][]string)
+	configuredSources := make([]skill.Source, 0, len(resolved))
 	for _, source := range resolved {
-		locations[source.name] = append(locations[source.name], source.path)
+		configuredSources = append(configuredSources, skill.Source{Name: source.name, Path: source.path})
 	}
+	for _, remote := range cfg.Skills.GitHub {
+		for _, name := range remote.Include {
+			configuredSources = append(configuredSources, skill.Source{Name: name, Path: remote.URL})
+		}
+	}
+	if err := skill.ValidateUniqueNames(configuredSources); err != nil {
+		return nil, err
+	}
+	var sourceErrors []error
 	for _, remote := range cfg.Skills.GitHub {
 		id, err := githubskill.ParseCanonical(remote.URL)
 		if err != nil {
@@ -242,23 +252,15 @@ func resolveConfiguredSkills(cfg *config.Config, home string) ([]skillSource, er
 		}
 		cached, err := githubskill.ResolveCached(home, id, remote.Include)
 		if err != nil {
-			return nil, err
+			sourceErrors = append(sourceErrors, err)
+			continue
 		}
 		for _, source := range cached {
 			resolved = append(resolved, skillSource{path: source.Path, name: source.Name, kind: skillSourceDir})
-			locations[source.Name] = append(locations[source.Name], source.Path)
 		}
 	}
-	var conflicts []string
-	for name, paths := range locations {
-		if len(paths) > 1 {
-			sort.Strings(paths)
-			conflicts = append(conflicts, fmt.Sprintf("%q: %s", name, strings.Join(paths, ", ")))
-		}
-	}
-	if len(conflicts) > 0 {
-		sort.Strings(conflicts)
-		return nil, fmt.Errorf("duplicate skill name conflicts: %s", strings.Join(conflicts, "; "))
+	if len(sourceErrors) > 0 {
+		return nil, errors.Join(sourceErrors...)
 	}
 	sort.Slice(resolved, func(i, j int) bool { return resolved[i].name < resolved[j].name })
 	return resolved, nil

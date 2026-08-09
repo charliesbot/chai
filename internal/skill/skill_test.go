@@ -41,7 +41,7 @@ func TestDiscoverLocal_SingleSkillAndTilde(t *testing.T) {
 	}
 }
 
-func TestDiscoverLocal_RejectsInvalidAndDuplicateNames(t *testing.T) {
+func TestDiscoverLocal_RejectsInvalidMetadata(t *testing.T) {
 	tests := []struct {
 		name  string
 		setup func(t *testing.T, root string)
@@ -96,14 +96,6 @@ func TestDiscoverLocal_RejectsInvalidAndDuplicateNames(t *testing.T) {
 			},
 			want: "unterminated YAML frontmatter",
 		},
-		{
-			name: "duplicate name",
-			setup: func(t *testing.T, root string) {
-				writeSkill(t, filepath.Join(root, "one"), "shared")
-				writeSkill(t, filepath.Join(root, "two"), "shared")
-			},
-			want: "duplicate local skill name conflicts: \"shared\"",
-		},
 	}
 
 	for _, tt := range tests {
@@ -114,9 +106,6 @@ func TestDiscoverLocal_RejectsInvalidAndDuplicateNames(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want it to contain %q", err, tt.want)
 			}
-			if tt.name == "duplicate name" && (!strings.Contains(err.Error(), filepath.Join(root, "one")) || !strings.Contains(err.Error(), filepath.Join(root, "two"))) {
-				t.Errorf("duplicate error does not contain both source paths: %v", err)
-			}
 		})
 	}
 }
@@ -124,6 +113,25 @@ func TestDiscoverLocal_RejectsInvalidAndDuplicateNames(t *testing.T) {
 func TestValidName_LengthBoundary(t *testing.T) {
 	if !ValidName(strings.Repeat("a", 64)) || ValidName(strings.Repeat("a", 65)) {
 		t.Fatal("ValidName should accept 64 characters and reject 65")
+	}
+}
+
+func TestValidateUniqueNamesReportsEveryConflictLocation(t *testing.T) {
+	sources := []Source{
+		{Name: "shared", Path: "source-c"},
+		{Name: "other", Path: "source-e"},
+		{Name: "shared", Path: "source-a"},
+		{Name: "other", Path: "source-d"},
+		{Name: "shared", Path: "source-b"},
+	}
+
+	err := ValidateUniqueNames(sources)
+	if err == nil {
+		t.Fatal("expected name conflicts")
+	}
+	want := `duplicate skill name conflicts: "other": source-d, source-e; "shared": source-a, source-b, source-c`
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
 	}
 }
 

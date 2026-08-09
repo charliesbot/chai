@@ -636,10 +636,39 @@ func TestRunWithHome_MissingGitHubCacheDoesNotWriteInstructions(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_ReportsEveryMissingGitHubCache(t *testing.T) {
+	home := t.TempDir()
+	cfg := &config.Config{
+		Platforms: []string{"cursor"},
+		Skills: config.Skills{GitHub: []config.GitHubSkills{
+			{URL: "https://github.com/example/one", Include: []string{"alpha"}},
+			{URL: "https://github.com/example/two", Include: []string{"beta"}},
+		}},
+	}
+
+	err := RunWithHome(context.Background(), cfg, home, Options{})
+	if err == nil {
+		t.Fatal("expected missing cache errors")
+	}
+	for _, detail := range []string{
+		"https://github.com/example/one",
+		"alpha",
+		"https://github.com/example/two",
+		"beta",
+		"chai update",
+	} {
+		if !strings.Contains(err.Error(), detail) {
+			t.Errorf("error %q does not contain %q", err, detail)
+		}
+	}
+}
+
 func TestRunWithHome_RejectsLocalRemoteNameConflict(t *testing.T) {
 	home := t.TempDir()
-	local := filepath.Join(home, "local")
-	writeSkillDir(t, local, "---\nname: local\n---\nlocal")
+	localOne := filepath.Join(home, "local-one")
+	localTwo := filepath.Join(home, "local-two")
+	writeSkillDir(t, localOne, "---\nname: local\n---\nlocal")
+	writeSkillDir(t, localTwo, "---\nname: local\n---\nlocal")
 	id, _ := githubskill.ParseCanonical("https://github.com/example/skills")
 	cache := githubskill.CacheDir(home, id)
 	writeSkillDir(t, filepath.Join(githubskill.RepositoryDir(cache), "remote"), "---\nname: local\n---\nremote")
@@ -649,11 +678,12 @@ func TestRunWithHome_RejectsLocalRemoteNameConflict(t *testing.T) {
 	cfg := &config.Config{
 		Platforms: []string{"cursor"},
 		Skills: config.Skills{
-			Local:  []string{local},
+			Local:  []string{localOne, localTwo},
 			GitHub: []config.GitHubSkills{{URL: id.URL(), Include: []string{"local"}}},
 		},
 	}
-	if err := RunWithHome(context.Background(), cfg, home, Options{}); err == nil || !strings.Contains(err.Error(), "duplicate skill name") {
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err == nil ||
+		!strings.Contains(err.Error(), localOne) || !strings.Contains(err.Error(), localTwo) || !strings.Contains(err.Error(), id.URL()) {
 		t.Fatalf("conflict error = %v", err)
 	}
 }
