@@ -23,7 +23,6 @@ type Request struct {
 	Skills []string
 	List   bool
 	Yes    bool
-	Global bool
 }
 
 type Options struct {
@@ -50,7 +49,7 @@ func ParseArgs(args []string) (Request, error) {
 		case "--yes", "-y":
 			request.Yes = true
 		case "--global", "-g":
-			request.Global = true
+			// Accepted for compatibility; chai currently manages only global config.
 		case "--skill":
 			if seenSkill {
 				return Request{}, fmt.Errorf("--skill may be specified only once")

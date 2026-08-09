@@ -22,7 +22,7 @@ func TestParseArgsConsumesSkillNamesUntilNextOption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if request.Source != "owner/repo" || !reflect.DeepEqual(request.Skills, []string{"one", "two"}) || !request.Yes || !request.Global {
+	if request.Source != "owner/repo" || !reflect.DeepEqual(request.Skills, []string{"one", "two"}) || !request.Yes {
 		t.Fatalf("request = %#v", request)
 	}
 }
