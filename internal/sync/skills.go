@@ -10,50 +10,19 @@ import (
 
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
-	"github.com/charliesbot/chai/internal/resolve"
 	"github.com/charliesbot/chai/internal/skill"
 	"github.com/charliesbot/chai/internal/ui"
 )
 
-// syncSkills resolves skill patterns, then copies them to each platform's
-// skills directory.
-func syncSkills(skillPatterns []string, home string, platforms []platform.Platform, dryRun bool, hashDB hash.DB) error {
-	skills, err := resolveSkillSources(skillPatterns, home)
-	if err != nil {
-		return err
-	}
-	return syncResolvedSkills(skills, len(skillPatterns) > 0, home, platforms, Options{DryRun: dryRun, Force: true}, hashDB)
+func resolveLocalSkillSources(roots []string, baseDir, home string) ([]skill.Source, error) {
+	return skill.DiscoverLocal(roots, baseDir, home)
 }
 
-func syncLocalSkills(roots []string, baseDir, home string, platforms []platform.Platform, dryRun bool, hashDB hash.DB) error {
-	skills, err := resolveLocalSkillSources(roots, baseDir, home)
-	if err != nil {
-		return err
-	}
-	return syncResolvedSkills(skills, len(roots) > 0, home, platforms, Options{DryRun: dryRun, Force: true}, hashDB)
-}
-
-func resolveLocalSkillSources(roots []string, baseDir, home string) ([]skillSource, error) {
-	discovered, err := skill.DiscoverLocal(roots, baseDir, home)
-	if err != nil {
-		return nil, err
-	}
-	skills := make([]skillSource, len(discovered))
-	for i, source := range discovered {
-		skills[i] = skillSource{path: source.Path, name: source.Name, kind: skillSourceDir}
-	}
-	return skills, nil
-}
-
-func syncResolvedSkills(skills []skillSource, configured bool, home string, platforms []platform.Platform, opts Options, hashDB hash.DB) error {
-	if len(skills) == 0 && !configured {
-		return nil
-	}
-
+func syncResolvedSkills(skills []skill.Source, home string, platforms []platform.Platform, opts Options, hashDB hash.DB) error {
 	if opts.DryRun {
 		fmt.Println(ui.Label.Render("skills"))
 		for _, src := range skills {
-			fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), src.path)
+			fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), src.Path)
 		}
 	}
 
@@ -64,7 +33,7 @@ func syncResolvedSkills(skills []skillSource, configured bool, home string, plat
 		destDir := filepath.Join(home, p.SkillsDir)
 		if opts.DryRun {
 			for _, src := range skills {
-				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, src.name)), ui.Muted.Render("→ "+src.path))
+				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, src.Name)), ui.Muted.Render("→ "+src.Path))
 			}
 		} else {
 			platformChanges, err := syncSkillCopies(skills, destDir, hashDB, opts)
@@ -100,12 +69,6 @@ func syncResolvedSkills(skills []skillSource, configured bool, home string, plat
 	}
 
 	return syncErr
-}
-
-type skillSource struct {
-	path string
-	name string
-	kind skillSourceKind
 }
 
 type itemChanges struct {
@@ -221,94 +184,7 @@ func pluralize(noun string, count int) string {
 	return noun + "s"
 }
 
-type skillSourceKind int
-
-const (
-	skillSourceDir skillSourceKind = iota
-	skillSourceFile
-)
-
-func resolveSkillSources(patterns []string, home string) ([]skillSource, error) {
-	var all []skillSource
-	seen := make(map[string]bool)
-
-	for _, pattern := range patterns {
-		resolved, err := resolve.PathWithHome(pattern, home)
-		if err != nil {
-			return nil, fmt.Errorf("resolving path %q: %w", pattern, err)
-		}
-
-		info, statErr := os.Stat(resolved)
-		if statErr == nil {
-			if source, ok := skillSourceFromPath(resolved, info); ok {
-				addSkillSource(&all, seen, source)
-				continue
-			}
-		}
-
-		matches, err := resolve.GlobWithHome(pattern, home)
-		if err != nil {
-			return nil, fmt.Errorf("resolving pattern %q: %w", pattern, err)
-		}
-		for _, m := range matches {
-			name := filepath.Base(m)
-			if strings.HasPrefix(name, ".") {
-				continue
-			}
-			info, err := os.Stat(m)
-			if err != nil {
-				continue
-			}
-			if source, ok := skillSourceFromPath(m, info); ok {
-				addSkillSource(&all, seen, source)
-			}
-		}
-	}
-
-	return all, nil
-}
-
-func skillSourceFromPath(path string, info os.FileInfo) (skillSource, bool) {
-	if info.IsDir() {
-		return skillSource{
-			path: path,
-			name: filepath.Base(path),
-			kind: skillSourceDir,
-		}, true
-	}
-	if isSkillMD(path) {
-		return skillSource{
-			path: path,
-			name: filepath.Base(filepath.Dir(path)),
-			kind: skillSourceFile,
-		}, true
-	}
-	return skillSource{}, false
-}
-
-func addSkillSource(sources *[]skillSource, seen map[string]bool, source skillSource) {
-	if seen[source.path] {
-		return
-	}
-	seen[source.path] = true
-	*sources = append(*sources, source)
-}
-
-func isSkillMD(path string) bool {
-	return filepath.Base(path) == "SKILL.md"
-}
-
-func syncSkillCopies(sources []skillSource, destDir string, hashDB hash.DB, opts Options) (itemChanges, error) {
-	return syncNamedDirCopies(sources, destDir, hashDB, opts, copySkillSource)
-}
-
-func syncNamedDirCopies(
-	sources []skillSource,
-	destDir string,
-	hashDB hash.DB,
-	opts Options,
-	copySource func(skillSource, string) (string, error),
-) (itemChanges, error) {
+func syncSkillCopies(sources []skill.Source, destDir string, hashDB hash.DB, opts Options) (itemChanges, error) {
 	changes := newItemChanges()
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return changes, fmt.Errorf("creating directory %s: %w", destDir, err)
@@ -316,7 +192,7 @@ func syncNamedDirCopies(
 
 	expected := make(map[string]bool)
 	for _, src := range sources {
-		expected[filepath.Join(destDir, src.name)] = true
+		expected[filepath.Join(destDir, src.Name)] = true
 	}
 	stale, err := removeStaleManagedDirs(destDir, expected, hashDB, opts)
 	for _, name := range stale.removed {
@@ -330,7 +206,7 @@ func syncNamedDirCopies(
 	}
 
 	for _, src := range sources {
-		dest := filepath.Join(destDir, src.name)
+		dest := filepath.Join(destDir, src.Name)
 		previousHash, managed := hashDB[dest]
 		_, statErr := os.Stat(dest)
 		existed := statErr == nil
@@ -359,11 +235,11 @@ func syncNamedDirCopies(
 			}
 		}
 
-		staging, err := os.MkdirTemp(destDir, "."+src.name+".tmp-")
+		staging, err := os.MkdirTemp(destDir, "."+src.Name+".tmp-")
 		if err != nil {
 			return changes, fmt.Errorf("creating staging directory for %s: %w", dest, err)
 		}
-		sum, err := copySource(src, staging)
+		sum, err := copyAndHashDir(src.Path, staging)
 		if err != nil {
 			_ = os.RemoveAll(staging)
 			return changes, err
@@ -374,33 +250,15 @@ func syncNamedDirCopies(
 		hashDB[dest] = sum
 		switch {
 		case !managed:
-			changes.record(src.name, itemAdded)
+			changes.record(src.Name, itemAdded)
 		case !existed || previousHash != sum:
-			changes.record(src.name, itemUpdated)
+			changes.record(src.Name, itemUpdated)
 		default:
-			changes.record(src.name, itemUnchanged)
+			changes.record(src.Name, itemUnchanged)
 		}
 	}
 
 	return changes, nil
-}
-
-func copySkillSource(src skillSource, dest string) (string, error) {
-	switch src.kind {
-	case skillSourceFile:
-		data, err := os.ReadFile(src.path)
-		if err != nil {
-			return "", fmt.Errorf("reading %s: %w", src.path, err)
-		}
-		if err := atomicWrite(filepath.Join(dest, "SKILL.md"), data); err != nil {
-			return "", err
-		}
-		return hash.Sum(data), nil
-	case skillSourceDir:
-		return copyAndHashDir(src.path, dest)
-	default:
-		return "", fmt.Errorf("unknown skill source kind for %s", src.path)
-	}
 }
 
 // syncFileCopies copies source files into destDir.
@@ -435,31 +293,6 @@ func syncFileCopies(sources []string, destDir string, hashDB hash.DB) error {
 	}
 
 	return nil
-}
-
-// syncDirCopies recursively copies source directories into destDir.
-// Each source skill directory is wiped and re-copied on every sync so the
-// destination mirrors the source exactly.
-//
-// Uses the hash DB to track which directories chai manages:
-//   - Stale chai-managed directories (in hash DB but not in sources) are removed.
-//   - User-created directories (not in hash DB and not in sources) are left alone.
-//
-// The hash stored per skill is a composite md5 of all files inside the source tree.
-func syncDirCopies(sources []string, destDir string, hashDB hash.DB) error {
-	named := make([]skillSource, 0, len(sources))
-	for _, src := range sources {
-		named = append(named, skillSource{
-			path: src,
-			name: filepath.Base(src),
-			kind: skillSourceDir,
-		})
-	}
-
-	_, err := syncNamedDirCopies(named, destDir, hashDB, Options{Force: true}, func(src skillSource, dest string) (string, error) {
-		return copyAndHashDir(src.path, dest)
-	})
-	return err
 }
 
 func managedDirDirty(path, stored string) (bool, error) {

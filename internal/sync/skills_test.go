@@ -13,6 +13,7 @@ import (
 
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
+	"github.com/charliesbot/chai/internal/skill"
 )
 
 func TestItemChangesSummary_ColorsChangeTypes(t *testing.T) {
@@ -99,12 +100,10 @@ func TestSyncSkills_ReportsCompletedChangesWhenLaterCopyFails(t *testing.T) {
 	hashDB := hash.DB{staleSkill: staleHash}
 
 	output, err := captureStdout(t, func() error {
-		return syncSkills(
-			[]string{filepath.Join(home, "dotfiles", "ai", "skills", "*")},
-			home,
+		return syncResolvedSkills(
+			[]skill.Source{{Name: "broken-skill", Path: brokenSkill}}, home,
 			[]platform.Platform{{Name: "Cursor", SkillsDir: ".cursor/skills"}},
-			false,
-			hashDB,
+			Options{Force: true}, hashDB,
 		)
 	})
 	if err == nil {
@@ -139,7 +138,7 @@ func TestSyncSkillCopiesRejectsDirtyManagedDestination(t *testing.T) {
 	dest := filepath.Join(destDir, "chosen")
 	hashDB := hash.DB{dest: "previous-hash"}
 
-	_, err := syncSkillCopies([]skillSource{{path: source, name: "chosen", kind: skillSourceDir}}, destDir, hashDB, Options{})
+	_, err := syncSkillCopies([]skill.Source{{Path: source, Name: "chosen"}}, destDir, hashDB, Options{})
 	var dirty *DirtyError
 	if !errors.As(err, &dirty) {
 		t.Fatalf("dirty error = %v", err)
@@ -157,7 +156,7 @@ func TestSyncSkillCopiesRejectsUnmanagedNameCollision(t *testing.T) {
 	writeSkillDir(t, source, "source")
 	writeSkillDir(t, filepath.Join(destDir, "chosen"), "user")
 
-	_, err := syncSkillCopies([]skillSource{{path: source, name: "chosen", kind: skillSourceDir}}, destDir, hash.DB{}, Options{})
+	_, err := syncSkillCopies([]skill.Source{{Path: source, Name: "chosen"}}, destDir, hash.DB{}, Options{})
 	if err == nil || !strings.Contains(err.Error(), "not managed by chai") {
 		t.Fatalf("collision error = %v", err)
 	}
@@ -170,7 +169,7 @@ func TestSyncSkillCopiesForceStillRejectsUnmanagedNameCollision(t *testing.T) {
 	writeSkillDir(t, source, "source")
 	writeSkillDir(t, filepath.Join(destDir, "chosen"), "user")
 
-	_, err := syncSkillCopies([]skillSource{{path: source, name: "chosen", kind: skillSourceDir}}, destDir, hash.DB{}, Options{Force: true})
+	_, err := syncSkillCopies([]skill.Source{{Path: source, Name: "chosen"}}, destDir, hash.DB{}, Options{Force: true})
 	if err == nil || !strings.Contains(err.Error(), "not managed by chai") {
 		t.Fatalf("force collision error = %v", err)
 	}
@@ -187,11 +186,19 @@ func assertOutputContains(t *testing.T, output string, expected ...string) {
 
 func syncCursorSkills(t *testing.T, home string, hashDB hash.DB) string {
 	t.Helper()
+	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		t.Fatalf("reading skills: %v", err)
+	}
+	sources := make([]skill.Source, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			sources = append(sources, skill.Source{Name: entry.Name(), Path: filepath.Join(skillsDir, entry.Name())})
+		}
+	}
 	output, err := captureStdout(t, func() error {
-		return syncSkills(
-			[]string{filepath.Join(home, "dotfiles", "ai", "skills", "*")},
-			home, platform.ForNames([]string{"cursor"}), false, hashDB,
-		)
+		return syncResolvedSkills(sources, home, platform.ForNames([]string{"cursor"}), Options{Force: true}, hashDB)
 	})
 	if err != nil {
 		t.Fatalf("syncing skills: %v", err)
@@ -240,14 +247,14 @@ func TestSyncDirCopies_CreatesCopies(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("skill "+name), 0644)
 	}
 
-	sources := []string{
-		filepath.Join(skillsDir, "web-dev"),
-		filepath.Join(skillsDir, "android-dev"),
+	sources := []skill.Source{
+		{Name: "web-dev", Path: filepath.Join(skillsDir, "web-dev")},
+		{Name: "android-dev", Path: filepath.Join(skillsDir, "android-dev")},
 	}
 
 	destDir := filepath.Join(home, ".claude", "skills")
 
-	err := syncDirCopies(sources, destDir, hashDB)
+	_, err := syncSkillCopies(sources, destDir, hashDB, Options{Force: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -279,11 +286,11 @@ func TestSyncSkills_CopiesCursorSkills(t *testing.T) {
 	home := t.TempDir()
 	hashDB := hash.DB{}
 
-	skill := filepath.Join(home, "dotfiles", "ai", "skills", "web-dev")
-	os.MkdirAll(skill, 0755)
-	os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("skill web-dev"), 0644)
+	source := filepath.Join(home, "dotfiles", "ai", "skills", "web-dev")
+	os.MkdirAll(source, 0755)
+	os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("skill web-dev"), 0644)
 
-	if err := syncSkills([]string{"~/dotfiles/ai/skills/*"}, home, platform.ForNames([]string{"cursor"}), false, hashDB); err != nil {
+	if err := syncResolvedSkills([]skill.Source{{Name: "web-dev", Path: source}}, home, platform.ForNames([]string{"cursor"}), Options{Force: true}, hashDB); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -313,7 +320,11 @@ func TestSyncLocalSkills_UsesFrontmatterName(t *testing.T) {
 	}
 
 	hashDB := hash.DB{}
-	if err := syncLocalSkills([]string{root}, home, home, platform.ForNames([]string{"cursor"}), false, hashDB); err != nil {
+	sources, err := resolveLocalSkillSources([]string{root}, home, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syncResolvedSkills(sources, home, platform.ForNames([]string{"cursor"}), Options{Force: true}, hashDB); err != nil {
 		t.Fatalf("syncing local skills: %v", err)
 	}
 
@@ -343,13 +354,21 @@ func TestSyncLocalSkills_RemovesLastManagedSkill(t *testing.T) {
 
 	hashDB := hash.DB{}
 	platforms := platform.ForNames([]string{"cursor"})
-	if err := syncLocalSkills([]string{root}, home, home, platforms, false, hashDB); err != nil {
+	sources, err := resolveLocalSkillSources([]string{root}, home, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syncResolvedSkills(sources, home, platforms, Options{Force: true}, hashDB); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := syncLocalSkills([]string{root}, home, home, platforms, false, hashDB); err != nil {
+	sources, err = resolveLocalSkillSources([]string{root}, home, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syncResolvedSkills(sources, home, platforms, Options{Force: true}, hashDB); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 
@@ -370,7 +389,7 @@ func TestSyncDirCopies_CopiesNestedFiles(t *testing.T) {
 	os.WriteFile(filepath.Join(src, "resources", "templates", "page.html"), []byte("<html/>"), 0644)
 
 	destDir := filepath.Join(home, ".claude", "skills")
-	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+	if _, err := syncSkillCopies([]skill.Source{{Name: "web-dev", Path: src}}, destDir, hashDB, Options{Force: true}); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 
@@ -392,39 +411,6 @@ func TestSyncDirCopies_CopiesNestedFiles(t *testing.T) {
 	}
 }
 
-func TestSyncSkills_CopiesRootSkillMDAsNamedSkill(t *testing.T) {
-	home := t.TempDir()
-	hashDB := hash.DB{}
-
-	repo := filepath.Join(home, ".chai", "deps", "herdr")
-	os.MkdirAll(filepath.Join(repo, "vendor"), 0755)
-	os.WriteFile(filepath.Join(repo, "SKILL.md"), []byte("herdr skill"), 0644)
-	os.WriteFile(filepath.Join(repo, "README.md"), []byte("repo readme"), 0644)
-	os.WriteFile(filepath.Join(repo, "vendor", "large.txt"), []byte("do not copy"), 0644)
-
-	if err := syncSkills([]string{"@herdr/SKILL.md"}, home, platform.ForNames([]string{"codex"}), false, hashDB); err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-
-	dest := filepath.Join(home, ".agents", "skills", "herdr")
-	data, err := os.ReadFile(filepath.Join(dest, "SKILL.md"))
-	if err != nil {
-		t.Fatalf("reading copied SKILL.md: %v", err)
-	}
-	if string(data) != "herdr skill" {
-		t.Errorf("content = %q, want %q", string(data), "herdr skill")
-	}
-	if _, err := os.Stat(filepath.Join(dest, "README.md")); !os.IsNotExist(err) {
-		t.Error("repo sibling files should not be copied for file-backed skills")
-	}
-	if _, err := os.Stat(filepath.Join(dest, "vendor")); !os.IsNotExist(err) {
-		t.Error("repo sibling directories should not be copied for file-backed skills")
-	}
-	if _, ok := hashDB[dest]; !ok {
-		t.Fatal("skill hash was not recorded")
-	}
-}
-
 func TestSyncDirCopies_RemovesStaleChaiManaged(t *testing.T) {
 	home := t.TempDir()
 	hashDB := hash.DB{}
@@ -438,16 +424,16 @@ func TestSyncDirCopies_RemovesStaleChaiManaged(t *testing.T) {
 
 	destDir := filepath.Join(home, ".claude", "skills")
 
-	if err := syncDirCopies([]string{
-		filepath.Join(skillsDir, "web-dev"),
-		filepath.Join(skillsDir, "old-skill"),
-	}, destDir, hashDB); err != nil {
+	if _, err := syncSkillCopies([]skill.Source{
+		{Name: "web-dev", Path: filepath.Join(skillsDir, "web-dev")},
+		{Name: "old-skill", Path: filepath.Join(skillsDir, "old-skill")},
+	}, destDir, hashDB, Options{Force: true}); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 
-	if err := syncDirCopies([]string{
-		filepath.Join(skillsDir, "web-dev"),
-	}, destDir, hashDB); err != nil {
+	if _, err := syncSkillCopies([]skill.Source{
+		{Name: "web-dev", Path: filepath.Join(skillsDir, "web-dev")},
+	}, destDir, hashDB, Options{Force: true}); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 
@@ -472,7 +458,7 @@ func TestSyncDirCopies_LeavesUserCreatedSkills(t *testing.T) {
 
 	destDir := filepath.Join(home, ".claude", "skills")
 
-	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+	if _, err := syncSkillCopies([]skill.Source{{Name: "web-dev", Path: src}}, destDir, hashDB, Options{Force: true}); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 
@@ -480,7 +466,7 @@ func TestSyncDirCopies_LeavesUserCreatedSkills(t *testing.T) {
 	os.MkdirAll(userSkill, 0755)
 	os.WriteFile(filepath.Join(userSkill, "SKILL.md"), []byte("user"), 0644)
 
-	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+	if _, err := syncSkillCopies([]skill.Source{{Name: "web-dev", Path: src}}, destDir, hashDB, Options{Force: true}); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 
@@ -502,13 +488,13 @@ func TestSyncDirCopies_UpdatesContentOnResync(t *testing.T) {
 	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("v1"), 0644)
 
 	destDir := filepath.Join(home, ".claude", "skills")
-	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+	if _, err := syncSkillCopies([]skill.Source{{Name: "web-dev", Path: src}}, destDir, hashDB, Options{Force: true}); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 	firstHash := hashDB[filepath.Join(destDir, "web-dev")]
 
 	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("v2"), 0644)
-	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+	if _, err := syncSkillCopies([]skill.Source{{Name: "web-dev", Path: src}}, destDir, hashDB, Options{Force: true}); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 
@@ -531,45 +517,17 @@ func TestSyncDirCopies_RemovesFilesDeletedFromSource(t *testing.T) {
 	os.WriteFile(filepath.Join(src, "extra.md"), []byte("extra"), 0644)
 
 	destDir := filepath.Join(home, ".claude", "skills")
-	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+	if _, err := syncSkillCopies([]skill.Source{{Name: "web-dev", Path: src}}, destDir, hashDB, Options{Force: true}); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 
 	os.Remove(filepath.Join(src, "extra.md"))
-	if err := syncDirCopies([]string{src}, destDir, hashDB); err != nil {
+	if _, err := syncSkillCopies([]skill.Source{{Name: "web-dev", Path: src}}, destDir, hashDB, Options{Force: true}); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 
 	if _, err := os.Stat(filepath.Join(destDir, "web-dev", "extra.md")); !os.IsNotExist(err) {
 		t.Error("extra.md should have been removed when deleted from source")
-	}
-}
-
-func TestSyncSkills_CopiesSkillDirectories(t *testing.T) {
-	home := t.TempDir()
-
-	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
-	webDevSrc := filepath.Join(skillsDir, "web-dev")
-	os.MkdirAll(webDevSrc, 0755)
-	os.WriteFile(filepath.Join(webDevSrc, "SKILL.md"), []byte("web"), 0644)
-
-	hashDB := hash.DB{}
-	err := syncSkills(
-		[]string{"~/dotfiles/ai/skills/*"},
-		home, platform.All(), false, hashDB,
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Skills are copied to skills dir
-	claudeSkills := filepath.Join(home, ".claude", "skills")
-	webDevDest := filepath.Join(claudeSkills, "web-dev")
-	info, err := os.Lstat(webDevDest)
-	if err != nil {
-		t.Error("web-dev missing from skills dir")
-	} else if info.Mode()&os.ModeSymlink != 0 {
-		t.Error("web-dev should be a copy, not a symlink")
 	}
 }
 
@@ -734,31 +692,5 @@ func TestSyncFileCopies_UpdatesContent(t *testing.T) {
 	got, _ := os.ReadFile(filepath.Join(destDir, "reviewer.md"))
 	if string(got) != "v2" {
 		t.Errorf("content = %q, want %q", string(got), "v2")
-	}
-}
-
-func TestSyncSkills_EmptyAgentsAreIrrelevant(t *testing.T) {
-	home := t.TempDir()
-
-	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
-	webDevSrc := filepath.Join(skillsDir, "web-dev")
-	os.MkdirAll(webDevSrc, 0755)
-	os.WriteFile(filepath.Join(webDevSrc, "SKILL.md"), []byte("web"), 0644)
-
-	// Empty agents dir
-	os.MkdirAll(filepath.Join(home, "dotfiles", "ai", "subagents"), 0755)
-
-	hashDB := hash.DB{}
-	err := syncSkills(
-		[]string{"~/dotfiles/ai/skills/*"},
-		home, platform.All(), false, hashDB,
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	claudeSkills := filepath.Join(home, ".claude", "skills")
-	if _, err := os.Lstat(filepath.Join(claudeSkills, "web-dev")); err != nil {
-		t.Error("web-dev missing — empty agents should not affect skills")
 	}
 }
