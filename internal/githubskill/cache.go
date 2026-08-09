@@ -284,6 +284,7 @@ func ResolveCached(home string, id Identity, names []string) ([]skill.Source, er
 	repository := RepositoryDir(root)
 	sources := make([]skill.Source, 0, len(names))
 	seen := make(map[string]bool, len(names))
+	var problems []string
 	for _, name := range names {
 		if seen[name] {
 			return nil, fmt.Errorf("remote skill %q is selected more than once", name)
@@ -291,25 +292,33 @@ func ResolveCached(home string, id Identity, names []string) ([]skill.Source, er
 		seen[name] = true
 		directory, ok := state.Skills[name]
 		if !ok || !safeGitPath(directory) {
-			return nil, incompleteCacheError(id, fmt.Sprintf("skill %q is missing", name))
+			problems = append(problems, fmt.Sprintf("skill %q is missing", name))
+			continue
 		}
 		if err := validateMaterializedTree(repository, directory); err != nil {
-			return nil, incompleteCacheError(id, fmt.Sprintf("skill %q is incomplete", name))
+			problems = append(problems, fmt.Sprintf("skill %q is incomplete", name))
+			continue
 		}
 		path := filepath.Join(repository, filepath.FromSlash(directory))
 		files, err := cacheFiles(path)
 		if err != nil || !reflect.DeepEqual(files, state.Files[name]) {
-			return nil, incompleteCacheError(id, fmt.Sprintf("skill %q content does not match its cache state", name))
+			problems = append(problems, fmt.Sprintf("skill %q content does not match its cache state", name))
+			continue
 		}
 		data, err := os.ReadFile(filepath.Join(path, "SKILL.md"))
 		if err != nil {
-			return nil, incompleteCacheError(id, fmt.Sprintf("skill %q metadata is missing", name))
+			problems = append(problems, fmt.Sprintf("skill %q metadata is missing", name))
+			continue
 		}
 		metadata, err := skill.ParseMetadata(data)
 		if err != nil || metadata.Name != name {
-			return nil, incompleteCacheError(id, fmt.Sprintf("skill %q metadata is invalid", name))
+			problems = append(problems, fmt.Sprintf("skill %q metadata is invalid", name))
+			continue
 		}
 		sources = append(sources, skill.Source{Name: name, Path: path})
+	}
+	if len(problems) > 0 {
+		return nil, incompleteCacheError(id, strings.Join(problems, "; "))
 	}
 	sort.Slice(sources, func(i, j int) bool { return sources[i].Name < sources[j].Name })
 	return sources, nil

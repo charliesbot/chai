@@ -94,6 +94,43 @@ func TestResolveCachedRejectsIncompleteCache(t *testing.T) {
 	}
 }
 
+func TestResolveCachedReportsAllIncompleteSkills(t *testing.T) {
+	home := t.TempDir()
+	id, _ := ParseCanonical("https://github.com/example/skills")
+	cache := CacheDir(home, id)
+	repository := RepositoryDir(cache)
+	writeCacheSkill(t, repository, "deleted", "deleted")
+	writeCacheSkill(t, repository, "corrupt", "corrupt")
+	if err := CompleteStaging(cache, id, map[string]string{
+		"deleted": "deleted",
+		"corrupt": "corrupt",
+	}, "abc123"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(repository, "deleted")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repository, "corrupt", "SKILL.md"), []byte("corrupt"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ResolveCached(home, id, []string{"missing", "deleted", "corrupt"})
+	if err == nil {
+		t.Fatal("expected incomplete cache error")
+	}
+	for _, detail := range []string{
+		id.URL(),
+		`skill "missing" is missing`,
+		`skill "deleted" is incomplete`,
+		`skill "corrupt" content does not match its cache state`,
+		"run 'chai update'",
+	} {
+		if !strings.Contains(err.Error(), detail) {
+			t.Errorf("error %q does not contain %q", err, detail)
+		}
+	}
+}
+
 func TestPromoteReplacesExistingCache(t *testing.T) {
 	home := t.TempDir()
 	id, _ := ParseCanonical("https://github.com/example/skills")
