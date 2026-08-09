@@ -40,3 +40,33 @@ func TestParseCanonical_RejectsInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestParseInputCanonicalizesGitHubSources(t *testing.T) {
+	for _, input := range []string{
+		"Example/Skills",
+		"Example/Skills.git",
+		"https://github.com/Example/Skills/",
+		"https://github.com/Example/Skills.git",
+	} {
+		id, err := ParseInput(input)
+		if err != nil {
+			t.Fatalf("ParseInput(%q): %v", input, err)
+		}
+		if id.URL() != "https://github.com/example/skills" {
+			t.Fatalf("ParseInput(%q) = %q", input, id.URL())
+		}
+	}
+}
+
+func TestParseInputRejectsUnsupportedRemotes(t *testing.T) {
+	for _, input := range []string{
+		"http://github.com/example/skills",
+		"https://github.com/example/skills/tree/main",
+		"https://github.com/example/skills?ref=main",
+		"git@example.com:example/skills.git",
+	} {
+		if _, err := ParseInput(input); err == nil {
+			t.Fatalf("ParseInput(%q) should fail", input)
+		}
+	}
+}

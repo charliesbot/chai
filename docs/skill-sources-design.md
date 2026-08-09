@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed for the next major version. This is a breaking replacement for using
+Implemented for the next major version. This is a breaking replacement for using
 `[deps]` plus `@dep/...` paths to install remote skills.
 
 ## Summary

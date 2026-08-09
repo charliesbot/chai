@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -114,6 +116,63 @@ func TestLoad_Full(t *testing.T) {
 	}
 	if cfg.Antigravity.Plugins["workspace"] != "https://github.com/gemini-cli-extensions/workspace" {
 		t.Errorf("antigravity.plugins[workspace] = %q", cfg.Antigravity.Plugins["workspace"])
+	}
+}
+
+func TestSaveAtomicRoundTripsCompleteConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chai.toml")
+	cfg := &Config{
+		Platforms:    []string{"cursor"},
+		Instructions: []string{"~/AGENTS.md"},
+		Deps: map[string]Dep{
+			"simple": {URL: "https://example.com/simple"},
+			"built":  {URL: "https://example.com/built", Build: "make"},
+		},
+		Skills: Skills{
+			Local:  []string{"~/skills"},
+			GitHub: []GitHubSkills{{URL: "https://github.com/example/skills", Include: []string{"one"}}},
+		},
+		Subagents: Subagents{Paths: []string{"~/agents/*"}},
+		MCP:       map[string]MCP{"ctx": {Command: "npx", Args: []string{"ctx"}}},
+	}
+	if err := SaveAtomic(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(loaded, cfg) {
+		t.Fatalf("round trip mismatch:\n got: %#v\nwant: %#v", loaded, cfg)
+	}
+}
+
+func TestSaveAtomicUsesPrivatePermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chai.toml")
+	if err := os.WriteFile(path, []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveAtomic(path, &Config{Platforms: []string{"cursor"}}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("manifest mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestLoadRejectsDependencyBackedLocalSkill(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chai.toml")
+	if err := os.WriteFile(path, []byte(`platforms = ["cursor"]
+[skills]
+local = ["@dep/skills"]`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "local path") {
+		t.Fatalf("error = %v", err)
 	}
 }
 

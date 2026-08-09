@@ -2,6 +2,7 @@ package githubskill
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 )
@@ -12,6 +13,38 @@ type Identity struct {
 	url        string
 	owner      string
 	repository string
+}
+
+func ParseInput(raw string) (Identity, error) {
+	if !strings.Contains(raw, "://") {
+		parts := strings.Split(raw, "/")
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return Identity{}, fmt.Errorf("GitHub source must be owner/repo or an HTTPS GitHub URL")
+		}
+		parts[1] = strings.TrimSuffix(parts[1], ".git")
+		return canonicalIdentity(parts[0], parts[1])
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "github.com") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.RawPath != "" {
+		return Identity{}, fmt.Errorf("GitHub source URL must be public https://github.com/owner/repo without credentials, query, or fragment")
+	}
+	path := strings.TrimSuffix(parsed.Path, "/")
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) != 2 {
+		return Identity{}, fmt.Errorf("GitHub source URL must contain exactly an owner and repository")
+	}
+	parts[1] = strings.TrimSuffix(parts[1], ".git")
+	return canonicalIdentity(parts[0], parts[1])
+}
+
+func canonicalIdentity(owner, repository string) (Identity, error) {
+	owner = strings.ToLower(owner)
+	repository = strings.ToLower(repository)
+	if !validComponent(owner) || !validComponent(repository) {
+		return Identity{}, fmt.Errorf("invalid GitHub owner or repository")
+	}
+	canonical := githubURLPrefix + owner + "/" + repository
+	return Identity{url: canonical, owner: owner, repository: repository}, nil
 }
 
 func ParseCanonical(raw string) (Identity, error) {

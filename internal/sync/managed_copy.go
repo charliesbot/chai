@@ -31,10 +31,50 @@ func removeStaleManagedFiles(destDir, ext string, expected map[string]bool, hash
 	return nil
 }
 
-func removeStaleManagedDirs(destDir string, expected map[string]bool, hashDB hash.DB) (managedEntryChanges, error) {
-	return removeStaleManagedEntries(destDir, expected, hashDB, func(entry fs.DirEntry) bool {
-		return entry.IsDir()
-	}, os.RemoveAll)
+func removeStaleManagedDirs(destDir string, expected map[string]bool, hashDB hash.DB, opts Options) (managedEntryChanges, error) {
+	var result managedEntryChanges
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		return result, fmt.Errorf("reading %s: %w", destDir, err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(destDir, entry.Name())
+		if expected[path] {
+			continue
+		}
+		stored, managed := hashDB[path]
+		if !managed {
+			result.preserved = append(result.preserved, entry.Name())
+			continue
+		}
+		if !opts.Force {
+			dirty, err := managedDirDirty(path, stored)
+			if err != nil {
+				return result, err
+			}
+			if dirty {
+				if opts.Prompt == nil {
+					return result, &DirtyError{Files: []string{path}}
+				}
+				remove, err := opts.Prompt(path)
+				if err != nil {
+					return result, err
+				}
+				if !remove {
+					return result, fmt.Errorf("skill sync incomplete: modified stale destination %s was preserved", path)
+				}
+			}
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return result, fmt.Errorf("removing %s: %w", path, err)
+		}
+		delete(hashDB, path)
+		result.removed = append(result.removed, entry.Name())
+	}
+	return result, nil
 }
 
 type managedEntryChanges struct {

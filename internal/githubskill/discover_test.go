@@ -48,6 +48,19 @@ func TestDiscover(t *testing.T) {
 	}
 }
 
+func TestDiscoverRejectsFullCloneFallback(t *testing.T) {
+	source := t.TempDir()
+	runGit(t, source, "init", "-b", "main")
+	writeRepoFile(t, source, "skill/SKILL.md", "---\nname: skill\n---\n")
+	commitRepo(t, source, "skill")
+	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
+
+	_, err := Discover(context.Background(), cloneURL, filepath.Join(t.TempDir(), "repository"))
+	if err == nil || !strings.Contains(err.Error(), "full clone fallback") {
+		t.Fatalf("fallback error = %v", err)
+	}
+}
+
 func TestParseTree_PreservesTabsInPath(t *testing.T) {
 	entries, err := parseTree([]byte("100644 blob abc123\tdir/with\ttab/SKILL.md\x00"))
 	if err != nil {

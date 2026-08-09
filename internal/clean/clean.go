@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
 
 	"github.com/charliesbot/chai/internal/config"
+	"github.com/charliesbot/chai/internal/githubskill"
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
@@ -40,11 +42,17 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 
 	platforms := platform.ForNames(cfg.Platforms)
 	targets := cleanTargets(home, platforms)
-	if len(targets.dirs) == 0 && len(targets.mcps) == 0 {
+	orphans, err := orphanSourceCaches(cfg, home)
+	if err != nil {
+		return err
+	}
+	targets.sources = orphans
+	if len(targets.dirs) == 0 && len(targets.mcps) == 0 && len(targets.sources) == 0 {
 		fmt.Println(ui.Muted.Render("nothing to clean"))
 		return nil
 	}
-	if err := rejectSourceOverlaps(cfg, home, targets.dirs); err != nil {
+	deleteDirs := append(append([]string(nil), targets.dirs...), targets.sources...)
+	if err := rejectSourceOverlaps(cfg, home, deleteDirs); err != nil {
 		return err
 	}
 
@@ -64,11 +72,14 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	if err := removeMCPKeys(ctx, targets.mcps); err != nil {
 		return err
 	}
+	if err := removeDirs(ctx, targets.sources, hashDB); err != nil {
+		return err
+	}
 	if err := hashDB.Save(home); err != nil {
 		return err
 	}
 
-	fmt.Println(ui.Box("clean", len(targets.dirs)+len(targets.mcps), cleanStatuses(platforms), cleanItems(targets)))
+	fmt.Println(ui.Box("clean", len(targets.dirs)+len(targets.mcps)+len(targets.sources), cleanStatuses(platforms), cleanItems(targets)))
 	return nil
 }
 
@@ -79,8 +90,50 @@ type mcpTarget struct {
 }
 
 type targets struct {
-	dirs []string
-	mcps []mcpTarget
+	dirs    []string
+	mcps    []mcpTarget
+	sources []string
+}
+
+func orphanSourceCaches(cfg *config.Config, home string) ([]string, error) {
+	expected := make(map[string]bool, len(cfg.Skills.GitHub))
+	for _, source := range cfg.Skills.GitHub {
+		id, err := githubskill.ParseCanonical(source.URL)
+		if err != nil {
+			return nil, err
+		}
+		expected[githubskill.CacheDir(home, id)] = true
+	}
+	root := filepath.Join(home, ".chai", "sources", "github.com")
+	owners, err := os.ReadDir(root)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading GitHub source cache: %w", err)
+	}
+	var orphans []string
+	for _, owner := range owners {
+		if !owner.IsDir() {
+			continue
+		}
+		ownerPath := filepath.Join(root, owner.Name())
+		repositories, err := os.ReadDir(ownerPath)
+		if err != nil {
+			return nil, fmt.Errorf("reading GitHub source cache owner %s: %w", owner.Name(), err)
+		}
+		for _, repository := range repositories {
+			if !repository.IsDir() {
+				continue
+			}
+			path := filepath.Join(ownerPath, repository.Name())
+			if !expected[path] {
+				orphans = append(orphans, path)
+			}
+		}
+	}
+	sort.Strings(orphans)
+	return orphans, nil
 }
 
 func cleanTargets(home string, platforms []platform.Platform) targets {
@@ -243,9 +296,25 @@ func pathsOverlap(a, b string) bool {
 	if pathWithin(a, b) || pathWithin(b, a) {
 		return true
 	}
-	a = strings.ToLower(a)
-	b = strings.ToLower(b)
-	return pathWithin(a, b) || pathWithin(b, a)
+	return pathWithinByIdentity(a, b) || pathWithinByIdentity(b, a)
+}
+
+func pathWithinByIdentity(parent, child string) bool {
+	parentInfo, err := os.Stat(parent)
+	if err != nil {
+		return false
+	}
+	current := child
+	for {
+		if info, err := os.Stat(current); err == nil && os.SameFile(parentInfo, info) {
+			return true
+		}
+		next := filepath.Dir(current)
+		if next == current {
+			return false
+		}
+		current = next
+	}
 }
 
 func printDryRun(targets targets) {
@@ -261,6 +330,13 @@ func printDryRun(targets targets) {
 		fmt.Println(ui.Label.Render("mcp keys"))
 		for _, target := range targets.mcps {
 			fmt.Printf("  %s %s %s\n", ui.Arrow(), ui.Muted.Render(target.path), ui.Muted.Render("remove "+target.key))
+		}
+		fmt.Println()
+	}
+	if len(targets.sources) > 0 {
+		fmt.Println(ui.Label.Render("unreferenced source caches"))
+		for _, source := range targets.sources {
+			fmt.Printf("  %s %s\n", ui.Arrow(), ui.Muted.Render(source))
 		}
 		fmt.Println()
 	}
@@ -403,12 +479,15 @@ func cleanStatuses(platforms []platform.Platform) []ui.PlatformStatus {
 }
 
 func cleanItems(targets targets) []string {
-	items := make([]string, 0, len(targets.dirs)+len(targets.mcps))
+	items := make([]string, 0, len(targets.dirs)+len(targets.mcps)+len(targets.sources))
 	for _, dir := range targets.dirs {
 		items = append(items, "rm "+dir)
 	}
 	for _, target := range targets.mcps {
 		items = append(items, "remove "+target.key+" from "+target.path)
+	}
+	for _, source := range targets.sources {
+		items = append(items, "rm "+source)
 	}
 	return items
 }
