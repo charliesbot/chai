@@ -98,6 +98,36 @@ func TestMergeMCPIntoFile_EmptyFile(t *testing.T) {
 	}
 }
 
+func TestMergeMCPIntoFile_RejectsNullDocument(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte("null\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := mergeMCPIntoFile(path, "mcpServers", map[string]any{"test": map[string]any{"command": "cmd"}})
+	if err == nil || !strings.Contains(err.Error(), "expected JSON object") {
+		t.Fatalf("null document error = %v", err)
+	}
+}
+
+func TestMergeMCPIntoFile_PreservesLargeInteger(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"requestId": 9007199254740993}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mergeMCPIntoFile(path, "mcpServers", map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "9007199254740993") {
+		t.Fatalf("large integer was changed: %s", data)
+	}
+}
+
 func TestMergeMCPIntoFile_PreservesExistingKeys(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

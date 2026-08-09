@@ -376,7 +376,11 @@ func mergeMCPIntoTOMLFile(path, mcpKey string, servers map[string]any) error {
 
 // mergeMCPIntoFile reads an existing JSON file, replaces the mcpKey, and writes it back atomically.
 func mergeMCPIntoFile(path, mcpKey string, servers map[string]any) error {
-	existing := make(map[string]any)
+	return replaceJSONKey(path, mcpKey, servers)
+}
+
+func replaceJSONKey(path, key string, value any) error {
+	existing := make(map[string]json.RawMessage)
 
 	data, err := os.ReadFile(path)
 	if err == nil {
@@ -386,12 +390,19 @@ func mergeMCPIntoFile(path, mcpKey string, servers map[string]any) error {
 			if err := json.Unmarshal(data, &existing); err != nil {
 				return fmt.Errorf("parsing existing config %s: %w", path, err)
 			}
+			if existing == nil {
+				return fmt.Errorf("parsing existing config %s: expected JSON object", path)
+			}
 		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("reading %s: %w", path, err)
 	}
 
-	existing[mcpKey] = servers
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	existing[key] = encoded
 
 	out, err := json.MarshalIndent(existing, "", "  ")
 	if err != nil {

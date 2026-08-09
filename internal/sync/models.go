@@ -3,7 +3,6 @@ package sync
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/charliesbot/chai/internal/config"
@@ -39,24 +38,5 @@ func syncDroidCustomModels(cfg *config.Config, home string, dryRun bool) error {
 }
 
 func mergeDroidCustomModels(path string, models []config.CustomModel) error {
-	settings := map[string]any{}
-	data, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("reading %s: %w", path, err)
-	}
-	if err == nil && len(data) > 0 {
-		if err := json.Unmarshal(data, &settings); err != nil {
-			return fmt.Errorf("parsing %s: %w", path, err)
-		}
-	}
-	settings["customModels"] = models
-	out, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshaling %s: %w", path, err)
-	}
-	out = append(out, '\n')
-	if err := atomicWrite(path, out); err != nil {
-		return fmt.Errorf("writing Droid custom models to %s: %w", path, err)
-	}
-	return nil
+	return replaceJSONKey(path, "customModels", models)
 }
