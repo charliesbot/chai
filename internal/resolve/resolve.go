@@ -2,22 +2,11 @@ package resolve
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
 
 const depsDir = ".chai/deps"
-
-// Path resolves ~ and @name prefixes in a single path.
-// It does not expand globs.
-func Path(raw string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolving home directory: %w", err)
-	}
-	return PathWithHome(raw, home)
-}
 
 // PathWithHome resolves ~ and @name prefixes using the given home directory.
 func PathWithHome(raw, home string) (string, error) {
@@ -46,16 +35,6 @@ func PathWithHome(raw, home string) (string, error) {
 	}
 
 	return raw, nil
-}
-
-// Glob resolves a path (expanding ~ and @name) then expands glob patterns.
-// Returns the matched file paths sorted by filepath.Glob's default order.
-func Glob(pattern string) ([]string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("resolving home directory: %w", err)
-	}
-	return GlobWithHome(pattern, home)
 }
 
 // GlobWithHome resolves a path then expands glob patterns using the given home directory.

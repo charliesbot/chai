@@ -148,7 +148,11 @@ func TestPromoteReplacesExistingCache(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(staging, "new"), []byte("new"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Promote(staging, final); err != nil {
+	promotion, err := BeginPromotion(staging, final)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := promotion.Commit(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(final, "new")); err != nil {

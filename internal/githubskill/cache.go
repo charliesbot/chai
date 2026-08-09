@@ -193,14 +193,6 @@ func CompleteStaging(root string, id Identity, selected map[string]string, commi
 	return nil
 }
 
-func Promote(staging, final string) error {
-	promotion, err := BeginPromotion(staging, final)
-	if err != nil {
-		return err
-	}
-	return promotion.Commit()
-}
-
 type Promotion struct {
 	final    string
 	backup   string

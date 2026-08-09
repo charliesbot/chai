@@ -205,40 +205,6 @@ func Box(name string, count int, statuses []PlatformStatus, items []string) stri
 	return s
 }
 
-// Section is kept for backward compat with dry-run output.
-func Section(name string, count int, statuses []PlatformStatus) string {
-	countStr := ""
-	if count > 0 {
-		countStr = " " + Muted.Render(fmt.Sprintf("(%d)", count))
-	}
-	return fmt.Sprintf("%s%s  %s", Label.Render(name), countStr, PlatformIcons(statuses))
-}
-
-// ItemList is kept for backward compat with dry-run output.
-func ItemList(names []string) string {
-	styled := make([]string, len(names))
-	for i, n := range names {
-		styled[i] = Bold.Render(n)
-	}
-	return "  " + strings.Join(styled, Muted.Render(", "))
-}
-
-// SyncedLine is kept for dry-run detail lines.
-func SyncedLine(platform, path string) string {
-	icon := platformIcon(platform)
-	return fmt.Sprintf("  %s %s %s", icon, Bold.Render(platform), Muted.Render(path))
-}
-
-func SkippedLine(platform, path string) string {
-	icon := platformIcon(platform)
-	return fmt.Sprintf("  %s %s %s %s", icon, Bold.Render(platform), Muted.Render(path), Warning.Render("skipped"))
-}
-
-func DryRunLine(platform, path string) string {
-	icon := platformIcon(platform)
-	return fmt.Sprintf("  %s %s %s", icon, Bold.Render(platform), Muted.Render(path))
-}
-
 func platformIcon(name string) string {
 	switch name {
 	case "Claude":
