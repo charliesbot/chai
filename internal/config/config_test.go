@@ -7,6 +7,7 @@ import (
 )
 
 const fullTOML = `
+platforms = ["claude", "opencode"]
 instructions = ["~/dotfiles/ai/agents.md"]
 
 [deps]
@@ -17,11 +18,11 @@ url = "https://github.com/gemini-cli-extensions/workspace"
 build = "npm install"
 
 [skills]
-paths = [
-  "~/dotfiles/ai/skills/*",
-  "@workspace/skills/*",
-  "@angular-skills/skills/*"
-]
+local = ["~/dotfiles/ai/skills"]
+
+[[skills.github]]
+url = "https://github.com/vercel-labs/agent-skills"
+include = ["frontend-design", "source-driven-development"]
 
 [subagents]
 paths = ["~/dotfiles/ai/subagents/*"]
@@ -70,8 +71,18 @@ func TestLoad_Full(t *testing.T) {
 		t.Errorf("deps[angular-skills].build = %q, want empty", as.Build)
 	}
 
-	if len(cfg.Skills.Paths) != 3 {
-		t.Errorf("skills paths count = %d, want 3", len(cfg.Skills.Paths))
+	if len(cfg.Skills.Local) != 1 || cfg.Skills.Local[0] != "~/dotfiles/ai/skills" {
+		t.Errorf("skills local = %v, want [\"~/dotfiles/ai/skills\"]", cfg.Skills.Local)
+	}
+	if len(cfg.Skills.GitHub) != 1 {
+		t.Fatalf("skills github count = %d, want 1", len(cfg.Skills.GitHub))
+	}
+	github := cfg.Skills.GitHub[0]
+	if github.URL != "https://github.com/vercel-labs/agent-skills" {
+		t.Errorf("skills github URL = %q", github.URL)
+	}
+	if len(github.Include) != 2 || github.Include[0] != "frontend-design" || github.Include[1] != "source-driven-development" {
+		t.Errorf("skills github include = %v", github.Include)
 	}
 
 	if len(cfg.Subagents.Paths) != 1 {
@@ -107,15 +118,15 @@ func TestLoad_Full(t *testing.T) {
 }
 
 func TestLoad_MinimalConfig(t *testing.T) {
-	path := writeTempFile(t, "chai.toml", `instructions = ["~/agents.md"]`)
+	path := writeTempFile(t, "chai.toml", `platforms = ["cursor"]`)
 
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(cfg.Instructions) != 1 || cfg.Instructions[0] != "~/agents.md" {
-		t.Errorf("instructions = %v, want [\"~/agents.md\"]", cfg.Instructions)
+	if len(cfg.Platforms) != 1 || cfg.Platforms[0] != "cursor" {
+		t.Errorf("platforms = %v, want [\"cursor\"]", cfg.Platforms)
 	}
 	if len(cfg.Deps) != 0 {
 		t.Errorf("deps should be empty, got %d", len(cfg.Deps))
@@ -126,7 +137,10 @@ func TestLoad_MinimalConfig(t *testing.T) {
 }
 
 func TestLoad_InstructionsArray(t *testing.T) {
-	path := writeTempFile(t, "chai.toml", `instructions = ["~/core.md", "~/git.md", "@dep/rules/*.md"]`)
+	path := writeTempFile(t, "chai.toml", `
+platforms = ["claude"]
+instructions = ["~/core.md", "~/git.md", "@dep/rules/*.md"]
+`)
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -165,10 +179,150 @@ func TestLoad_InvalidInstructions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path := writeTempFile(t, "chai.toml", tt.content)
+			path := writeTempFile(t, "chai.toml", "platforms = [\"claude\"]\n"+tt.content)
 			_, err := Load(path)
 			if err == nil {
 				t.Errorf("expected error for invalid instructions format in %s", tt.name)
+			}
+		})
+	}
+}
+
+func TestLoad_RejectsInvalidManifest(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "missing platforms",
+			content: `instructions = ["~/agents.md"]`,
+			want:    "platforms must contain at least one platform",
+		},
+		{
+			name:    "unsupported platform",
+			content: `platforms = ["vim"]`,
+			want:    `unsupported platform "vim"`,
+		},
+		{
+			name:    "duplicate platform",
+			content: `platforms = ["claude", "Claude"]`,
+			want:    `duplicate platform "Claude"`,
+		},
+		{
+			name:    "unknown root field",
+			content: "platforms = [\"claude\"]\nunknown = true",
+			want:    "missing field",
+		},
+		{
+			name: "unknown nested field",
+			content: `platforms = ["claude"]
+[mcp.test]
+command = "test"
+unknown = true`,
+			want: "missing field",
+		},
+		{
+			name: "unknown dependency field",
+			content: `platforms = ["claude"]
+[deps.test]
+url = "https://github.com/owner/repo"
+unknown = true`,
+			want: `dep "test": unknown field "unknown"`,
+		},
+		{
+			name: "legacy skills paths",
+			content: `platforms = ["claude"]
+[skills]
+paths = ["~/skills/*"]`,
+			want: "missing field",
+		},
+		{
+			name: "empty local path",
+			content: `platforms = ["claude"]
+[skills]
+local = [""]`,
+			want: "skills.local[0] must not be empty",
+		},
+		{
+			name: "local glob",
+			content: `platforms = ["claude"]
+[skills]
+local = ["~/skills/*"]`,
+			want: "must not contain glob metacharacters",
+		},
+		{
+			name: "duplicate local path",
+			content: `platforms = ["claude"]
+[skills]
+local = ["~/skills", "~/skills/"]`,
+			want: `duplicate local path "~/skills/"`,
+		},
+		{
+			name: "noncanonical github URL",
+			content: `platforms = ["claude"]
+[[skills.github]]
+url = "https://github.com/Owner/Repo.git"
+include = ["skill"]`,
+			want: "must be a canonical",
+		},
+		{
+			name: "empty github include",
+			content: `platforms = ["claude"]
+[[skills.github]]
+url = "https://github.com/owner/repo"
+include = []`,
+			want: "include must contain at least one skill name",
+		},
+		{
+			name: "invalid skill name",
+			content: `platforms = ["claude"]
+[[skills.github]]
+url = "https://github.com/owner/repo"
+include = ["Bad_Name"]`,
+			want: `invalid skill name "Bad_Name"`,
+		},
+		{
+			name: "duplicate github repository",
+			content: `platforms = ["claude"]
+[[skills.github]]
+url = "https://github.com/owner/repo"
+include = ["one"]
+[[skills.github]]
+url = "https://github.com/owner/repo"
+include = ["two"]`,
+			want: `duplicate GitHub repository "https://github.com/owner/repo"`,
+		},
+		{
+			name: "duplicate skill within repository",
+			content: `platforms = ["claude"]
+[[skills.github]]
+url = "https://github.com/owner/repo"
+include = ["one", "one"]`,
+			want: `duplicate skill name "one"`,
+		},
+		{
+			name: "skill selected from multiple repositories",
+			content: `platforms = ["claude"]
+[[skills.github]]
+url = "https://github.com/owner/one"
+include = ["shared"]
+[[skills.github]]
+url = "https://github.com/owner/two"
+include = ["shared"]`,
+			want: `skill name "shared" is selected from multiple repositories`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeTempFile(t, "chai.toml", tt.content)
+			_, err := Load(path)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !contains(err.Error(), tt.want) {
+				t.Errorf("error = %q, want it to contain %q", err, tt.want)
 			}
 		})
 	}

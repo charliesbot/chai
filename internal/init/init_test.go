@@ -29,8 +29,11 @@ func TestScaffold_CreatesToml(t *testing.T) {
 			t.Errorf("chai.toml missing platform %s, got:\n%s", p, tomlContent)
 		}
 	}
-	if !strings.Contains(tomlContent, `"~/dotfiles/ai/skills"`) {
-		t.Errorf("chai.toml missing skills path, got:\n%s", tomlContent)
+	if !strings.Contains(tomlContent, `local = ["~/dotfiles/ai/skills"]`) {
+		t.Errorf("chai.toml missing local skills, got:\n%s", tomlContent)
+	}
+	if strings.Contains(tomlContent, "[skills]\npaths =") {
+		t.Errorf("chai.toml contains legacy skills paths, got:\n%s", tomlContent)
 	}
 	if !strings.Contains(tomlContent, `"~/dotfiles/ai/subagents"`) {
 		t.Errorf("chai.toml missing agents path, got:\n%s", tomlContent)

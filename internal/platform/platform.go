@@ -207,3 +207,13 @@ func HasPlatform(names []string, name string) bool {
 	}
 	return false
 }
+
+// IsSupported reports whether name identifies a built-in platform.
+func IsSupported(name string) bool {
+	for _, platform := range All() {
+		if strings.EqualFold(platform.Key, name) {
+			return true
+		}
+	}
+	return false
+}
