@@ -369,7 +369,7 @@ include = ["shared"]
 [[skills.github]]
 url = "https://github.com/owner/two"
 include = ["shared"]`,
-			want: `skill name "shared" is selected from multiple repositories`,
+			want: `duplicate skill name conflicts: "shared"`,
 		},
 	}
 
@@ -394,6 +394,32 @@ func TestLoad_FileNotFound(t *testing.T) {
 	}
 	if got := err.Error(); !contains(got, "config file not found") {
 		t.Errorf("error = %q, want it to contain 'config file not found'", got)
+	}
+}
+
+func TestLoad_ReportsEveryGitHubSkillConflictLocation(t *testing.T) {
+	path := writeTempFile(t, "chai.toml", `platforms = ["claude"]
+[[skills.github]]
+url = "https://github.com/owner/one"
+include = ["shared"]
+[[skills.github]]
+url = "https://github.com/owner/two"
+include = ["other", "shared"]
+[[skills.github]]
+url = "https://github.com/owner/three"
+include = ["other", "shared"]`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected skill conflicts")
+	}
+	for _, detail := range []string{
+		`"other": https://github.com/owner/three, https://github.com/owner/two`,
+		`"shared": https://github.com/owner/one, https://github.com/owner/three, https://github.com/owner/two`,
+	} {
+		if !strings.Contains(err.Error(), detail) {
+			t.Errorf("error %q does not contain %q", err, detail)
+		}
 	}
 }
 

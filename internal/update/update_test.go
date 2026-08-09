@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/charliesbot/chai/internal/config"
@@ -95,6 +96,60 @@ func TestRunWithHomeRejectsNameConflictBeforeGitOrCacheMutation(t *testing.T) {
 	}
 }
 
+func TestRunWithHomeRejectsLocalOnlyNameConflicts(t *testing.T) {
+	home := t.TempDir()
+	collection := filepath.Join(home, "locals")
+	writeUpdateSkill(t, filepath.Join(collection, "one"), "shared")
+	writeUpdateSkill(t, filepath.Join(collection, "two"), "shared")
+	cfg := &config.Config{
+		Platforms: []string{"cursor"},
+		Skills:    config.Skills{Local: []string{collection}},
+	}
+
+	err := RunWithHome(context.Background(), cfg, home, Options{})
+	if err == nil || !strings.Contains(err.Error(), filepath.Join(collection, "one")) || !strings.Contains(err.Error(), filepath.Join(collection, "two")) {
+		t.Fatalf("local conflict error = %v", err)
+	}
+}
+
+func TestValidateSourceNamesReportsEveryConflictLocation(t *testing.T) {
+	home := t.TempDir()
+	collection := filepath.Join(home, "locals")
+	writeUpdateSkill(t, filepath.Join(collection, "one"), "one")
+	writeUpdateSkill(t, filepath.Join(collection, "two"), "two")
+	writeUpdateSkill(t, filepath.Join(collection, "shared-a"), "shared")
+	writeUpdateSkill(t, filepath.Join(collection, "shared-b"), "shared")
+	cfg := &config.Config{
+		Platforms: []string{"cursor"},
+		Skills: config.Skills{
+			Local: []string{collection},
+			GitHub: []config.GitHubSkills{
+				{URL: "https://github.com/example/one", Include: []string{"one"}},
+				{URL: "https://github.com/example/two", Include: []string{"two"}},
+				{URL: "https://github.com/example/shared", Include: []string{"shared"}},
+			},
+		},
+	}
+
+	err := validateSourceNames(cfg, home)
+	if err == nil {
+		t.Fatal("expected name conflicts")
+	}
+	for _, detail := range []string{
+		filepath.Join(collection, "one"),
+		filepath.Join(collection, "two"),
+		filepath.Join(collection, "shared-a"),
+		filepath.Join(collection, "shared-b"),
+		"https://github.com/example/one",
+		"https://github.com/example/two",
+		"https://github.com/example/shared",
+	} {
+		if !strings.Contains(err.Error(), detail) {
+			t.Errorf("error %q does not contain %q", err, detail)
+		}
+	}
+}
+
 func TestAvailableSkillsSkipsAmbiguousNames(t *testing.T) {
 	source := config.GitHubSkills{Include: []string{"selected"}}
 	discovery := githubskill.Discovery{Candidates: []githubskill.Candidate{
@@ -137,3 +192,13 @@ func TestRunWithHomeSyncsAfterCacheCleanupWarning(t *testing.T) {
 type assertError string
 
 func (e assertError) Error() string { return string(e) }
+
+func writeUpdateSkill(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: "+name+"\n---\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+}

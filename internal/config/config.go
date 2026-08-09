@@ -260,7 +260,7 @@ func validateSkills(skills Skills) error {
 	}
 
 	seenRepositories := make(map[string]bool, len(skills.GitHub))
-	selectedSkills := make(map[string]string)
+	var selectedSkills []skill.Source
 	for i, source := range skills.GitHub {
 		if !isCanonicalGitHubURL(source.URL) {
 			return fmt.Errorf("skills.github[%d].url must be a canonical https://github.com/owner/repo URL", i)
@@ -282,14 +282,11 @@ func validateSkills(skills Skills) error {
 				return fmt.Errorf("duplicate skill name %q in GitHub repository %q", name, source.URL)
 			}
 			seenIncludes[name] = true
-			if otherURL, exists := selectedSkills[name]; exists {
-				return fmt.Errorf("skill name %q is selected from multiple repositories %q and %q", name, otherURL, source.URL)
-			}
-			selectedSkills[name] = source.URL
+			selectedSkills = append(selectedSkills, skill.Source{Name: name, Path: source.URL})
 		}
 	}
 
-	return nil
+	return skill.ValidateUniqueNames(selectedSkills)
 }
 
 func isCanonicalGitHubURL(rawURL string) bool {

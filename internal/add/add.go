@@ -152,6 +152,10 @@ func addLocal(ctx context.Context, cfg *config.Config, configPath, home string, 
 	if err != nil {
 		return err
 	}
+	tracked, err := skill.DiscoverLocal([]string{normalized}, filepath.Dir(configPath), home)
+	if err != nil {
+		return err
+	}
 	found := false
 	for _, existing := range cfg.Skills.Local {
 		canonical, err := NormalizeLocalPath(existing, filepath.Dir(configPath), home)
@@ -168,10 +172,18 @@ func addLocal(ctx context.Context, cfg *config.Config, configPath, home string, 
 	if err != nil {
 		return err
 	}
-	if err := rejectRemoteNameConflicts(discovered, cfg, ""); err != nil {
+	if err := rejectNameConflicts(discovered, nil, cfg, ""); err != nil {
 		return err
 	}
-	summary := fmt.Sprintf("Add local source %s (%d skills); update %s; sync to %s", normalized, len(discovered), configPath, strings.Join(cfg.Platforms, ", "))
+	trackedNames := make([]string, len(tracked))
+	for i, source := range tracked {
+		trackedNames[i] = source.Name
+	}
+	manifestChange := "no changes"
+	if !found {
+		manifestChange = fmt.Sprintf("add local source %s to %s", normalized, configPath)
+	}
+	summary := fmt.Sprintf("Add local source %s; tracked skills: %s; manifest: %s; sync to %s", normalized, strings.Join(trackedNames, ", "), manifestChange, strings.Join(cfg.Platforms, ", "))
 	confirmed, err := confirm(summary, request.Yes, opts)
 	if err != nil || !confirmed {
 		return err
@@ -244,9 +256,13 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 		}
 	}
 	existingIndex := -1
+	existingNames := make(map[string]bool)
 	for i, source := range cfg.Skills.GitHub {
 		if source.URL == id.URL() {
 			existingIndex = i
+			for _, name := range source.Include {
+				existingNames[name] = true
+			}
 			selected = append(selected, source.Include...)
 			break
 		}
@@ -268,10 +284,7 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 	for i, name := range selected {
 		selectedSources[i] = skill.Source{Name: name, Path: id.URL()}
 	}
-	if err := rejectLocalNameConflicts(selectedSources, locals); err != nil {
-		return err
-	}
-	if err := rejectRemoteNameConflicts(selectedSources, cfg, id.URL()); err != nil {
+	if err := rejectNameConflicts(selectedSources, locals, cfg, id.URL()); err != nil {
 		return err
 	}
 	commit, err := gitCommit(ctx, repository)
@@ -281,7 +294,21 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 	if err := githubskill.CompleteStaging(staging, id, mapping, commit); err != nil {
 		return err
 	}
-	summary := fmt.Sprintf("Add %s (%s); update %s; sync to %s", id.URL(), strings.Join(selected, ", "), configPath, strings.Join(cfg.Platforms, ", "))
+	manifestChange := fmt.Sprintf("add GitHub source to %s", configPath)
+	if existingIndex >= 0 {
+		var added []string
+		for _, name := range selected {
+			if !existingNames[name] {
+				added = append(added, name)
+			}
+		}
+		if len(added) == 0 {
+			manifestChange = "no changes"
+		} else {
+			manifestChange = fmt.Sprintf("add skills %s to %s", strings.Join(added, ", "), configPath)
+		}
+	}
+	summary := fmt.Sprintf("Add %s; selected skills: %s; manifest: %s; sync to %s", id.URL(), strings.Join(selected, ", "), manifestChange, strings.Join(cfg.Platforms, ", "))
 	confirmed, err := confirm(summary, request.Yes, opts)
 	if err != nil || !confirmed {
 		return err
@@ -323,35 +350,18 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 	return syncErr
 }
 
-func rejectLocalNameConflicts(selected, locals []skill.Source) error {
-	localNames := make(map[string]string, len(locals))
-	for _, source := range locals {
-		localNames[source.Name] = source.Path
-	}
-	for _, source := range selected {
-		if localPath, exists := localNames[source.Name]; exists {
-			return fmt.Errorf("duplicate skill name %q from %s and %s", source.Name, localPath, source.Path)
-		}
-	}
-	return nil
-}
-
-func rejectRemoteNameConflicts(selected []skill.Source, cfg *config.Config, skipURL string) error {
-	selectedNames := make(map[string]string, len(selected))
-	for _, source := range selected {
-		selectedNames[source.Name] = source.Path
-	}
+func rejectNameConflicts(selected, locals []skill.Source, cfg *config.Config, skipURL string) error {
+	sources := append([]skill.Source(nil), locals...)
 	for _, remote := range cfg.Skills.GitHub {
 		if remote.URL == skipURL {
 			continue
 		}
 		for _, name := range remote.Include {
-			if selectedPath, exists := selectedNames[name]; exists {
-				return fmt.Errorf("duplicate skill name %q from %s and %s", name, selectedPath, remote.URL)
-			}
+			sources = append(sources, skill.Source{Name: name, Path: remote.URL})
 		}
 	}
-	return nil
+	sources = append(sources, selected...)
+	return skill.ValidateUniqueNames(sources)
 }
 
 func confirm(summary string, yes bool, opts Options) (bool, error) {
