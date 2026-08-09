@@ -197,6 +197,10 @@ Chai discovers the actual directories containing those skills. It must not
 assume every repository uses `/skills`; repositories may use plugin layouts or
 move a skill without changing its declared name.
 
+Remote skills must live below the repository root. A root-level `SKILL.md` is
+rejected because selecting its containing directory would materialize the
+entire repository, including unrelated content.
+
 Each requested name must resolve to exactly one `SKILL.md` whose frontmatter
 declares that name. Missing, invalid, or ambiguous names fail before chai
 changes the manifest or platform directories.
