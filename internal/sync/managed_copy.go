@@ -115,14 +115,9 @@ func removeStaleManagedEntries(
 	return result, nil
 }
 
-func writeManagedFile(dest string, data []byte, perm fs.FileMode, hashDB hash.DB) error {
-	tmp := dest + ".tmp"
-	if err := os.WriteFile(tmp, data, perm); err != nil {
-		return fmt.Errorf("writing %s: %w", tmp, err)
-	}
-	if err := os.Rename(tmp, dest); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("renaming %s → %s: %w", tmp, dest, err)
+func writeManagedFile(dest string, data []byte, hashDB hash.DB) error {
+	if err := atomicWrite(dest, data); err != nil {
+		return err
 	}
 	hashDB[dest] = hash.Sum(data)
 	return nil

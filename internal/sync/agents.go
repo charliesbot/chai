@@ -144,7 +144,7 @@ func syncCodexAgentCopies(sources []string, destDir string, hashDB hash.DB) erro
 	}
 
 	for dest, data := range generated {
-		if err := writeManagedFile(dest, data, 0644, hashDB); err != nil {
+		if err := writeManagedFile(dest, data, hashDB); err != nil {
 			return err
 		}
 	}

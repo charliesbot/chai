@@ -287,7 +287,7 @@ func syncFileCopies(sources []string, destDir string, hashDB hash.DB) error {
 			return fmt.Errorf("reading %s: %w", src, err)
 		}
 
-		if err := writeManagedFile(dest, data, 0644, hashDB); err != nil {
+		if err := writeManagedFile(dest, data, hashDB); err != nil {
 			return err
 		}
 	}
