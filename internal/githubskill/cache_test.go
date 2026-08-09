@@ -185,6 +185,37 @@ func TestBeginPromotionRestoresExistingCacheAfterPromotionFailure(t *testing.T) 
 	}
 }
 
+func TestBeginPromotionPreservesOrphanedBackupAfterPromotionFailure(t *testing.T) {
+	root := t.TempDir()
+	final := filepath.Join(root, "cache")
+	backup := final + ".backup"
+	staging := filepath.Join(root, "staging")
+	if err := os.Mkdir(backup, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backup, "old"), []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(staging, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	calls := 0
+	rename := func(old, new string) error {
+		calls++
+		if calls == 3 {
+			return assertError("injected promotion failure")
+		}
+		return os.Rename(old, new)
+	}
+	if _, err := beginPromotion(staging, final, rename); err == nil || !strings.Contains(err.Error(), "promoting") {
+		t.Fatalf("promotion error = %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(final, "old")); err != nil || string(data) != "old" {
+		t.Fatalf("orphaned backup was not preserved: data=%q err=%v", data, err)
+	}
+}
+
 func TestBeginPromotionReportsPersistentRestoreFailure(t *testing.T) {
 	root := t.TempDir()
 	final := filepath.Join(root, "cache")

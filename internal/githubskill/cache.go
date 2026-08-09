@@ -216,13 +216,22 @@ func beginPromotion(staging, final string, rename func(string, string) error) (P
 	if filepath.Dir(staging) != filepath.Dir(final) {
 		return Promotion{}, fmt.Errorf("GitHub source staging directory must be beside its cache")
 	}
-	if err := os.RemoveAll(promotion.backup); err != nil {
-		return Promotion{}, fmt.Errorf("removing old GitHub source cache backup: %w", err)
-	}
 	_, statErr := os.Stat(final)
 	promotion.hadFinal = statErr == nil
 	if statErr != nil && !os.IsNotExist(statErr) {
 		return Promotion{}, fmt.Errorf("checking existing GitHub source cache: %w", statErr)
+	}
+	if promotion.hadFinal {
+		if err := os.RemoveAll(promotion.backup); err != nil {
+			return Promotion{}, fmt.Errorf("removing old GitHub source cache backup: %w", err)
+		}
+	} else if _, backupErr := os.Stat(promotion.backup); backupErr == nil {
+		if err := rename(promotion.backup, final); err != nil {
+			return Promotion{}, fmt.Errorf("restoring orphaned GitHub source cache backup: %w", err)
+		}
+		promotion.hadFinal = true
+	} else if !os.IsNotExist(backupErr) {
+		return Promotion{}, fmt.Errorf("checking GitHub source cache backup: %w", backupErr)
 	}
 	if promotion.hadFinal {
 		if err := rename(final, promotion.backup); err != nil {
