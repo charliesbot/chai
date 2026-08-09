@@ -42,6 +42,14 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	if len(instructionPlatforms) > 0 && len(cfg.Instructions) == 0 {
 		return fmt.Errorf("no instructions path set in config")
 	}
+	var localSkills []skillSource
+	if len(cfg.Skills.Local) > 0 {
+		var err error
+		localSkills, err = resolveLocalSkillSources(cfg.Skills.Local, home, home)
+		if err != nil {
+			return err
+		}
+	}
 
 	hashDB, err := hash.Load(home)
 	if err != nil {
@@ -179,8 +187,14 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return fmt.Errorf("sync interrupted: %w", err)
 	}
 
-	if err := syncSkills(cfg.Skills.Paths, home, platforms, opts.DryRun, hashDB); err != nil {
-		return err
+	var skillsErr error
+	if len(cfg.Skills.Local) > 0 {
+		skillsErr = syncResolvedSkills(localSkills, true, home, platforms, opts.DryRun, hashDB)
+	} else {
+		skillsErr = syncSkills(cfg.Skills.Paths, home, platforms, opts.DryRun, hashDB)
+	}
+	if skillsErr != nil {
+		return skillsErr
 	}
 
 	if err := syncAgents(cfg.Subagents.Paths, home, platforms, opts.DryRun, hashDB); err != nil {

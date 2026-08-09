@@ -238,6 +238,65 @@ func TestSyncSkills_CopiesCursorSkills(t *testing.T) {
 	}
 }
 
+func TestSyncLocalSkills_UsesFrontmatterName(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "skills")
+	dir := filepath.Join(root, "different-folder")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: declared-name\n---\nBody\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	hashDB := hash.DB{}
+	if err := syncLocalSkills([]string{root}, home, home, platform.ForNames([]string{"cursor"}), false, hashDB); err != nil {
+		t.Fatalf("syncing local skills: %v", err)
+	}
+
+	dest := filepath.Join(home, ".cursor", "skills", "declared-name", "SKILL.md")
+	data, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("reading copied skill: %v", err)
+	}
+	if string(data) != content {
+		t.Errorf("content = %q, want %q", data, content)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".cursor", "skills", "different-folder")); !os.IsNotExist(err) {
+		t.Errorf("directory name should not determine destination, got err=%v", err)
+	}
+}
+
+func TestSyncLocalSkills_RemovesLastManagedSkill(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "skills")
+	dir := filepath.Join(root, "skill")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: skill\n---\nBody\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	hashDB := hash.DB{}
+	platforms := platform.ForNames([]string{"cursor"})
+	if err := syncLocalSkills([]string{root}, home, home, platforms, false, hashDB); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncLocalSkills([]string{root}, home, home, platforms, false, hashDB); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	dest := filepath.Join(home, ".cursor", "skills", "skill")
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Errorf("stale managed skill should be removed, got err=%v", err)
+	}
+}
+
 func TestSyncDirCopies_CopiesNestedFiles(t *testing.T) {
 	home := t.TempDir()
 	hashDB := hash.DB{}
