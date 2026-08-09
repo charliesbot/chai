@@ -171,7 +171,7 @@ func TestRunWithHome_PiSkipsUnsupportedMCP(t *testing.T) {
 func TestRunWithHome_RefusesToRemoveConfiguredSourceTree(t *testing.T) {
 	home := t.TempDir()
 	cfg := &config.Config{Platforms: []string{"codex"}}
-	cfg.Skills.Paths = []string{"~/.agents/skills/*"}
+	cfg.Skills.Local = []string{"~/.agents/skills"}
 
 	sourcePath := filepath.Join(home, ".agents", "skills", "managed", "SKILL.md")
 	writeFile(t, sourcePath, "source")
@@ -188,7 +188,7 @@ func TestRunWithHome_RefusesToRemoveConfiguredSourceTree(t *testing.T) {
 func TestRunWithHome_RefusesToRemoveRelativeConfiguredSourceTree(t *testing.T) {
 	home := t.TempDir()
 	cfg := &config.Config{Platforms: []string{"codex"}}
-	cfg.Skills.Paths = []string{".agents/skills/*"}
+	cfg.Skills.Local = []string{".agents/skills"}
 
 	sourcePath := filepath.Join(home, ".agents", "skills", "managed", "SKILL.md")
 	writeFile(t, sourcePath, "source")
@@ -205,7 +205,7 @@ func TestRunWithHome_RefusesToRemoveRelativeConfiguredSourceTree(t *testing.T) {
 func TestRunWithHome_RefusesToRemoveSymlinkedConfiguredSourceTree(t *testing.T) {
 	home := t.TempDir()
 	cfg := &config.Config{Platforms: []string{"codex"}}
-	cfg.Skills.Paths = []string{"~/source-skills/*"}
+	cfg.Skills.Local = []string{"~/source-skills"}
 
 	sourceDir := filepath.Join(home, ".agents", "skills")
 	sourcePath := filepath.Join(sourceDir, "managed", "SKILL.md")
