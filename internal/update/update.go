@@ -73,7 +73,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		plugins = nil
 	}
 	if len(cfg.Deps) > 0 || len(plugins) > 0 {
-		if err := runLegacyWithHome(cfg.Deps, plugins, home); err != nil {
+		if err := updateDepsAndPlugins(cfg.Deps, plugins, home); err != nil {
 			return err
 		}
 	}

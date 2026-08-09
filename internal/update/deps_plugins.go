@@ -16,8 +16,8 @@ import (
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// runLegacyWithHome updates dependency repositories and Antigravity plugins.
-func runLegacyWithHome(depMap map[string]config.Dep, plugins map[string]string, home string) error {
+// updateDepsAndPlugins updates dependency repositories and Antigravity plugins.
+func updateDepsAndPlugins(depMap map[string]config.Dep, plugins map[string]string, home string) error {
 	if len(depMap) == 0 && len(plugins) == 0 {
 		return nil
 	}
