@@ -12,6 +12,7 @@ import (
 	"github.com/muesli/termenv"
 
 	"github.com/charliesbot/chai/internal/config"
+	"github.com/charliesbot/chai/internal/githubskill"
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/ui"
@@ -136,9 +137,12 @@ func TestRunWithHome_ReportsUpdatedInstructionsWithSkippedTarget(t *testing.T) {
 		t.Fatalf("editing Claude target: %v", err)
 	}
 
-	output := runSyncWithOutput(t, cfg, home, Options{
+	output, err := runSyncWithOutputResult(t, cfg, home, Options{
 		Prompt: func(string) (bool, error) { return false, nil },
 	})
+	if err == nil {
+		t.Fatal("expected incomplete sync error")
+	}
 	assertOutputContains(t, output, "! instructions", "1 updated", "1 target skipped", "~ agents.md")
 
 	if got, _ := os.ReadFile(claudePath); string(got) != "manual edit" {
@@ -152,13 +156,18 @@ func TestRunWithHome_ReportsUpdatedInstructionsWithSkippedTarget(t *testing.T) {
 
 func runSyncWithOutput(t *testing.T, cfg *config.Config, home string, opts Options) string {
 	t.Helper()
-	output, err := captureStdout(t, func() error {
-		return RunWithHome(context.Background(), cfg, home, opts)
-	})
+	output, err := runSyncWithOutputResult(t, cfg, home, opts)
 	if err != nil {
 		t.Fatalf("syncing: %v", err)
 	}
 	return output
+}
+
+func runSyncWithOutputResult(t *testing.T, cfg *config.Config, home string, opts Options) (string, error) {
+	t.Helper()
+	return captureStdout(t, func() error {
+		return RunWithHome(context.Background(), cfg, home, opts)
+	})
 }
 
 func TestRunWithHome_MissingInstructionsFile(t *testing.T) {
@@ -322,7 +331,10 @@ func TestRunWithHome_PromptSkip(t *testing.T) {
 
 	// Sync with prompt that says no
 	alwaysNo := func(path string) (bool, error) { return false, nil }
-	output := runSyncWithOutput(t, cfg, home, Options{Prompt: alwaysNo})
+	output, err := runSyncWithOutputResult(t, cfg, home, Options{Prompt: alwaysNo})
+	if err == nil {
+		t.Fatal("expected incomplete sync error")
+	}
 	assertOutputContains(t, output, "! instructions", "2 targets skipped")
 
 	// Both should still have the edited content
@@ -454,8 +466,8 @@ func TestRunWithHome_SharedInstructionsPromptDeclined(t *testing.T) {
 	os.WriteFile(sharedPath, []byte("manually edited"), 0644)
 
 	alwaysNo := func(path string) (bool, error) { return false, nil }
-	if err := RunWithHome(context.Background(), cfg, home, Options{Prompt: alwaysNo}); err != nil {
-		t.Fatalf("re-sync: %v", err)
+	if err := RunWithHome(context.Background(), cfg, home, Options{Prompt: alwaysNo}); err == nil {
+		t.Fatal("expected incomplete sync error")
 	}
 
 	got, _ := os.ReadFile(sharedPath)
@@ -577,6 +589,110 @@ func TestRunWithHome_InvalidLocalSkillDoesNotWriteInstructions(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_SyncsCachedGitHubSkills(t *testing.T) {
+	home := t.TempDir()
+	id, _ := githubskill.ParseCanonical("https://github.com/example/skills")
+	cache := githubskill.CacheDir(home, id)
+	repository := githubskill.RepositoryDir(cache)
+	writeSkillDir(t, filepath.Join(repository, "moved", "chosen"), "---\nname: chosen\n---\nremote")
+	if err := githubskill.CompleteStaging(cache, id, map[string]string{"chosen": "moved/chosen"}, "abc123"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Platforms: []string{"cursor"},
+		Skills: config.Skills{GitHub: []config.GitHubSkills{{
+			URL: id.URL(), Include: []string{"chosen"},
+		}}},
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".cursor", "skills", "chosen", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunWithHome_MissingGitHubCacheDoesNotWriteInstructions(t *testing.T) {
+	home := t.TempDir()
+	instructions := filepath.Join(home, "source.md")
+	if err := os.WriteFile(instructions, []byte("source"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Platforms:    []string{"claude"},
+		Instructions: []string{instructions},
+		Skills: config.Skills{GitHub: []config.GitHubSkills{{
+			URL: "https://github.com/example/skills", Include: []string{"chosen"},
+		}}},
+	}
+
+	err := RunWithHome(context.Background(), cfg, home, Options{})
+	if err == nil || !strings.Contains(err.Error(), "chai update") {
+		t.Fatalf("missing cache error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Fatalf("instructions were written before cache validation: %v", err)
+	}
+}
+
+func TestRunWithHome_RejectsLocalRemoteNameConflict(t *testing.T) {
+	home := t.TempDir()
+	local := filepath.Join(home, "local")
+	writeSkillDir(t, local, "---\nname: local\n---\nlocal")
+	id, _ := githubskill.ParseCanonical("https://github.com/example/skills")
+	cache := githubskill.CacheDir(home, id)
+	writeSkillDir(t, filepath.Join(githubskill.RepositoryDir(cache), "remote"), "---\nname: local\n---\nremote")
+	if err := githubskill.CompleteStaging(cache, id, map[string]string{"local": "remote"}, "abc123"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Platforms: []string{"cursor"},
+		Skills: config.Skills{
+			Local:  []string{local},
+			GitHub: []config.GitHubSkills{{URL: id.URL(), Include: []string{"local"}}},
+		},
+	}
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err == nil || !strings.Contains(err.Error(), "duplicate skill name") {
+		t.Fatalf("conflict error = %v", err)
+	}
+}
+
+func TestRunWithHome_PersistsSkillOwnershipWhenMCPWriteFails(t *testing.T) {
+	home := t.TempDir()
+	local := filepath.Join(home, "local")
+	writeSkillDir(t, local, "---\nname: local\n---\n")
+	mcpPath := filepath.Join(home, ".cursor", "mcp.json")
+	if err := os.MkdirAll(filepath.Dir(mcpPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mcpPath, []byte("{"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Platforms: []string{"cursor"},
+		Skills:    config.Skills{Local: []string{local}},
+		MCP:       map[string]config.MCP{"ctx": {Command: "ctx"}},
+	}
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err == nil {
+		t.Fatal("expected MCP write failure")
+	}
+	dest := filepath.Join(home, ".cursor", "skills", "local")
+	db, err := hash.Load(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, managed := db[dest]; !managed {
+		t.Fatal("skill ownership was not persisted after downstream failure")
+	}
+	if err := os.WriteFile(mcpPath, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("rerun after downstream failure: %v", err)
+	}
+}
+
 func TestRunWithHome_NoConfiguredSkillsRemovesManagedSkill(t *testing.T) {
 	home := t.TempDir()
 	dest := filepath.Join(home, ".cursor", "skills", "old-skill")
@@ -586,7 +702,11 @@ func TestRunWithHome_NoConfiguredSkillsRemovesManagedSkill(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dest, "SKILL.md"), []byte("old"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := (hash.DB{dest: "managed"}).Save(home); err != nil {
+	sum, err := dirHash(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := (hash.DB{dest: sum}).Save(home); err != nil {
 		t.Fatal(err)
 	}
 

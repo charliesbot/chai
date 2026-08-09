@@ -2,12 +2,15 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/charliesbot/chai/internal/config"
+	"github.com/charliesbot/chai/internal/githubskill"
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/resolve"
@@ -42,7 +45,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	if len(instructionPlatforms) > 0 && len(cfg.Instructions) == 0 {
 		return fmt.Errorf("no instructions path set in config")
 	}
-	localSkills, err := resolveLocalSkillSources(cfg.Skills.Local, home, home)
+	resolvedSkills, err := resolveConfiguredSkills(cfg, home)
 	if err != nil {
 		return err
 	}
@@ -94,6 +97,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	}
 	instructionChanges := newItemChanges()
 	skippedInstructionTargets := 0
+	var incompleteErr error
 	instructionName := filepath.Base(srcPath)
 	contentHash := hash.Sum(content)
 
@@ -173,6 +177,9 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		for _, detail := range instructionChanges.details() {
 			fmt.Printf("   %s\n", detail.render())
 		}
+		if skippedInstructionTargets > 0 {
+			incompleteErr = fmt.Errorf("instruction sync incomplete: %d modified targets were preserved", skippedInstructionTargets)
+		}
 	}
 
 	if opts.DryRun {
@@ -183,21 +190,21 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return fmt.Errorf("sync interrupted: %w", err)
 	}
 
-	if err := syncResolvedSkills(localSkills, true, home, platforms, opts.DryRun, hashDB); err != nil {
-		return err
+	if err := syncResolvedSkills(resolvedSkills, true, home, platforms, opts, hashDB); err != nil {
+		return persistHashError(hashDB, home, opts.DryRun, err)
 	}
 
 	if err := syncAgents(cfg.Subagents.Paths, home, platforms, opts.DryRun, hashDB); err != nil {
-		return err
+		return persistHashError(hashDB, home, opts.DryRun, err)
 	}
 
 	if err := syncMCP(cfg, home, platforms, opts.DryRun); err != nil {
-		return err
+		return persistHashError(hashDB, home, opts.DryRun, err)
 	}
 
 	if platform.HasPlatform(cfg.Platforms, "droid") {
 		if err := syncDroidCustomModels(cfg, home, opts.DryRun); err != nil {
-			return err
+			return persistHashError(hashDB, home, opts.DryRun, err)
 		}
 	}
 
@@ -209,7 +216,57 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return err
 	}
 
-	return nil
+	return incompleteErr
+}
+
+func persistHashError(hashDB hash.DB, home string, dryRun bool, operationErr error) error {
+	if dryRun {
+		return operationErr
+	}
+	return errors.Join(operationErr, hashDB.Save(home))
+}
+
+func resolveConfiguredSkills(cfg *config.Config, home string) ([]skillSource, error) {
+	resolved, err := resolveLocalSkillSources(cfg.Skills.Local, home, home)
+	if err != nil {
+		return nil, err
+	}
+	locations := make(map[string][]string)
+	for _, source := range resolved {
+		locations[source.name] = append(locations[source.name], source.path)
+	}
+	for _, remote := range cfg.Skills.GitHub {
+		id, err := githubskill.ParseCanonical(remote.URL)
+		if err != nil {
+			return nil, err
+		}
+		cached, err := githubskill.ResolveCached(home, id, remote.Include)
+		if err != nil {
+			return nil, err
+		}
+		for _, source := range cached {
+			resolved = append(resolved, skillSource{path: source.Path, name: source.Name, kind: skillSourceDir})
+			locations[source.Name] = append(locations[source.Name], source.Path)
+		}
+	}
+	var conflicts []string
+	for name, paths := range locations {
+		if len(paths) > 1 {
+			sort.Strings(paths)
+			conflicts = append(conflicts, fmt.Sprintf("%q: %s", name, strings.Join(paths, ", ")))
+		}
+	}
+	if len(conflicts) > 0 {
+		sort.Strings(conflicts)
+		return nil, fmt.Errorf("duplicate skill name conflicts: %s", strings.Join(conflicts, "; "))
+	}
+	sort.Slice(resolved, func(i, j int) bool { return resolved[i].name < resolved[j].name })
+	return resolved, nil
+}
+
+func ValidateSources(cfg *config.Config, home string) error {
+	_, err := resolveConfiguredSkills(cfg, home)
+	return err
 }
 
 // platformStatus tracks success/failure per platform, preserving order for UI rendering.

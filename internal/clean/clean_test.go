@@ -119,6 +119,46 @@ func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_RemovesOnlyUnreferencedGitHubCaches(t *testing.T) {
+	home := t.TempDir()
+	referenced := filepath.Join(home, ".chai", "sources", "github.com", "example", "kept")
+	orphan := filepath.Join(home, ".chai", "sources", "github.com", "example", "orphan")
+	writeFile(t, filepath.Join(referenced, "state.json"), "kept")
+	writeFile(t, filepath.Join(orphan, "state.json"), "orphan")
+	cfg := &config.Config{
+		Platforms: []string{"cursor"},
+		Skills: config.Skills{GitHub: []config.GitHubSkills{{
+			URL: "https://github.com/example/kept", Include: []string{"one"},
+		}}},
+	}
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(referenced); err != nil {
+		t.Fatalf("referenced cache removed: %v", err)
+	}
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatalf("orphan cache survived: %v", err)
+	}
+}
+
+func TestRunWithHome_RejectsLocalSourceInsideOrphanCache(t *testing.T) {
+	home := t.TempDir()
+	orphan := filepath.Join(home, ".chai", "sources", "github.com", "example", "orphan")
+	local := filepath.Join(orphan, "repository", "skill")
+	writeFile(t, filepath.Join(local, "SKILL.md"), "---\nname: local\n---\n")
+	cfg := &config.Config{
+		Platforms: []string{"cursor"},
+		Skills:    config.Skills{Local: []string{local}},
+	}
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err == nil {
+		t.Fatal("expected source overlap error")
+	}
+	if _, err := os.Stat(filepath.Join(local, "SKILL.md")); err != nil {
+		t.Fatalf("local source was deleted: %v", err)
+	}
+}
+
 func TestRunWithHome_DryRunDoesNotRemoveOutputs(t *testing.T) {
 	home := t.TempDir()
 	cfg := &config.Config{Platforms: []string{"codex"}}
@@ -223,9 +263,25 @@ func TestRunWithHome_RefusesToRemoveSymlinkedConfiguredSourceTree(t *testing.T) 
 	}
 }
 
-func TestPathsOverlapIgnoresCase(t *testing.T) {
-	if !pathsOverlap("/Users/example/.agents/skills", "/users/example/.agents/skills/web-dev") {
-		t.Fatal("pathsOverlap should treat case-only path differences as overlapping")
+func TestPathsOverlapPreservesCaseSensitivePathSemantics(t *testing.T) {
+	if pathsOverlap("/Users/example/.agents/skills", "/users/example/.agents/skills/web-dev") {
+		t.Fatal("nonexistent case-distinct paths should not be treated as identical")
+	}
+}
+
+func TestPathsOverlapUsesFilesystemIdentity(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "actual")
+	child := filepath.Join(parent, "child")
+	if err := os.MkdirAll(child, 0755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(parent, alias); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if !pathsOverlap(parent, filepath.Join(alias, "child")) {
+		t.Fatal("filesystem-identical ancestor should overlap")
 	}
 }
 

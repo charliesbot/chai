@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -91,9 +92,24 @@ func TestSyncSkills_ReportsCompletedChangesWhenLaterCopyFails(t *testing.T) {
 	destDir := filepath.Join(home, ".cursor", "skills")
 	staleSkill := filepath.Join(destDir, "stale-skill")
 	writeSkillDir(t, staleSkill, "stale")
-	hashDB := hash.DB{staleSkill: "managed-hash"}
+	staleHash, err := dirHash(staleSkill)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hashDB := hash.DB{staleSkill: staleHash}
 
-	output := syncCursorSkills(t, home, hashDB)
+	output, err := captureStdout(t, func() error {
+		return syncSkills(
+			[]string{filepath.Join(home, "dotfiles", "ai", "skills", "*")},
+			home,
+			[]platform.Platform{{Name: "Cursor", SkillsDir: ".cursor/skills"}},
+			false,
+			hashDB,
+		)
+	})
+	if err == nil {
+		t.Fatal("expected copy failure")
+	}
 
 	assertOutputContains(t, output, "1 removed", "- stale-skill")
 }
@@ -111,6 +127,52 @@ func TestSyncSkills_CapsChangedNames(t *testing.T) {
 	if !strings.Contains(output, "7 added") || !strings.Contains(output, "... 2 more") ||
 		strings.Contains(output, "+ f") || strings.Contains(output, "+ g") {
 		t.Fatalf("output should show at most five changed names:\n%s", output)
+	}
+}
+
+func TestSyncSkillCopiesRejectsDirtyManagedDestination(t *testing.T) {
+	home := t.TempDir()
+	source := filepath.Join(home, "source")
+	destDir := filepath.Join(home, "dest")
+	writeSkillDir(t, source, "source")
+	writeSkillDir(t, filepath.Join(destDir, "chosen"), "edited")
+	dest := filepath.Join(destDir, "chosen")
+	hashDB := hash.DB{dest: "previous-hash"}
+
+	_, err := syncSkillCopies([]skillSource{{path: source, name: "chosen", kind: skillSourceDir}}, destDir, hashDB, Options{})
+	var dirty *DirtyError
+	if !errors.As(err, &dirty) {
+		t.Fatalf("dirty error = %v", err)
+	}
+	data, readErr := os.ReadFile(filepath.Join(dest, "SKILL.md"))
+	if readErr != nil || !strings.Contains(string(data), "edited") {
+		t.Fatalf("dirty destination changed: data=%q err=%v", data, readErr)
+	}
+}
+
+func TestSyncSkillCopiesRejectsUnmanagedNameCollision(t *testing.T) {
+	home := t.TempDir()
+	source := filepath.Join(home, "source")
+	destDir := filepath.Join(home, "dest")
+	writeSkillDir(t, source, "source")
+	writeSkillDir(t, filepath.Join(destDir, "chosen"), "user")
+
+	_, err := syncSkillCopies([]skillSource{{path: source, name: "chosen", kind: skillSourceDir}}, destDir, hash.DB{}, Options{})
+	if err == nil || !strings.Contains(err.Error(), "not managed by chai") {
+		t.Fatalf("collision error = %v", err)
+	}
+}
+
+func TestSyncSkillCopiesForceStillRejectsUnmanagedNameCollision(t *testing.T) {
+	home := t.TempDir()
+	source := filepath.Join(home, "source")
+	destDir := filepath.Join(home, "dest")
+	writeSkillDir(t, source, "source")
+	writeSkillDir(t, filepath.Join(destDir, "chosen"), "user")
+
+	_, err := syncSkillCopies([]skillSource{{path: source, name: "chosen", kind: skillSourceDir}}, destDir, hash.DB{}, Options{Force: true})
+	if err == nil || !strings.Contains(err.Error(), "not managed by chai") {
+		t.Fatalf("force collision error = %v", err)
 	}
 }
 

@@ -22,7 +22,7 @@ func syncSkills(skillPatterns []string, home string, platforms []platform.Platfo
 	if err != nil {
 		return err
 	}
-	return syncResolvedSkills(skills, len(skillPatterns) > 0, home, platforms, dryRun, hashDB)
+	return syncResolvedSkills(skills, len(skillPatterns) > 0, home, platforms, Options{DryRun: dryRun, Force: true}, hashDB)
 }
 
 func syncLocalSkills(roots []string, baseDir, home string, platforms []platform.Platform, dryRun bool, hashDB hash.DB) error {
@@ -30,7 +30,7 @@ func syncLocalSkills(roots []string, baseDir, home string, platforms []platform.
 	if err != nil {
 		return err
 	}
-	return syncResolvedSkills(skills, len(roots) > 0, home, platforms, dryRun, hashDB)
+	return syncResolvedSkills(skills, len(roots) > 0, home, platforms, Options{DryRun: dryRun, Force: true}, hashDB)
 }
 
 func resolveLocalSkillSources(roots []string, baseDir, home string) ([]skillSource, error) {
@@ -45,12 +45,12 @@ func resolveLocalSkillSources(roots []string, baseDir, home string) ([]skillSour
 	return skills, nil
 }
 
-func syncResolvedSkills(skills []skillSource, configured bool, home string, platforms []platform.Platform, dryRun bool, hashDB hash.DB) error {
+func syncResolvedSkills(skills []skillSource, configured bool, home string, platforms []platform.Platform, opts Options, hashDB hash.DB) error {
 	if len(skills) == 0 && !configured {
 		return nil
 	}
 
-	if dryRun {
+	if opts.DryRun {
 		fmt.Println(ui.Label.Render("skills"))
 		for _, src := range skills {
 			fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), src.path)
@@ -59,23 +59,27 @@ func syncResolvedSkills(skills []skillSource, configured bool, home string, plat
 
 	status := newPlatformStatus(platforms)
 	changes := newItemChanges()
+	var syncErr error
 	for _, p := range platforms {
 		destDir := filepath.Join(home, p.SkillsDir)
-		if dryRun {
+		if opts.DryRun {
 			for _, src := range skills {
 				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, src.name)), ui.Muted.Render("→ "+src.path))
 			}
 		} else {
-			platformChanges, err := syncSkillCopies(skills, destDir, hashDB)
+			platformChanges, err := syncSkillCopies(skills, destDir, hashDB, opts)
 			changes.merge(platformChanges)
 			if err != nil {
 				status.setFailed(p.Name)
+				if syncErr == nil {
+					syncErr = err
+				}
 				continue
 			}
 		}
 	}
 
-	if !dryRun {
+	if !opts.DryRun {
 		fmt.Println(ui.ResultLine("skills", changes.summary(), status.statuses()))
 		details := changes.details()
 		const detailLimit = 5
@@ -91,11 +95,11 @@ func syncResolvedSkills(skills []skillSource, configured bool, home string, plat
 		}
 	}
 
-	if dryRun {
+	if opts.DryRun {
 		fmt.Println()
 	}
 
-	return nil
+	return syncErr
 }
 
 type skillSource struct {
@@ -294,14 +298,15 @@ func isSkillMD(path string) bool {
 	return filepath.Base(path) == "SKILL.md"
 }
 
-func syncSkillCopies(sources []skillSource, destDir string, hashDB hash.DB) (itemChanges, error) {
-	return syncNamedDirCopies(sources, destDir, hashDB, copySkillSource)
+func syncSkillCopies(sources []skillSource, destDir string, hashDB hash.DB, opts Options) (itemChanges, error) {
+	return syncNamedDirCopies(sources, destDir, hashDB, opts, copySkillSource)
 }
 
 func syncNamedDirCopies(
 	sources []skillSource,
 	destDir string,
 	hashDB hash.DB,
+	opts Options,
 	copySource func(skillSource, string) (string, error),
 ) (itemChanges, error) {
 	changes := newItemChanges()
@@ -313,7 +318,7 @@ func syncNamedDirCopies(
 	for _, src := range sources {
 		expected[filepath.Join(destDir, src.name)] = true
 	}
-	stale, err := removeStaleManagedDirs(destDir, expected, hashDB)
+	stale, err := removeStaleManagedDirs(destDir, expected, hashDB, opts)
 	for _, name := range stale.removed {
 		changes.record(name, itemRemoved)
 	}
@@ -329,13 +334,41 @@ func syncNamedDirCopies(
 		previousHash, managed := hashDB[dest]
 		_, statErr := os.Stat(dest)
 		existed := statErr == nil
-
-		if err := os.RemoveAll(dest); err != nil {
-			return changes, fmt.Errorf("removing %s: %w", dest, err)
+		if statErr != nil && !os.IsNotExist(statErr) {
+			return changes, fmt.Errorf("checking %s: %w", dest, statErr)
+		}
+		if existed && !managed {
+			return changes, fmt.Errorf("skill destination %s is not managed by chai", dest)
+		}
+		if existed && managed && !opts.Force {
+			dirty, err := managedDirDirty(dest, previousHash)
+			if err != nil {
+				return changes, err
+			}
+			if dirty {
+				if opts.Prompt == nil {
+					return changes, &DirtyError{Files: []string{dest}}
+				}
+				overwrite, err := opts.Prompt(dest)
+				if err != nil {
+					return changes, err
+				}
+				if !overwrite {
+					return changes, fmt.Errorf("skill sync incomplete: modified destination %s was preserved", dest)
+				}
+			}
 		}
 
-		sum, err := copySource(src, dest)
+		staging, err := os.MkdirTemp(destDir, "."+src.name+".tmp-")
 		if err != nil {
+			return changes, fmt.Errorf("creating staging directory for %s: %w", dest, err)
+		}
+		sum, err := copySource(src, staging)
+		if err != nil {
+			_ = os.RemoveAll(staging)
+			return changes, err
+		}
+		if err := replaceDirectory(staging, dest, existed); err != nil {
 			return changes, err
 		}
 		hashDB[dest] = sum
@@ -423,10 +456,41 @@ func syncDirCopies(sources []string, destDir string, hashDB hash.DB) error {
 		})
 	}
 
-	_, err := syncNamedDirCopies(named, destDir, hashDB, func(src skillSource, dest string) (string, error) {
+	_, err := syncNamedDirCopies(named, destDir, hashDB, Options{Force: true}, func(src skillSource, dest string) (string, error) {
 		return copyAndHashDir(src.path, dest)
 	})
 	return err
+}
+
+func managedDirDirty(path, stored string) (bool, error) {
+	current, err := dirHash(path)
+	if err != nil {
+		return false, fmt.Errorf("hashing managed directory %s: %w", path, err)
+	}
+	return current != stored, nil
+}
+
+func replaceDirectory(staging, dest string, existed bool) error {
+	backup := dest + ".backup"
+	if err := os.RemoveAll(backup); err != nil {
+		_ = os.RemoveAll(staging)
+		return fmt.Errorf("removing old backup %s: %w", backup, err)
+	}
+	if existed {
+		if err := os.Rename(dest, backup); err != nil {
+			_ = os.RemoveAll(staging)
+			return fmt.Errorf("staging existing destination %s: %w", dest, err)
+		}
+	}
+	if err := os.Rename(staging, dest); err != nil {
+		if existed {
+			_ = os.Rename(backup, dest)
+		}
+		_ = os.RemoveAll(staging)
+		return fmt.Errorf("promoting skill destination %s: %w", dest, err)
+	}
+	_ = os.RemoveAll(backup)
+	return nil
 }
 
 func copyAndHashDir(src, dest string) (string, error) {

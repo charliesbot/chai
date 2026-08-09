@@ -122,6 +122,66 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
+type writableConfig struct {
+	Platforms    []string               `toml:"platforms"`
+	Instructions []string               `toml:"instructions,omitempty"`
+	Deps         map[string]writableDep `toml:"deps,omitempty"`
+	Skills       Skills                 `toml:"skills,omitempty"`
+	Subagents    Subagents              `toml:"subagents,omitempty"`
+	MCP          map[string]MCP         `toml:"mcp,omitempty"`
+	Antigravity  AntigravityConfig      `toml:"antigravity,omitempty"`
+	Droid        DroidConfig            `toml:"droid,omitempty"`
+}
+
+type writableDep struct {
+	URL   string `toml:"url"`
+	Build string `toml:"build,omitempty"`
+}
+
+func SaveAtomic(path string, cfg *Config) error {
+	if err := validate(cfg); err != nil {
+		return fmt.Errorf("validating config before write: %w", err)
+	}
+	deps := make(map[string]writableDep, len(cfg.Deps))
+	for name, dep := range cfg.Deps {
+		deps[name] = writableDep{URL: dep.URL, Build: dep.Build}
+	}
+	writable := writableConfig{
+		Platforms: cfg.Platforms, Instructions: cfg.Instructions, Deps: deps,
+		Skills: cfg.Skills, Subagents: cfg.Subagents, MCP: cfg.MCP,
+		Antigravity: cfg.Antigravity, Droid: cfg.Droid,
+	}
+	var output bytes.Buffer
+	encoder := toml.NewEncoder(&output).SetArraysMultiline(true)
+	if err := encoder.Encode(writable); err != nil {
+		return fmt.Errorf("encoding config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("creating config directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".chai.toml.tmp-")
+	if err != nil {
+		return fmt.Errorf("creating temporary config: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("setting temporary config permissions: %w", err)
+	}
+	if _, err := tmp.Write(output.Bytes()); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("writing temporary config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing temporary config: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("replacing config: %w", err)
+	}
+	return nil
+}
+
 func parseDeps(raw map[string]any) (map[string]Dep, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -187,6 +247,10 @@ func validateSkills(skills Skills) error {
 		}
 		if strings.ContainsAny(local, "*?[]") {
 			return fmt.Errorf("skills.local[%d] must not contain glob metacharacters", i)
+		}
+		if local != "~" && !strings.HasPrefix(local, "~/") && !filepath.IsAbs(local) &&
+			!strings.HasPrefix(local, "./") && !strings.HasPrefix(local, "../") {
+			return fmt.Errorf("skills.local[%d] must be an absolute, ~/, ./, or ../ local path", i)
 		}
 		cleaned := filepath.Clean(local)
 		if seenLocal[cleaned] {

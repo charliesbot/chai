@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"runtime/debug"
 
+	chaiadd "github.com/charliesbot/chai/internal/add"
 	"github.com/charliesbot/chai/internal/clean"
 	"github.com/charliesbot/chai/internal/config"
 	chaiinit "github.com/charliesbot/chai/internal/init"
-	"github.com/charliesbot/chai/internal/platform"
 	chaisync "github.com/charliesbot/chai/internal/sync"
 	"github.com/charliesbot/chai/internal/update"
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -65,6 +65,26 @@ func main() {
 		ShortHelp:  "Scaffold a ~/chai.toml and AGENTS.md",
 		Exec: func(ctx context.Context, args []string) error {
 			return chaiinit.Run()
+		},
+	}
+
+	addCmd := &ffcli.Command{
+		Name:       "add",
+		ShortUsage: "chai add <source> [--skill <name>...] [--list] [--yes] [--global]",
+		ShortHelp:  "Add a local or public GitHub skill source",
+		Exec: func(ctx context.Context, args []string) error {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			configPath := filepath.Join(home, "chai.toml")
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				return err
+			}
+			return chaiadd.RunWithHome(ctx, cfg, configPath, home, args, chaiadd.Options{
+				SyncOptions: chaisync.Options{Prompt: chaisync.InteractivePrompt()},
+			})
 		},
 	}
 
@@ -121,7 +141,7 @@ func main() {
 	updateCmd := &ffcli.Command{
 		Name:       "update",
 		ShortUsage: "chai update",
-		ShortHelp:  "Clone or pull dependencies and install plugins",
+		ShortHelp:  "Refresh GitHub skills, dependencies, and plugins, then sync",
 		Exec: func(ctx context.Context, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
@@ -131,11 +151,9 @@ func main() {
 			if err != nil {
 				return err
 			}
-			plugins := cfg.Antigravity.Plugins
-			if !platform.HasPlatform(cfg.Platforms, "antigravity") {
-				plugins = nil
-			}
-			return update.Run(cfg.Deps, plugins)
+			return update.Run(ctx, cfg, update.Options{
+				SyncOptions: chaisync.Options{Prompt: chaisync.InteractivePrompt()},
+			})
 		},
 	}
 
@@ -146,13 +164,13 @@ func main() {
 		ShortUsage:  "chai <command> [flags]",
 		ShortHelp:   "Keep AI coding agent configs in sync",
 		FlagSet:     rootFlags,
-		Subcommands: []*ffcli.Command{initCmd, syncCmd, cleanCmd, updateCmd},
+		Subcommands: []*ffcli.Command{initCmd, addCmd, syncCmd, cleanCmd, updateCmd},
 		Exec: func(ctx context.Context, args []string) error {
 			if *showVersion {
 				fmt.Println(resolveVersion())
 				return nil
 			}
-			fmt.Println("chai — run 'chai init', 'chai sync', 'chai clean', or 'chai update'")
+			fmt.Println("chai — run 'chai init', 'chai add', 'chai sync', 'chai clean', or 'chai update'")
 			return nil
 		},
 	}

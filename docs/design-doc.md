@@ -57,9 +57,10 @@ Dependencies are cloned to:
 ```
 ~/.chai/
 ├── hashes.json              <- hash DB for dirty detection
-└── deps/
-    ├── workspace/
-    └── angular-skills/
+├── deps/
+│   └── workspace/
+└── sources/github.com/
+    └── owner/repository/    <- sparse public GitHub skill cache
 ```
 
 ## TOML Schema
@@ -72,11 +73,11 @@ workspace = "https://github.com/gemini-cli-extensions/workspace"
 angular-skills = "https://github.com/angular/skills"
 
 [skills]
-paths = [
-  "~/dotfiles/ai/skills/*",
-  "@workspace/skills/*",
-  "@angular-skills/skills/*"
-]
+local = ["~/dotfiles/ai/skills"]
+
+[[skills.github]]
+url = "https://github.com/vercel-labs/agent-skills"
+include = ["frontend-design", "skill-creator"]
 
 [subagents]
 paths = ["~/dotfiles/ai/subagents/*"]
@@ -105,17 +106,18 @@ args = ["--app", "desktop"]
 
 - `instructions` — path to AGENTS.md. Copied to each platform with a global instructions file.
 - `[deps]` — external repos to clone. `name = "url"`. Cloned to `~/.chai/deps/<name>/`. Deps are clone-only — chai doesn't read or parse their contents. Only cloned/pulled via `chai update`, not during `chai sync`.
-- `[skills]` — skill directories. Supports globs, external paths (`~/`), and dep references (`@name/`). A path ending in `SKILL.md` is copied as a single-file skill named after its parent directory. Copied to each platform's skills directory.
+- `[skills].local` — local skill directories or collections. Collections discover valid `SKILL.md` files in immediate child directories. Names come from frontmatter; globs and dependency references are rejected.
+- `[[skills.github]]` — canonical public GitHub sources with explicit selected skill names. Chai caches only selected trees; `chai sync` reads the cache offline and `chai update` refreshes it.
 - `[subagents]` — markdown subagent definitions. Same path resolution as skills; copied to markdown-native platforms and compiled to TOML for Codex.
 - `[mcp.<name>]` — MCP server definitions. `command`, `args`, optional `env` and `cwd`. The section name becomes the key in the platform's `mcpServers` object. Use `@name` in `cwd` to reference a dep's local path. NPX-based MCPs don't need a `[deps]` entry.
 - `[[droid.custom_models]]` — Droid BYOK model definitions. Written to `~/.factory/settings.json` as `customModels`, preserving unrelated settings.
 
 ### Path Resolution
 
-- All paths are absolute or use `~` (home directory).
+- Local skill paths are absolute, use `~`, or are explicitly relative with `./` or `../`.
 - `~` expands to the user's home directory.
-- `@name` references a cloned dep (e.g., `@workspace/skills/*` -> `~/.chai/deps/workspace/skills/*`).
-- Globs are expanded at sync time.
+- Relative local skill paths resolve from the directory containing `chai.toml`.
+- `@name` references remain available for dependency-backed runtime paths such as MCP `cwd`, not for skills.
 
 ## Platform Definitions
 
@@ -154,24 +156,27 @@ Scaffolds a `~/chai.toml` and an AI folder with `instructions/AGENTS.md`, `skill
 Distributes config to all platforms. Does **not** touch deps — uses whatever is already cloned.
 
 1. Read `~/chai.toml`.
-2. Resolve all paths and expand globs for skills, agents, MCPs.
-3. Hash target instructions files and compare against stored hashes for dirty detection.
-4. Copy instructions to platform locations (with dirty detection prompts).
-5. Copy skills and agents to platform directories (remove stale chai-managed copies first).
-6. Replace the platform MCP key in platform config files.
-7. Merge Droid custom models into `~/.factory/settings.json` if configured.
-8. Update hash DB.
+2. Discover local skills and resolve selected GitHub skills from the offline source cache.
+3. Resolve remaining paths and expand subagent globs.
+4. Hash managed instructions and skill directories for dirty detection.
+5. Copy instructions to platform locations (with dirty detection prompts).
+6. Copy skills and agents to platform directories (remove stale chai-managed copies first).
+7. Replace the platform MCP key in platform config files.
+8. Merge Droid custom models into `~/.factory/settings.json` if configured.
+9. Update hash DB.
 
 Flags: `--force` (skip dirty checks), `--dry-run` (preview without writing).
 
 ### `chai update`
 
-Clones missing deps, pulls existing ones, and installs Antigravity plugins. Shows Bubbletea progress UI with per-item status.
+Refreshes public GitHub skill sources, clones or pulls deps, installs Antigravity plugins, then syncs updated skills.
 
-1. Read `[deps]` and `[antigravity.plugins]` from `~/chai.toml`.
-2. For each dep: clone if missing, pull if already cloned.
-3. For each plugin (when `antigravity` is in `platforms`): run `agy plugin install <url>`; treat `"already installed"` as up to date.
-4. Display progress bars and status per item.
+1. Require Git 2.37 or newer when `[[skills.github]]` is configured.
+2. Fetch each remote source, rediscover selected names, and atomically replace its sparse cache.
+3. Report newly available upstream skills without selecting them.
+4. For each dep: clone if missing, pull if already cloned.
+5. For each plugin (when `antigravity` is in `platforms`): run `agy plugin install <url>`; treat `"already installed"` as up to date.
+6. Run the normal offline sync after source updates succeed.
 
 ## Sync Flow
 
@@ -185,7 +190,7 @@ Clones missing deps, pulls existing ones, and installs Antigravity plugins. Show
      |
      v
 +-----------+
-|   hash    |  compare source hash vs stored hash for instructions
+|   hash    |  compare stored hashes for instructions and skills
 +-----+-----+
      |
      v
@@ -206,22 +211,29 @@ Clones missing deps, pulls existing ones, and installs Antigravity plugins. Show
      |
      v
 +-----------+
-|   deps    |  clone missing, pull existing → ~/.chai/deps/
+|  sources  |  refresh selected sparse trees → ~/.chai/sources/
 +-----------+
      |
      v
-  progress UI (Bubbletea)
++-----------+
+| deps/plugins |  clone, pull, install
++-----------+
+     |
+     v
++-----------+
+|   sync    |  distribute refreshed skills
++-----------+
 ```
 
 ## Hash / Dirty Detection
 
-- Dirty detection applies to instructions. Skills and agents use the hash DB to distinguish stale chai-managed copies from user-created files. MCPs are fully owned by chai and replaced on every sync.
+- Dirty detection applies to instructions and skills. Agents use the hash DB for stale ownership tracking. MCPs are fully owned by chai and replaced on every sync.
 - On every sync, chai hashes managed content (MD5) and stores it in `~/.chai/hashes.json`.
-- Before writing instructions, chai hashes each target file on disk and compares against the stored hash.
+- Before replacing instructions or skill directories, chai hashes the managed destination and compares it with the stored hash.
 - Match = file untouched since last sync, safe to overwrite.
 - Mismatch = file was manually edited, prompt the user via Bubbletea TUI before overwriting.
 - Missing hash = first sync for this target, just write.
-- `chai sync --force` skips all dirty checks and overwrites everything.
+- `chai sync --force` skips dirty checks for chai-managed targets; it never overwrites an unmanaged same-name skill.
 
 ## Tech Stack
 
@@ -235,7 +247,7 @@ Clones missing deps, pulls existing ones, and installs Antigravity plugins. Show
 - **How do skills map to platforms?** — Copied to each platform's configured skills directory. Codex uses `~/.agents/skills/`. Droid uses `~/.factory/skills/`.
 - **Why copies instead of symlinks?** — Copies are portable across platforms and allow chai to use hash-based tracking for stale managed content while leaving user-created files alone.
 - **Why separate `chai sync` from `chai update`?** — Sync should be fast and predictable. Pulling git repos is slow and network-dependent. Users update deps explicitly when they want to.
-- **Do NPX-based MCPs need deps?** — No. NPX fetches the package on the fly. `[deps]` is only needed when you need actual files on disk (for skills, agents, or MCPs that run from a local path).
+- **Do NPX-based MCPs need deps?** — No. NPX fetches the package on the fly. `[deps]` is only needed when an MCP or another runtime tool needs actual repository files on disk.
 
 ## Open Questions
 

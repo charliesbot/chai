@@ -43,11 +43,19 @@ type Discovery struct {
 
 func Discover(ctx context.Context, cloneURL, repositoryDir string) (Discovery, error) {
 	cmd := exec.CommandContext(ctx, "git", "clone", "--quiet", "--depth=1", "--filter=blob:none", "--no-checkout", "--", cloneURL, repositoryDir)
-	if output, err := cmd.CombinedOutput(); err != nil {
+	output, err := cmd.CombinedOutput()
+	if err != nil {
 		return Discovery{}, fmt.Errorf("cloning GitHub skill source: %s: %w", strings.TrimSpace(string(output)), err)
 	}
+	cloneMessage := strings.ToLower(string(output))
+	if strings.Contains(cloneMessage, "filtering not recognized") || strings.Contains(cloneMessage, "does not support filter") {
+		return Discovery{}, fmt.Errorf("remote does not support the required partial clone; refusing full clone fallback")
+	}
+	if err := verifyPartialClone(ctx, repositoryDir); err != nil {
+		return Discovery{}, err
+	}
 
-	output, err := gitOutput(ctx, repositoryDir, "ls-tree", "-r", "-z", "--full-tree", "HEAD")
+	output, err = gitOutput(ctx, repositoryDir, "ls-tree", "-r", "-z", "--full-tree", "HEAD")
 	if err != nil {
 		return Discovery{}, err
 	}
@@ -91,6 +99,18 @@ func Discover(ctx context.Context, cloneURL, repositoryDir string) (Discovery, e
 	})
 	sort.Slice(result.Problems, func(i, j int) bool { return result.Problems[i].Path < result.Problems[j].Path })
 	return result, nil
+}
+
+func verifyPartialClone(ctx context.Context, repositoryDir string) error {
+	promisor, err := gitOutput(ctx, repositoryDir, "config", "--get", "remote.origin.promisor")
+	if err != nil || strings.TrimSpace(string(promisor)) != "true" {
+		return fmt.Errorf("remote does not support the required partial clone; refusing full clone fallback")
+	}
+	filter, err := gitOutput(ctx, repositoryDir, "config", "--get", "remote.origin.partialclonefilter")
+	if err != nil || strings.TrimSpace(string(filter)) != "blob:none" {
+		return fmt.Errorf("remote did not preserve the required blob:none partial clone filter")
+	}
+	return nil
 }
 
 func parseTree(output []byte) ([]TreeEntry, error) {
