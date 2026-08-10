@@ -1,7 +1,6 @@
 package add
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -16,7 +15,6 @@ import (
 	"github.com/charliesbot/chai/internal/githubskill"
 	"github.com/charliesbot/chai/internal/skill"
 	chaisync "github.com/charliesbot/chai/internal/sync"
-	"github.com/charliesbot/chai/internal/ui"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -25,11 +23,9 @@ type Request struct {
 	Source string
 	Skills []string
 	List   bool
-	Yes    bool
 }
 
 type Options struct {
-	Confirm         func(string) (bool, error)
 	CheckGit        func(context.Context) error
 	Discover        func(context.Context, githubskill.Identity, string) (githubskill.Discovery, error)
 	Materialize     func(context.Context, string, githubskill.Discovery, []string) (map[string]string, error)
@@ -80,7 +76,7 @@ func ParseArgs(args []string) (Request, error) {
 		case "--list":
 			request.List = true
 		case "--yes", "-y":
-			request.Yes = true
+			// Accepted for compatibility; add executes immediately.
 		case "--global", "-g":
 			// Accepted for compatibility; chai currently manages only global config.
 		case "--skill":
@@ -184,10 +180,6 @@ func addLocal(ctx context.Context, cfg *config.Config, configPath, home string, 
 	if err != nil {
 		return err
 	}
-	tracked, err := skill.DiscoverLocal([]string{normalized}, filepath.Dir(configPath), home)
-	if err != nil {
-		return err
-	}
 	found := false
 	for _, existing := range cfg.Skills.Local {
 		canonical, err := NormalizeLocalPath(existing, filepath.Dir(configPath), home)
@@ -205,19 +197,6 @@ func addLocal(ctx context.Context, cfg *config.Config, configPath, home string, 
 		return err
 	}
 	if err := rejectNameConflicts(discovered, nil, cfg, ""); err != nil {
-		return err
-	}
-	trackedNames := make([]string, len(tracked))
-	for i, source := range tracked {
-		trackedNames[i] = source.Name
-	}
-	manifestChange := "no changes"
-	if !found {
-		manifestChange = fmt.Sprintf("add local source %s to %s", normalized, configPath)
-	}
-	summary := fmt.Sprintf("Add local source %s; tracked skills: %s; manifest: %s; sync to %s", normalized, strings.Join(trackedNames, ", "), manifestChange, strings.Join(cfg.Platforms, ", "))
-	confirmed, err := confirm(summary, request.Yes, opts)
-	if err != nil || !confirmed {
 		return err
 	}
 	if !found {
@@ -293,13 +272,9 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 		}
 	}
 	existingIndex := -1
-	existingNames := make(map[string]bool)
 	for i, source := range cfg.Skills.GitHub {
 		if source.URL == id.URL() {
 			existingIndex = i
-			for _, name := range source.Include {
-				existingNames[name] = true
-			}
 			selected = append(selected, source.Include...)
 			break
 		}
@@ -337,25 +312,6 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 		return err
 	}
 	if err := githubskill.CompleteStaging(staging, id, mapping, commit); err != nil {
-		return err
-	}
-	manifestChange := fmt.Sprintf("add GitHub source to %s", configPath)
-	if existingIndex >= 0 {
-		var added []string
-		for _, name := range selected {
-			if !existingNames[name] {
-				added = append(added, name)
-			}
-		}
-		if len(added) == 0 {
-			manifestChange = "no changes"
-		} else {
-			manifestChange = fmt.Sprintf("add skills %s to %s", strings.Join(added, ", "), configPath)
-		}
-	}
-	summary := remoteSummary(id.URL(), selected, manifestChange, cfg.Platforms)
-	confirmed, err := confirm(summary, request.Yes, opts)
-	if err != nil || !confirmed {
 		return err
 	}
 	staging, err = githubskill.StagePrepared(home, id, staging)
@@ -409,23 +365,6 @@ func rejectNameConflicts(selected, locals []skill.Source, cfg *config.Config, sk
 	return skill.ValidateUniqueNames(sources)
 }
 
-func confirm(summary string, yes bool, opts Options) (bool, error) {
-	fmt.Fprintln(output(opts), summary)
-	if yes {
-		return true, nil
-	}
-	if opts.Confirm != nil {
-		return opts.Confirm(summary)
-	}
-	fmt.Fprint(output(opts), "Continue? [y/N] ")
-	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	if err != nil && len(line) == 0 {
-		return false, err
-	}
-	answer := strings.TrimSpace(line)
-	return strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes"), nil
-}
-
 func withProgress(opts Options, label string, operation func() error) error {
 	if opts.Progress != nil {
 		return opts.Progress(label, operation)
@@ -446,40 +385,6 @@ func withProgress(opts Options, label string, operation func() error) error {
 func stdoutIsTerminal() bool {
 	info, err := os.Stdout.Stat()
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
-}
-
-func remoteSummary(url string, selected []string, manifestChange string, platforms []string) string {
-	var summary strings.Builder
-	fmt.Fprintf(&summary, "%s\n\n  %s\n\n", ui.Label.Render("GitHub source"), url)
-	fmt.Fprintf(&summary, "%s\n\n", ui.Label.Render(fmt.Sprintf("Selected skills (%d)", len(selected))))
-	for _, name := range selected {
-		fmt.Fprintf(&summary, "  %s\n", name)
-	}
-	fmt.Fprintf(&summary, "\n%s\n\n  %s\n", ui.Label.Render("Manifest"), upperFirst(manifestChange))
-	fmt.Fprintf(&summary, "\n%s\n\n  %s\n", ui.Label.Render("Platforms"), strings.Join(platformLabels(platforms), " · "))
-	return summary.String()
-}
-
-func platformLabels(names []string) []string {
-	labels := make([]string, len(names))
-	for i, name := range names {
-		switch strings.ToLower(name) {
-		case "opencode":
-			labels[i] = "OpenCode"
-		case "pi":
-			labels[i] = "Pi"
-		default:
-			labels[i] = upperFirst(name)
-		}
-	}
-	return labels
-}
-
-func upperFirst(value string) string {
-	if value == "" {
-		return value
-	}
-	return strings.ToUpper(value[:1]) + value[1:]
 }
 
 func printDiscovery(writer io.Writer, discovery githubskill.Discovery) {

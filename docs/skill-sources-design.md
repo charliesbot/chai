@@ -254,8 +254,9 @@ they do not want to track an entire collection.
 
 - `--global`, `-g`: accepted because chai currently manages the global
   `~/chai.toml`; it is otherwise redundant.
-- `--yes`, `-y`: skips only the add summary confirmation for scripts and CI. It
-  does not bypass dirty detection or imply `--force` during sync.
+- `--yes`, `-y`: accepted for compatibility but otherwise redundant because add
+  executes immediately. It does not bypass dirty detection or imply `--force`
+  during sync.
 
 Per-command `--agent` is intentionally unsupported. Chai syncs to the platforms
 declared in `chai.toml`.
@@ -271,10 +272,7 @@ parse source
 discover and validate skills
     |
     v
-fetch selected source content
-    |
-    v
-show summary and confirm
+fetch and validate selected source content
     |
     v
 promote validated content to source cache
@@ -289,12 +287,13 @@ run the normal sync pipeline
 Requirements:
 
 - Discovery and fetching must succeed before modifying `chai.toml`.
-- Discovery and fetching before confirmation use temporary storage. The summary
-  shows the canonical source, selected or tracked skills, manifest changes, and
-  destination platforms.
-- Declining confirmation removes temporary content and leaves `chai.toml`, the
-  persistent source cache, and platform directories unchanged.
-- After confirmation, chai promotes the validated temporary content into the
+- Discovery and fetching use temporary storage. If validation fails, chai
+  removes that storage and leaves `chai.toml`, the persistent source cache, and
+  platform directories unchanged.
+- `chai add` executes immediately without a confirmation prompt; the explicit
+  command invocation is the user's intent. It reports progress followed by the
+  normal sync results.
+- After validation, chai promotes the validated temporary content into the
   persistent source cache before writing the manifest. Cache promotion uses a
   staged directory and rename/swap so an existing valid cache is not left
   partially updated.

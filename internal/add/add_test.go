@@ -22,7 +22,7 @@ func TestParseArgsConsumesSkillNamesUntilNextOption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if request.Source != "owner/repo" || !reflect.DeepEqual(request.Skills, []string{"one", "two"}) || !request.Yes {
+	if request.Source != "owner/repo" || !reflect.DeepEqual(request.Skills, []string{"one", "two"}) {
 		t.Fatalf("request = %#v", request)
 	}
 }
@@ -53,7 +53,6 @@ func TestRunWithHomeAddsLocalSourceAndSyncs(t *testing.T) {
 	cfg := &config.Config{Platforms: []string{"cursor"}}
 	synced := false
 	opts := Options{
-		Confirm: func(string) (bool, error) { return true, nil },
 		Sync: func(context.Context, *config.Config, string, chaisync.Options) error {
 			synced = true
 			return nil
@@ -71,7 +70,7 @@ func TestRunWithHomeAddsLocalSourceAndSyncs(t *testing.T) {
 	}
 }
 
-func TestRunWithHomeLocalSummaryShowsTrackedSkillsAndManifestDelta(t *testing.T) {
+func TestRunWithHomeLocalAddRunsWithoutConfirmationSummary(t *testing.T) {
 	home := t.TempDir()
 	manifest := filepath.Join(home, "chai.toml")
 	root := filepath.Join(home, "skills")
@@ -80,50 +79,15 @@ func TestRunWithHomeLocalSummaryShowsTrackedSkillsAndManifestDelta(t *testing.T)
 	cfg := &config.Config{Platforms: []string{"cursor", "claude"}}
 	var output bytes.Buffer
 	opts := Options{
-		Confirm: func(string) (bool, error) { return true, nil },
-		Sync:    func(context.Context, *config.Config, string, chaisync.Options) error { return nil },
-		Output:  &output,
+		Sync:   func(context.Context, *config.Config, string, chaisync.Options) error { return nil },
+		Output: &output,
 	}
 
 	if err := RunWithHome(context.Background(), cfg, manifest, home, []string{root}, opts); err != nil {
 		t.Fatal(err)
 	}
-	for _, detail := range []string{"~/skills", "tracked skills: one, two", "manifest: add local source", "sync to cursor, claude"} {
-		if !strings.Contains(output.String(), detail) {
-			t.Errorf("summary %q does not contain %q", output.String(), detail)
-		}
-	}
-
-	output.Reset()
-	if err := RunWithHome(context.Background(), cfg, manifest, home, []string{root}, opts); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(output.String(), "manifest: no changes") {
-		t.Errorf("idempotent summary = %q", output.String())
-	}
-}
-
-func TestRunWithHomeDeclineLeavesRemoteStateUnchanged(t *testing.T) {
-	home := t.TempDir()
-	manifest := filepath.Join(home, "chai.toml")
-	cfg := &config.Config{Platforms: []string{"cursor"}}
-	source := testRepository(t)
-	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
-	opts := Options{
-		CheckGit: func(context.Context) error { return nil },
-		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
-			return githubskill.Discover(ctx, cloneURL, repository)
-		},
-		Confirm: func(string) (bool, error) { return false, nil },
-	}
-	if err := RunWithHome(context.Background(), cfg, manifest, home, []string{"example/skills"}, opts); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(manifest); !os.IsNotExist(err) {
-		t.Fatalf("manifest changed: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(home, ".chai", "sources")); !os.IsNotExist(err) {
-		t.Fatalf("persistent cache hierarchy changed: %v", err)
+	if output.Len() != 0 {
+		t.Errorf("local add should only show sync results, got %q", output.String())
 	}
 }
 
@@ -150,11 +114,6 @@ func TestRunWithHomeAddsSelectedRemoteAndIsIdempotent(t *testing.T) {
 	if err := RunWithHome(context.Background(), cfg, manifest, home, firstArgs, opts); err != nil {
 		t.Fatal(err)
 	}
-	for _, detail := range []string{"https://github.com/example/skills", "Selected skills (1)", "  one", "Manifest", "Add GitHub source", "Platforms", "Cursor"} {
-		if !strings.Contains(output.String(), detail) {
-			t.Errorf("summary %q does not contain %q", output.String(), detail)
-		}
-	}
 	loaded, err := config.Load(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -164,11 +123,6 @@ func TestRunWithHomeAddsSelectedRemoteAndIsIdempotent(t *testing.T) {
 	if err := RunWithHome(context.Background(), loaded, manifest, home, mergeArgs, opts); err != nil {
 		t.Fatal(err)
 	}
-	for _, detail := range []string{"Selected skills (2)", "  one\n  two", "Add skills two"} {
-		if !strings.Contains(output.String(), detail) {
-			t.Errorf("merge summary %q does not contain %q", output.String(), detail)
-		}
-	}
 	loaded, err = config.Load(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -176,9 +130,6 @@ func TestRunWithHomeAddsSelectedRemoteAndIsIdempotent(t *testing.T) {
 	output.Reset()
 	if err := RunWithHome(context.Background(), loaded, manifest, home, mergeArgs, opts); err != nil {
 		t.Fatal(err)
-	}
-	if !strings.Contains(output.String(), "Manifest\n\n  No changes") {
-		t.Errorf("idempotent summary = %q", output.String())
 	}
 	loaded, err = config.Load(manifest)
 	if err != nil {
@@ -190,14 +141,15 @@ func TestRunWithHomeAddsSelectedRemoteAndIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestRunWithHomeRemoteAddReportsProgressAndStructuredSummary(t *testing.T) {
+func TestRunWithHomeRemoteAddReportsProgressWithoutConfirmationSummary(t *testing.T) {
 	home := t.TempDir()
 	manifest := filepath.Join(home, "chai.toml")
 	cfg := &config.Config{Platforms: []string{"claude", "cursor"}}
 	source := testRepository(t)
 	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
 	var labels []string
-	var summary string
+	synced := false
+	var output bytes.Buffer
 	opts := Options{
 		CheckGit: func(context.Context) error { return nil },
 		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
@@ -207,10 +159,11 @@ func TestRunWithHomeRemoteAddReportsProgressAndStructuredSummary(t *testing.T) {
 			labels = append(labels, label)
 			return operation()
 		},
-		Confirm: func(value string) (bool, error) {
-			summary = value
-			return false, nil
+		Sync: func(context.Context, *config.Config, string, chaisync.Options) error {
+			synced = true
+			return nil
 		},
+		Output: &output,
 	}
 
 	if err := RunWithHome(context.Background(), cfg, manifest, home, []string{"example/skills", "--skill", "one"}, opts); err != nil {
@@ -219,51 +172,34 @@ func TestRunWithHomeRemoteAddReportsProgressAndStructuredSummary(t *testing.T) {
 	if !reflect.DeepEqual(labels, []string{"Inspecting example/skills", "Fetching 1 selected skill(s)"}) {
 		t.Fatalf("progress labels = %v", labels)
 	}
-	for _, detail := range []string{
-		"GitHub source\n",
-		"  https://github.com/example/skills",
-		"Selected skills (1)\n",
-		"  one",
-		"Manifest\n",
-		"  Add GitHub source",
-		"Platforms\n",
-		"  Claude · Cursor",
-	} {
-		if !strings.Contains(summary, detail) {
-			t.Errorf("summary missing %q:\n%s", detail, summary)
-		}
+	if !synced {
+		t.Fatal("remote add did not continue directly to sync")
 	}
-	if strings.Contains(summary, ";") {
-		t.Errorf("summary should not be a semicolon-delimited sentence:\n%s", summary)
+	for _, unwanted := range []string{"GitHub source", "Selected skills", "Manifest", "Platforms", "Continue?"} {
+		if strings.Contains(output.String(), unwanted) {
+			t.Errorf("add output contains confirmation summary %q:\n%s", unwanted, output.String())
+		}
 	}
 }
 
-func TestRunWithHomeRemoteAddRejectsUnmanagedDestinationsBeforeConfirmation(t *testing.T) {
+func TestRunWithHomeRemoteAddRejectsUnmanagedDestinationsBeforeMutation(t *testing.T) {
 	home := t.TempDir()
 	manifest := filepath.Join(home, "chai.toml")
 	cfg := &config.Config{Platforms: []string{"cursor"}}
 	writeSkill(t, filepath.Join(home, ".cursor", "skills", "one"), "one")
 	source := testRepository(t)
 	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
-	confirmed := false
 	opts := Options{
 		CheckGit: func(context.Context) error { return nil },
 		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
 			return githubskill.Discover(ctx, cloneURL, repository)
 		},
 		Progress: func(_ string, operation func() error) error { return operation() },
-		Confirm: func(string) (bool, error) {
-			confirmed = true
-			return true, nil
-		},
 	}
 
 	err := RunWithHome(context.Background(), cfg, manifest, home, []string{"example/skills", "--skill", "one"}, opts)
 	if err == nil || !strings.Contains(err.Error(), filepath.Join(home, ".cursor", "skills", "one")) {
 		t.Fatalf("collision error = %v", err)
-	}
-	if confirmed {
-		t.Fatal("confirmation ran before destination validation")
 	}
 	if _, statErr := os.Stat(manifest); !os.IsNotExist(statErr) {
 		t.Fatalf("manifest changed before destination validation: %v", statErr)
@@ -320,7 +256,7 @@ func TestRunWithHomeRemoteAddCompletesRealSync(t *testing.T) {
 	}
 }
 
-func TestRunWithHomeRejectsConflictBeforeConfirmationAndPromotion(t *testing.T) {
+func TestRunWithHomeRejectsConflictBeforePromotion(t *testing.T) {
 	home := t.TempDir()
 	manifest := filepath.Join(home, "chai.toml")
 	local := filepath.Join(home, "local")
@@ -328,23 +264,15 @@ func TestRunWithHomeRejectsConflictBeforeConfirmationAndPromotion(t *testing.T) 
 	cfg := &config.Config{Platforms: []string{"cursor"}, Skills: config.Skills{Local: []string{local}}}
 	source := testRepository(t)
 	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
-	confirmed := false
 	opts := Options{
 		CheckGit: func(context.Context) error { return nil },
 		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
 			return githubskill.Discover(ctx, cloneURL, repository)
 		},
-		Confirm: func(string) (bool, error) {
-			confirmed = true
-			return true, nil
-		},
 	}
 	err := RunWithHome(context.Background(), cfg, manifest, home, []string{"example/skills", "--skill", "one"}, opts)
 	if err == nil {
 		t.Fatal("expected name conflict")
-	}
-	if confirmed {
-		t.Fatal("confirmation ran before global name validation")
 	}
 	id, _ := githubskill.ParseCanonical("https://github.com/example/skills")
 	if _, statErr := os.Stat(githubskill.CacheDir(home, id)); !os.IsNotExist(statErr) {

@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -190,7 +191,9 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 	}
 
 	var mergeErrors []string
+	changed := false
 	for _, t := range order {
+		before, _ := os.ReadFile(t.path)
 		entries := entriesFor(seen[t][0])
 		var mergeErr error
 		if t.format == platform.MCPFormatCodex {
@@ -206,7 +209,13 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 			}
 			mergeErrors = append(mergeErrors, strings.Join(names, " + ")+": "+mergeErr.Error())
 			fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), ui.Bold.Render(strings.Join(names, " + ")), ui.Muted.Render(mergeErr.Error()))
+			continue
 		}
+		after, err := os.ReadFile(t.path)
+		if err != nil {
+			return fmt.Errorf("reading updated MCP config %s: %w", t.path, err)
+		}
+		changed = changed || !bytes.Equal(before, after)
 	}
 
 	// Collect server names
@@ -216,7 +225,9 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 	}
 	sort.Strings(names)
 
-	fmt.Println(ui.Box("mcp servers", len(standard), status.statuses(), names))
+	if changed || len(mergeErrors) > 0 {
+		fmt.Println(ui.Box("mcp servers", len(standard), status.statuses(), names))
+	}
 	if len(mergeErrors) > 0 {
 		return fmt.Errorf("syncing mcp servers: %s", strings.Join(mergeErrors, "; "))
 	}
