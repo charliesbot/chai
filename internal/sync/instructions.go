@@ -24,7 +24,10 @@ func syncInstructions(
 	hashDB hash.DB,
 ) (error, error) {
 	instructionPlatforms := platformsWithInstructions(platforms)
-	if len(instructionPlatforms) > 0 && len(cfg.Instructions) == 0 {
+	if len(instructionPlatforms) == 0 {
+		return nil, nil
+	}
+	if len(cfg.Instructions) == 0 {
 		return nil, fmt.Errorf("no instructions path set in config")
 	}
 
@@ -35,20 +38,14 @@ func syncInstructions(
 		}
 	}
 
-	var srcPaths []string
-	var content []byte
-	if len(instructionPlatforms) > 0 {
-		var err error
-		srcPaths, content, err = loadInstructions(cfg.Instructions, home)
-		if err != nil {
-			return nil, err
-		}
-
-		if opts.DryRun {
-			fmt.Println(ui.Label.Render("instructions"))
-			for _, srcPath := range srcPaths {
-				fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), srcPath)
-			}
+	srcPaths, content, err := loadInstructions(cfg.Instructions, home)
+	if err != nil {
+		return nil, err
+	}
+	if opts.DryRun {
+		fmt.Println(ui.Label.Render("instructions"))
+		for _, srcPath := range srcPaths {
+			fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), srcPath)
 		}
 	}
 
@@ -65,10 +62,7 @@ func syncInstructions(
 	}
 	instructionChanges := newItemChanges()
 	skippedInstructionTargets := 0
-	instructionName := ""
-	if len(srcPaths) > 0 {
-		instructionName = filepath.Base(srcPaths[0])
-	}
+	instructionName := filepath.Base(srcPaths[0])
 	contentHash := hash.Sum(content)
 
 	for _, dest := range destOrder {
@@ -133,7 +127,7 @@ func syncInstructions(
 		}
 	}
 
-	if opts.DryRun || len(instructionPlatforms) == 0 {
+	if opts.DryRun {
 		return nil, nil
 	}
 
