@@ -206,7 +206,7 @@ func addLocal(ctx context.Context, cfg *config.Config, configPath, home string, 
 	if err := chaisync.ValidateSources(cfg, home); err != nil {
 		return err
 	}
-	if err := config.SaveAtomic(configPath, cfg); err != nil {
+	if err := config.UpdateSkillsAtomic(configPath, cfg); err != nil {
 		return err
 	}
 	return runSync(ctx, cfg, home, opts)
@@ -332,7 +332,7 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 	if err := chaisync.ValidateSources(cfg, home); err != nil {
 		return errors.Join(err, promotion.Rollback())
 	}
-	if err := config.SaveAtomic(configPath, cfg); err != nil {
+	if err := config.UpdateSkillsAtomic(configPath, cfg); err != nil {
 		return errors.Join(err, promotion.Rollback())
 	}
 	commitPromotion := opts.CommitPromotion

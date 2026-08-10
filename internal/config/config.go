@@ -89,7 +89,10 @@ func Load(path string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
+	return load(path, data)
+}
 
+func load(path string, data []byte) (*Config, error) {
 	var raw rawConfig
 	decoder := toml.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -157,6 +160,10 @@ func SaveAtomic(path string, cfg *Config) error {
 	if err := encoder.Encode(writable); err != nil {
 		return fmt.Errorf("encoding config: %w", err)
 	}
+	return writeAtomic(path, output.Bytes())
+}
+
+func writeAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
@@ -170,7 +177,7 @@ func SaveAtomic(path string, cfg *Config) error {
 		_ = tmp.Close()
 		return fmt.Errorf("setting temporary config permissions: %w", err)
 	}
-	if _, err := tmp.Write(output.Bytes()); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("writing temporary config: %w", err)
 	}

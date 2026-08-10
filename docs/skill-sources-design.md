@@ -302,10 +302,10 @@ Requirements:
   non-authoritative orphan state; chai does not run sync and removes that state
   immediately or during the next cache cleanup.
 - The TOML write must be atomic.
-- Chai uses the stable TOML decoder and encoder to load, mutate, and rewrite the
-  complete manifest in one canonical format. Comments and custom formatting may
-  be removed. Comment-preserving edits are deferred until users demonstrate a
-  need for them.
+- Chai strictly parses the complete manifest, but mutates only the skills tables.
+  Unrelated comments and custom formatting remain byte-for-byte unchanged.
+- Chai strictly parses and validates the updated manifest before atomically
+  replacing the original file.
 - Re-adding an existing source merges and sorts explicit skill names.
 - Re-running the same command is idempotent.
 

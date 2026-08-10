@@ -70,6 +70,39 @@ func TestRunWithHomeAddsLocalSourceAndSyncs(t *testing.T) {
 	}
 }
 
+func TestRunWithHomePreservesUnrelatedManifestFormatting(t *testing.T) {
+	home := t.TempDir()
+	manifest := filepath.Join(home, "chai.toml")
+	original := `platforms = ["cursor"]
+
+# formatting owned by the user
+[mcp.test]
+command = "server"
+env = { PORT = "9711" }
+`
+	if err := os.WriteFile(manifest, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(home, "skills")
+	writeSkill(t, root, "local-skill")
+	opts := Options{Sync: func(context.Context, *config.Config, string, chaisync.Options) error { return nil }}
+
+	if err := RunWithHome(context.Background(), cfg, manifest, home, []string{root}, opts); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(updated), original) {
+		t.Fatalf("unrelated manifest formatting changed:\n%s", updated)
+	}
+}
+
 func TestRunWithHomeLocalAddRunsWithoutConfirmationSummary(t *testing.T) {
 	home := t.TempDir()
 	manifest := filepath.Join(home, "chai.toml")
