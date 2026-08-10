@@ -193,9 +193,12 @@ include = [
 ]
 ```
 
-Chai discovers the actual directories containing those skills. It must not
-assume every repository uses `/skills`; repositories may use plugin layouts or
-move a skill without changing its declared name.
+Chai first discovers skills in the conventional `skills/<name>/SKILL.md` and
+`skills/<category>/<name>/SKILL.md` layouts. When either layout contains skill
+files, those files are authoritative and generated platform mirrors elsewhere
+in the repository are ignored. If neither layout contains skill files, chai
+falls back to searching the repository recursively so plugin and other custom
+layouts remain supported.
 
 Remote skills must live below the repository root. A root-level `SKILL.md` is
 rejected because selecting its containing directory would materialize the

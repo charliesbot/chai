@@ -21,8 +21,8 @@ func TestMaterialize(t *testing.T) {
 	}
 	writeRepoFile(t, source, "skills/unselected/SKILL.md", "---\nname: unselected\n---\n")
 	writeRepoFile(t, source, "skills/sibling.txt", "exclude")
-	writeRepoFile(t, source, "unsafe/SKILL.md", "---\nname: unsafe\n---\n")
-	if err := os.Symlink("../sibling.txt", filepath.Join(source, "unsafe", "link")); err != nil {
+	writeRepoFile(t, source, "skills/unsafe/SKILL.md", "---\nname: unsafe\n---\n")
+	if err := os.Symlink("../sibling.txt", filepath.Join(source, "skills", "unsafe", "link")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 	commitRepo(t, source, "skills")
@@ -44,7 +44,7 @@ func TestMaterialize(t *testing.T) {
 	if info, err := os.Stat(script); err != nil || info.Mode()&0100 == 0 {
 		t.Fatalf("executable selected file missing or not executable: info=%v err=%v", info, err)
 	}
-	for _, excluded := range []string{"skills/unselected", "skills/sibling.txt", "unsafe"} {
+	for _, excluded := range []string{"skills/unselected", "skills/sibling.txt", "skills/unsafe"} {
 		if _, err := os.Stat(filepath.Join(repository, filepath.FromSlash(excluded))); !os.IsNotExist(err) {
 			t.Errorf("unselected path %q was materialized, err=%v", excluded, err)
 		}

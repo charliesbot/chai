@@ -64,10 +64,8 @@ func Discover(ctx context.Context, cloneURL, repositoryDir string) (Discovery, e
 		return Discovery{}, err
 	}
 	result := Discovery{Entries: entries}
-	for _, entry := range entries {
-		if path.Base(entry.Path) != "SKILL.md" {
-			continue
-		}
+	candidateEntries := skillEntries(entries)
+	for _, entry := range candidateEntries {
 		if entry.Mode != "100644" && entry.Mode != "100755" {
 			result.Problems = append(result.Problems, Problem{Path: entry.Path, Err: fmt.Errorf("SKILL.md must be a regular file")})
 			continue
@@ -99,6 +97,25 @@ func Discover(ctx context.Context, cloneURL, repositoryDir string) (Discovery, e
 	})
 	sort.Slice(result.Problems, func(i, j int) bool { return result.Problems[i].Path < result.Problems[j].Path })
 	return result, nil
+}
+
+func skillEntries(entries []TreeEntry) []TreeEntry {
+	standard := make([]TreeEntry, 0)
+	all := make([]TreeEntry, 0)
+	for _, entry := range entries {
+		if path.Base(entry.Path) != "SKILL.md" {
+			continue
+		}
+		all = append(all, entry)
+		parts := strings.Split(entry.Path, "/")
+		if len(parts) >= 3 && len(parts) <= 4 && parts[0] == "skills" {
+			standard = append(standard, entry)
+		}
+	}
+	if len(standard) > 0 {
+		return standard
+	}
+	return all
 }
 
 func verifyPartialClone(ctx context.Context, repositoryDir string) error {
