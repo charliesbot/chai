@@ -147,6 +147,31 @@ func TestSaveAtomicRoundTripsCompleteConfig(t *testing.T) {
 	}
 }
 
+func TestSaveAtomicOmitsEmptyMCPCWD(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chai.toml")
+	cfg := &Config{
+		Platforms: []string{"cursor"},
+		MCP: map[string]MCP{
+			"local":     {Command: "npx"},
+			"workspace": {Command: "node", CWD: "~/workspace"},
+		},
+	}
+	if err := SaveAtomic(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if strings.Contains(text, "cwd = ''") {
+		t.Fatalf("empty MCP cwd was serialized:\n%s", text)
+	}
+	if !strings.Contains(text, "cwd = '~/workspace'") {
+		t.Fatalf("non-empty MCP cwd was omitted:\n%s", text)
+	}
+}
+
 func TestSaveAtomicUsesPrivatePermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chai.toml")
 	if err := os.WriteFile(path, []byte("old"), 0644); err != nil {

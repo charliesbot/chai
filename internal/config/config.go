@@ -66,7 +66,7 @@ type MCP struct {
 	Command string            `toml:"command"`
 	Args    []string          `toml:"args"`
 	Env     map[string]string `toml:"env"`
-	CWD     string            `toml:"cwd"`
+	CWD     string            `toml:"cwd,omitempty"`
 }
 
 // rawConfig is the intermediate TOML representation.
