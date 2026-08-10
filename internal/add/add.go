@@ -310,7 +310,7 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 		materialize = githubskill.Materialize
 	}
 	var mapping map[string]string
-	err = withProgress(opts, fmt.Sprintf("Fetching %d selected %s", len(selected), plural("skill", len(selected))), func() error {
+	err = withProgress(opts, fmt.Sprintf("Fetching %d selected skill(s)", len(selected)), func() error {
 		var materializeErr error
 		mapping, materializeErr = materialize(ctx, repository, discovery, selected)
 		return materializeErr
@@ -480,13 +480,6 @@ func upperFirst(value string) string {
 		return value
 	}
 	return strings.ToUpper(value[:1]) + value[1:]
-}
-
-func plural(noun string, count int) string {
-	if count == 1 {
-		return noun
-	}
-	return noun + "s"
 }
 
 func printDiscovery(writer io.Writer, discovery githubskill.Discovery) {

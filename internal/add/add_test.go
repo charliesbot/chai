@@ -216,7 +216,7 @@ func TestRunWithHomeRemoteAddReportsProgressAndStructuredSummary(t *testing.T) {
 	if err := RunWithHome(context.Background(), cfg, manifest, home, []string{"example/skills", "--skill", "one"}, opts); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(labels, []string{"Inspecting example/skills", "Fetching 1 selected skill"}) {
+	if !reflect.DeepEqual(labels, []string{"Inspecting example/skills", "Fetching 1 selected skill(s)"}) {
 		t.Fatalf("progress labels = %v", labels)
 	}
 	for _, detail := range []string{
