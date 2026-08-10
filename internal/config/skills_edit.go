@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	toml "github.com/pelletier/go-toml/v2"
 	"github.com/pelletier/go-toml/v2/unstable"
@@ -32,30 +31,10 @@ func UpdateSkillsAtomic(path string, cfg *Config) error {
 		return fmt.Errorf("editing skills config: %w", err)
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".chai.toml.tmp-")
-	if err != nil {
-		return fmt.Errorf("creating temporary config: %w", err)
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-	if err := tmp.Chmod(0600); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("setting temporary config permissions: %w", err)
-	}
-	if _, err := tmp.Write(updated); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("writing temporary config: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("closing temporary config: %w", err)
-	}
-	if _, err := Load(tmpPath); err != nil {
+	if _, err := load(path, updated); err != nil {
 		return fmt.Errorf("validating updated config: %w", err)
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("replacing config: %w", err)
-	}
-	return nil
+	return writeAtomic(path, updated)
 }
 
 func encodeSkills(skills Skills) ([]byte, error) {
