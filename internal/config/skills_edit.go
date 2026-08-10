@@ -57,25 +57,24 @@ func replaceSkillsExpressions(input, replacement []byte) ([]byte, error) {
 	var parser unstable.Parser
 	parser.Reset(input)
 	var ranges []sourceRange
-	var tablePath []string
-	ownedTableRange := -1
+	insideTable := false
+	insideSkillsTable := false
 
 	for parser.NextExpression() {
 		node := parser.Expression()
 		switch node.Kind {
 		case unstable.Table, unstable.ArrayTable:
-			tablePath = nodeKey(node)
-			ownedTableRange = -1
-			if isSkillsPath(tablePath) {
+			insideTable = true
+			insideSkillsTable = firstKey(node) == "skills"
+			if insideSkillsTable {
 				ranges = append(ranges, expressionRange(input, node))
-				ownedTableRange = len(ranges) - 1
 			}
 		case unstable.KeyValue:
-			if ownedTableRange >= 0 {
-				ranges[ownedTableRange].end = expressionRange(input, node).end
+			if insideSkillsTable {
+				ranges[len(ranges)-1].end = expressionRange(input, node).end
 				continue
 			}
-			if len(tablePath) == 0 && isSkillsPath(nodeKey(node)) {
+			if !insideTable && firstKey(node) == "skills" {
 				ranges = append(ranges, expressionRange(input, node))
 			}
 		}
@@ -86,13 +85,10 @@ func replaceSkillsExpressions(input, replacement []byte) ([]byte, error) {
 	return replaceRanges(input, replacement, ranges), nil
 }
 
-func nodeKey(node *unstable.Node) []string {
-	var path []string
+func firstKey(node *unstable.Node) string {
 	key := node.Key()
-	for key.Next() {
-		path = append(path, string(key.Node().Data))
-	}
-	return path
+	key.Next()
+	return string(key.Node().Data)
 }
 
 func expressionRange(input []byte, node *unstable.Node) sourceRange {
@@ -111,10 +107,6 @@ func expressionRange(input []byte, node *unstable.Node) sourceRange {
 	}
 	start := int(node.Raw.Offset)
 	return sourceRange{start: start, end: start + int(node.Raw.Length)}
-}
-
-func isSkillsPath(path []string) bool {
-	return len(path) > 0 && path[0] == "skills"
 }
 
 func replaceRanges(input, replacement []byte, ranges []sourceRange) []byte {
