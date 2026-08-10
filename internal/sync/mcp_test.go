@@ -645,6 +645,29 @@ func TestSyncMCP_NoMCPs(t *testing.T) {
 	}
 }
 
+func TestSyncMCP_HidesUnchangedResults(t *testing.T) {
+	home := t.TempDir()
+	cfg := &config.Config{MCP: map[string]config.MCP{
+		"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
+	}}
+	platforms := platform.ForNames([]string{"cursor"})
+
+	first, err := captureStdout(t, func() error { return syncMCP(cfg, home, platforms, false) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(first, "mcp servers") {
+		t.Fatalf("first sync omitted changed MCP results:\n%s", first)
+	}
+	second, err := captureStdout(t, func() error { return syncMCP(cfg, home, platforms, false) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(second, "mcp servers") {
+		t.Fatalf("unchanged MCP results were shown:\n%s", second)
+	}
+}
+
 func readJSON(t *testing.T, path string) map[string]any {
 	t.Helper()
 	data, err := os.ReadFile(path)
