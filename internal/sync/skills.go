@@ -18,6 +18,42 @@ func resolveLocalSkillSources(roots []string, baseDir, home string) ([]skill.Sou
 	return skill.DiscoverLocal(roots, baseDir, home)
 }
 
+// ValidateUnmanagedSkillDestinations reports existing selected-skill paths that
+// chai cannot safely overwrite because they are absent from its ownership DB.
+func ValidateUnmanagedSkillDestinations(names []string, home string, platformNames []string) error {
+	hashDB, err := hash.Load(home)
+	if err != nil {
+		return err
+	}
+	seen := make(map[string]bool)
+	var collisions []string
+	for _, p := range platform.ForNames(platformNames) {
+		for _, name := range names {
+			path := filepath.Join(home, p.SkillsDir, name)
+			if seen[path] {
+				continue
+			}
+			seen[path] = true
+			if _, managed := hashDB[path]; managed {
+				continue
+			}
+			if _, err := os.Stat(path); err == nil {
+				collisions = append(collisions, path)
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("checking skill destination %s: %w", path, err)
+			}
+		}
+	}
+	if len(collisions) == 0 {
+		return nil
+	}
+	sort.Strings(collisions)
+	return fmt.Errorf(
+		"existing skill destinations are not managed by chai:\n  %s\nmove or remove these directories, then retry",
+		strings.Join(collisions, "\n  "),
+	)
+}
+
 func syncResolvedSkills(skills []skill.Source, home string, platforms []platform.Platform, opts Options, hashDB hash.DB) error {
 	if opts.DryRun {
 		fmt.Println(ui.Label.Render("skills"))
