@@ -395,7 +395,7 @@ func TestRunWithHomeSyncsWhenPreviousCacheCleanupFails(t *testing.T) {
 
 func TestRunWithHomeMalformedCandidatePolicy(t *testing.T) {
 	source := testRepository(t)
-	broken := filepath.Join(source, "broken", "SKILL.md")
+	broken := filepath.Join(source, "skills", "broken", "SKILL.md")
 	if err := os.MkdirAll(filepath.Dir(broken), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +456,7 @@ func testRepository(t *testing.T) string {
 	runGit(t, repository, "init", "-b", "main")
 	runGit(t, repository, "config", "uploadpack.allowFilter", "true")
 	writeSkill(t, filepath.Join(repository, "skills", "one"), "one")
-	writeSkill(t, filepath.Join(repository, "plugin", "two"), "two")
+	writeSkill(t, filepath.Join(repository, "skills", "two"), "two")
 	runGit(t, repository, "add", ".")
 	runGit(t, repository, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "skills")
 	return repository

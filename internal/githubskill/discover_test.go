@@ -61,6 +61,67 @@ func TestDiscoverRejectsFullCloneFallback(t *testing.T) {
 	}
 }
 
+func TestDiscoverPrefersStandardSkillLocations(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
+	}
+	source := t.TempDir()
+	runGit(t, source, "init", "-b", "main")
+	runGit(t, source, "config", "uploadpack.allowFilter", "true")
+	content := "---\nname: i-have-adhd\ndescription: Useful\n---\n"
+	writeRepoFile(t, source, "skills/i-have-adhd/SKILL.md", content)
+	writeRepoFile(t, source, ".cursor/skills/i-have-adhd/SKILL.md", content)
+	commitRepo(t, source, "skills")
+
+	result, err := Discover(context.Background(), (&url.URL{Scheme: "file", Path: source}).String(), filepath.Join(t.TempDir(), "repository"))
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if len(result.Candidates) != 1 || result.Candidates[0].Directory != "skills/i-have-adhd" {
+		t.Fatalf("candidates = %+v", result.Candidates)
+	}
+}
+
+func TestDiscoverFallsBackToRecursiveSearch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
+	}
+	source := t.TempDir()
+	runGit(t, source, "init", "-b", "main")
+	runGit(t, source, "config", "uploadpack.allowFilter", "true")
+	writeRepoFile(t, source, "plugins/folder/SKILL.md", "---\nname: plugin-skill\n---\n")
+	commitRepo(t, source, "skill")
+
+	result, err := Discover(context.Background(), (&url.URL{Scheme: "file", Path: source}).String(), filepath.Join(t.TempDir(), "repository"))
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if len(result.Candidates) != 1 || result.Candidates[0].Directory != "plugins/folder" {
+		t.Fatalf("candidates = %+v", result.Candidates)
+	}
+}
+
+func TestDiscoverPreservesAmbiguityWithinStandardLocations(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
+	}
+	source := t.TempDir()
+	runGit(t, source, "init", "-b", "main")
+	runGit(t, source, "config", "uploadpack.allowFilter", "true")
+	content := "---\nname: shared\n---\n"
+	writeRepoFile(t, source, "skills/one/shared/SKILL.md", content)
+	writeRepoFile(t, source, "skills/two/shared/SKILL.md", content)
+	commitRepo(t, source, "skills")
+
+	result, err := Discover(context.Background(), (&url.URL{Scheme: "file", Path: source}).String(), filepath.Join(t.TempDir(), "repository"))
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if len(result.Candidates) != 2 {
+		t.Fatalf("candidates = %+v", result.Candidates)
+	}
+}
+
 func TestParseTree_PreservesTabsInPath(t *testing.T) {
 	entries, err := parseTree([]byte("100644 blob abc123\tdir/with\ttab/SKILL.md\x00"))
 	if err != nil {
