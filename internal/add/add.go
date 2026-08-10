@@ -16,6 +16,9 @@ import (
 	"github.com/charliesbot/chai/internal/githubskill"
 	"github.com/charliesbot/chai/internal/skill"
 	chaisync "github.com/charliesbot/chai/internal/sync"
+	"github.com/charliesbot/chai/internal/ui"
+	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 type Request struct {
@@ -32,8 +35,38 @@ type Options struct {
 	Materialize     func(context.Context, string, githubskill.Discovery, []string) (map[string]string, error)
 	CommitPromotion func(githubskill.Promotion) error
 	Sync            func(context.Context, *config.Config, string, chaisync.Options) error
+	Progress        func(string, func() error) error
 	SyncOptions     chaisync.Options
 	Output          io.Writer
+}
+
+type progressDone struct{ err error }
+
+type progressModel struct {
+	spinner spinner.Model
+	label   string
+	run     func() error
+	err     error
+}
+
+func (m progressModel) Init() tea.Cmd {
+	return tea.Batch(m.spinner.Tick, func() tea.Msg { return progressDone{err: m.run()} })
+}
+
+func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case progressDone:
+		m.err = msg.err
+		return m, tea.Quit
+	default:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	}
+}
+
+func (m progressModel) View() string {
+	return fmt.Sprintf(" %s %s", m.spinner.View(), m.label)
 }
 
 func ParseArgs(args []string) (Request, error) {
@@ -233,7 +266,12 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 		}
 	}
 	repository := githubskill.RepositoryDir(staging)
-	discovery, err := discover(ctx, id, repository)
+	var discovery githubskill.Discovery
+	err = withProgress(opts, "Inspecting "+request.Source, func() error {
+		var discoverErr error
+		discovery, discoverErr = discover(ctx, id, repository)
+		return discoverErr
+	})
 	if err != nil {
 		return err
 	}
@@ -271,7 +309,12 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 	if materialize == nil {
 		materialize = githubskill.Materialize
 	}
-	mapping, err := materialize(ctx, repository, discovery, selected)
+	var mapping map[string]string
+	err = withProgress(opts, fmt.Sprintf("Fetching %d selected skill(s)", len(selected)), func() error {
+		var materializeErr error
+		mapping, materializeErr = materialize(ctx, repository, discovery, selected)
+		return materializeErr
+	})
 	if err != nil {
 		return err
 	}
@@ -284,6 +327,9 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 		selectedSources[i] = skill.Source{Name: name, Path: id.URL()}
 	}
 	if err := rejectNameConflicts(selectedSources, locals, cfg, id.URL()); err != nil {
+		return err
+	}
+	if err := chaisync.ValidateUnmanagedSkillDestinations(selected, home, cfg.Platforms); err != nil {
 		return err
 	}
 	commit, err := gitCommit(ctx, repository)
@@ -307,7 +353,7 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 			manifestChange = fmt.Sprintf("add skills %s to %s", strings.Join(added, ", "), configPath)
 		}
 	}
-	summary := fmt.Sprintf("Add %s; selected skills: %s; manifest: %s; sync to %s", id.URL(), strings.Join(selected, ", "), manifestChange, strings.Join(cfg.Platforms, ", "))
+	summary := remoteSummary(id.URL(), selected, manifestChange, cfg.Platforms)
 	confirmed, err := confirm(summary, request.Yes, opts)
 	if err != nil || !confirmed {
 		return err
@@ -378,6 +424,62 @@ func confirm(summary string, yes bool, opts Options) (bool, error) {
 	}
 	answer := strings.TrimSpace(line)
 	return strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes"), nil
+}
+
+func withProgress(opts Options, label string, operation func() error) error {
+	if opts.Progress != nil {
+		return opts.Progress(label, operation)
+	}
+	writer := output(opts)
+	if opts.Output != nil || !stdoutIsTerminal() {
+		fmt.Fprintf(writer, "%s…\n", label)
+		return operation()
+	}
+	model := progressModel{spinner: spinner.New(spinner.WithSpinner(spinner.MiniDot)), label: label, run: operation}
+	final, err := tea.NewProgram(model, tea.WithInput(nil), tea.WithOutput(writer)).Run()
+	if err != nil {
+		return err
+	}
+	return final.(progressModel).err
+}
+
+func stdoutIsTerminal() bool {
+	info, err := os.Stdout.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+func remoteSummary(url string, selected []string, manifestChange string, platforms []string) string {
+	var summary strings.Builder
+	fmt.Fprintf(&summary, "%s\n\n  %s\n\n", ui.Label.Render("GitHub source"), url)
+	fmt.Fprintf(&summary, "%s\n\n", ui.Label.Render(fmt.Sprintf("Selected skills (%d)", len(selected))))
+	for _, name := range selected {
+		fmt.Fprintf(&summary, "  %s\n", name)
+	}
+	fmt.Fprintf(&summary, "\n%s\n\n  %s\n", ui.Label.Render("Manifest"), upperFirst(manifestChange))
+	fmt.Fprintf(&summary, "\n%s\n\n  %s\n", ui.Label.Render("Platforms"), strings.Join(platformLabels(platforms), " · "))
+	return summary.String()
+}
+
+func platformLabels(names []string) []string {
+	labels := make([]string, len(names))
+	for i, name := range names {
+		switch strings.ToLower(name) {
+		case "opencode":
+			labels[i] = "OpenCode"
+		case "pi":
+			labels[i] = "Pi"
+		default:
+			labels[i] = upperFirst(name)
+		}
+	}
+	return labels
+}
+
+func upperFirst(value string) string {
+	if value == "" {
+		return value
+	}
+	return strings.ToUpper(value[:1]) + value[1:]
 }
 
 func printDiscovery(writer io.Writer, discovery githubskill.Discovery) {

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -172,6 +173,36 @@ func TestSyncSkillCopiesForceStillRejectsUnmanagedNameCollision(t *testing.T) {
 	_, err := syncSkillCopies([]skill.Source{{Path: source, Name: "chosen"}}, destDir, hash.DB{}, Options{Force: true})
 	if err == nil || !strings.Contains(err.Error(), "not managed by chai") {
 		t.Fatalf("force collision error = %v", err)
+	}
+}
+
+func TestValidateUnmanagedSkillDestinationsReportsEveryCollision(t *testing.T) {
+	home := t.TempDir()
+	paths := []string{
+		filepath.Join(home, ".claude", "skills", "one"),
+		filepath.Join(home, ".agents", "skills", "one"),
+		filepath.Join(home, ".cursor", "skills", "two"),
+	}
+	for _, path := range paths {
+		writeSkillDir(t, path, "existing")
+	}
+
+	err := ValidateUnmanagedSkillDestinations([]string{"two", "one"}, home, []string{"cursor", "codex", "claude"})
+	if err == nil {
+		t.Fatal("expected unmanaged destination collisions")
+	}
+	if !strings.Contains(err.Error(), "existing skill destinations are not managed by chai") {
+		t.Fatalf("collision error = %v", err)
+	}
+	for _, path := range paths {
+		if !strings.Contains(err.Error(), path) {
+			t.Errorf("collision error missing %s: %v", path, err)
+		}
+	}
+	sort.Strings(paths)
+	if strings.Index(err.Error(), paths[0]) > strings.Index(err.Error(), paths[1]) ||
+		strings.Index(err.Error(), paths[1]) > strings.Index(err.Error(), paths[2]) {
+		t.Errorf("collision paths are not sorted: %v", err)
 	}
 }
 
