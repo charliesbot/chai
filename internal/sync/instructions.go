@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -23,7 +24,10 @@ func syncInstructions(
 	hashDB hash.DB,
 ) (error, error) {
 	instructionPlatforms := platformsWithInstructions(platforms)
-	if len(instructionPlatforms) > 0 && len(cfg.Instructions) == 0 {
+	if len(instructionPlatforms) == 0 {
+		return nil, nil
+	}
+	if len(cfg.Instructions) == 0 {
 		return nil, fmt.Errorf("no instructions path set in config")
 	}
 
@@ -34,25 +38,13 @@ func syncInstructions(
 		}
 	}
 
-	var srcPath string
-	var content []byte
-	if len(instructionPlatforms) > 0 {
-		var err error
-		srcPath, err = resolve.PathWithHome(cfg.Instructions[0], home)
-		if err != nil {
-			return nil, fmt.Errorf("resolving instructions path: %w", err)
-		}
-
-		content, err = os.ReadFile(srcPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil, fmt.Errorf("instructions file not found: %s", srcPath)
-			}
-			return nil, fmt.Errorf("reading instructions: %w", err)
-		}
-
-		if opts.DryRun {
-			fmt.Println(ui.Label.Render("instructions"))
+	srcPaths, content, err := loadInstructions(cfg.Instructions, home)
+	if err != nil {
+		return nil, err
+	}
+	if opts.DryRun {
+		fmt.Println(ui.Label.Render("instructions"))
+		for _, srcPath := range srcPaths {
 			fmt.Printf("  %s %s\n", ui.Muted.Render("source:"), srcPath)
 		}
 	}
@@ -70,7 +62,7 @@ func syncInstructions(
 	}
 	instructionChanges := newItemChanges()
 	skippedInstructionTargets := 0
-	instructionName := filepath.Base(srcPath)
+	instructionName := filepath.Base(srcPaths[0])
 	contentHash := hash.Sum(content)
 
 	for _, dest := range destOrder {
@@ -135,7 +127,7 @@ func syncInstructions(
 		}
 	}
 
-	if opts.DryRun || len(instructionPlatforms) == 0 {
+	if opts.DryRun {
 		return nil, nil
 	}
 
@@ -156,6 +148,33 @@ func syncInstructions(
 		return fmt.Errorf("instruction sync incomplete: %d modified targets were preserved", skippedInstructionTargets), nil
 	}
 	return nil, nil
+}
+
+func loadInstructions(configuredPaths []string, home string) ([]string, []byte, error) {
+	paths := make([]string, 0, len(configuredPaths))
+	contents := make([][]byte, 0, len(configuredPaths))
+	for _, configuredPath := range configuredPaths {
+		srcPath, err := resolve.PathWithHome(configuredPath, home)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolving instructions path %q: %w", configuredPath, err)
+		}
+		content, err := os.ReadFile(srcPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, nil, fmt.Errorf("instructions file not found: %s", srcPath)
+			}
+			return nil, nil, fmt.Errorf("reading instructions %s: %w", srcPath, err)
+		}
+		paths = append(paths, srcPath)
+		contents = append(contents, content)
+	}
+	if len(contents) == 1 {
+		return paths, contents[0], nil
+	}
+	for i := range contents {
+		contents[i] = bytes.Trim(contents[i], "\r\n")
+	}
+	return paths, bytes.Join(contents, []byte("\n\n")), nil
 }
 
 // platformStatus tracks success/failure per platform, preserving order for UI rendering.

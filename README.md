@@ -45,8 +45,11 @@ Everything lives in `~/chai.toml`:
 # Which platforms to sync to. Only these get touched.
 platforms = ["claude", "antigravity", "droid", "opencode", "codex", "cursor"]
 
-# Your shared instructions file. Copied to platforms with a global instructions file.
-instructions = ["~/dotfiles/ai/instructions/AGENTS.md"]
+# Your shared instruction files. Merged in order for each supported platform.
+instructions = [
+  "~/dotfiles/ai/instructions/AGENTS.md",
+  "~/dotfiles/ai/instructions/ADHD.md",
+]
 
 [deps]
 # Git repos cloned to ~/.chai/deps/. Reference as @name in other paths.

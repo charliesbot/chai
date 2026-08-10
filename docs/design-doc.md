@@ -21,7 +21,7 @@ Minimal first. Nail the basics, then think about complexity.
 ## Core Concepts
 
 - **Manifest** (`~/chai.toml`) — global config file that lives at `~`. Declares instructions path, deps, skills, agents, and MCP servers. All paths are absolute or use `~` / `@name`.
-- **Instructions** (`AGENTS.md`) — single source of truth for agent instructions (persistent instructions). Copied to each platform with a global instructions file. Agents may edit their platform copy, so dirty detection protects manual changes.
+- **Instructions** — ordered source files for persistent agent instructions. Merged into one document and copied to each platform with a global instructions file. Agents may edit their platform copy, so dirty detection protects manual changes.
 - **Skills** — reusable prompt/capability directories copied to each platform's skills directory. Chai tracks managed copies in the hash DB and leaves user-created files alone.
 - **Agents** — subagent definitions. Copied to each platform's markdown subagent directory when supported.
 - **Dependencies** — external repos that chai clones to `~/.chai/deps/`. Referenced in paths via `@name` prefix. Deps are clone-only — no magic, no manifest parsing. Updated explicitly via `chai update`, not during `chai sync`.
@@ -66,7 +66,10 @@ Dependencies are cloned to:
 ## TOML Schema
 
 ```toml
-instructions = ["~/dotfiles/ai/instructions/AGENTS.md"]
+instructions = [
+  "~/dotfiles/ai/instructions/AGENTS.md",
+  "~/dotfiles/ai/instructions/ADHD.md",
+]
 
 [deps]
 workspace = "https://github.com/gemini-cli-extensions/workspace"
@@ -104,7 +107,7 @@ command = "/Applications/Pencil.app/Contents/Resources/app.asar.unpacked/out/mcp
 args = ["--app", "desktop"]
 ```
 
-- `instructions` — path to AGENTS.md. Copied to each platform with a global instructions file.
+- `instructions` — ordered instruction file paths. Their contents are joined with one blank line and copied to each platform with a global instructions file.
 - `[deps]` — external repos to clone. `name = "url"`. Cloned to `~/.chai/deps/<name>/`. Deps are clone-only — chai doesn't read or parse their contents. Only cloned/pulled via `chai update`, not during `chai sync`.
 - `[skills].local` — local skill directories or collections. Collections discover valid `SKILL.md` files in immediate child directories. Names come from frontmatter; globs and dependency references are rejected.
 - `[[skills.github]]` — canonical public GitHub sources with explicit selected skill names. Chai caches only selected trees; `chai sync` reads the cache offline and `chai update` refreshes it.
@@ -132,7 +135,7 @@ Defined in chai's source code, not by the user. Each platform specifies where fi
 | Codex    | `~/.codex/AGENTS.md`     | `~/.agents/skills/`  | `~/.codex/agents/` _(compiled TOML)_ | `~/.codex/config.toml` | `mcp_servers` | replace TOML table |
 | Cursor   | _none_                   | `~/.cursor/skills/`  | `~/.cursor/agents/` | `~/.cursor/mcp.json` | `mcpServers` | replace key with Cursor stdio entries |
 
-- Instructions are **copied** where the platform has a global instructions file (agents may edit their platform copy — dirty detection protects manual changes).
+- Instructions are **merged in declaration order** and copied where the platform has a global instructions file (agents may edit their platform copy — dirty detection protects manual changes).
 - Skills and agents are **copied** and tracked so stale chai-managed files can be removed without touching user-created files.
 - MCPs are transformed per platform when needed. Droid uses `type: "stdio"`, `command`, `args`, `env`, and `disabled: false` in `~/.factory/mcp.json`. Cursor uses `type: "stdio"`, `command`, `args`, and `env` in `~/.cursor/mcp.json`.
 
