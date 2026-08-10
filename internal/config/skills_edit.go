@@ -131,15 +131,64 @@ func replaceRanges(input, replacement []byte, ranges []sourceRange) []byte {
 		return output.Bytes()
 	}
 
+	ranges = coalesceWhitespaceSeparatedRanges(input, ranges)
 	var output bytes.Buffer
 	last := 0
 	for i, current := range ranges {
-		output.Write(input[last:current.start])
+		start := current.start
+		end := current.end
 		if i == 0 {
-			output.Write(replacement)
+			end = skipWhitespace(input, end)
+			output.Write(input[last:start])
+			output.Write(bytes.TrimRight(replacement, "\n"))
+			if end < len(input) {
+				output.WriteString("\n\n")
+			} else {
+				output.WriteByte('\n')
+			}
+		} else {
+			start = skipWhitespaceBackward(input, start, last)
+			output.Write(input[last:start])
 		}
-		last = current.end
+		last = end
 	}
 	output.Write(input[last:])
 	return output.Bytes()
+}
+
+func coalesceWhitespaceSeparatedRanges(input []byte, ranges []sourceRange) []sourceRange {
+	merged := []sourceRange{ranges[0]}
+	for _, current := range ranges[1:] {
+		last := &merged[len(merged)-1]
+		if skipWhitespace(input, last.end) == current.start {
+			last.end = current.end
+			continue
+		}
+		merged = append(merged, current)
+	}
+	return merged
+}
+
+func skipWhitespace(input []byte, start int) int {
+	for start < len(input) {
+		switch input[start] {
+		case ' ', '\t', '\r', '\n':
+			start++
+		default:
+			return start
+		}
+	}
+	return start
+}
+
+func skipWhitespaceBackward(input []byte, start, limit int) int {
+	for start > limit {
+		switch input[start-1] {
+		case ' ', '\t', '\r', '\n':
+			start--
+		default:
+			return start
+		}
+	}
+	return start
 }

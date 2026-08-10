@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -227,6 +228,96 @@ env = { WS_UI_PORT = "9711" }
 	}
 	if !reflect.DeepEqual(loaded.Skills, cfg.Skills) {
 		t.Fatalf("skills = %#v, want %#v", loaded.Skills, cfg.Skills)
+	}
+}
+
+func TestUpdateSkillsAtomicDoesNotAccumulateBlankLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chai.toml")
+	original := `platforms = ["cursor"]
+
+[skills]
+local = []
+
+[[skills.github]]
+url = 'https://github.com/addyosmani/agent-skills'
+include = [
+  'code-simplification',
+  'context-engineering',
+  'incremental-implementation',
+  'planning-and-task-breakdown',
+  'source-driven-development',
+]
+
+[mcp.gcloud]
+command = "npx"
+args = ["-y", "@google-cloud/gcloud-mcp"]
+`
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Skills.Local = []string{"~/dotfiles/ai/skills"}
+
+	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(first), "  'source-driven-development'\n]\n\n[mcp.gcloud]") {
+		t.Fatalf("unexpected spacing before MCP table:\n%s", first)
+	}
+
+	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(second, first) {
+		t.Fatalf("second update changed formatting:\n%s", second)
+	}
+}
+
+func TestUpdateSkillsAtomicPreservesSeparatorAfterNonContiguousSkillsRange(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chai.toml")
+	original := `platforms = ["cursor"]
+skills.local = []
+
+[mcp.one]
+command = "one"
+[[skills.github]]
+url = "https://github.com/example/skills"
+include = ["one"]
+
+# keep with the following table
+[mcp.two]
+command = "two"
+`
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Skills.Local = []string{"~/skills"}
+
+	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[mcp.one]\ncommand = \"one\"\n\n# keep with the following table\n[mcp.two]"
+	if !strings.Contains(string(updated), want) {
+		t.Fatalf("unrelated table separator changed:\n%s", updated)
 	}
 }
 
