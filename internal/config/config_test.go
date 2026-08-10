@@ -172,6 +172,196 @@ func TestSaveAtomicOmitsEmptyMCPCWD(t *testing.T) {
 	}
 }
 
+func TestUpdateSkillsAtomicPreservesUnrelatedFormatting(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chai.toml")
+	original := `# user-owned manifest
+platforms = ["cursor"]
+
+[skills]
+local = ["~/old-skills"]
+
+[[skills.github]]
+url = "https://github.com/old/skills"
+include = ["old"]
+
+# keep this formatting exactly
+[mcp.tolaria]
+command = "/opt/homebrew/bin/node"
+args = ["server.js"]
+env = { WS_UI_PORT = "9711" }
+`
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Skills = Skills{
+		Local: []string{"~/new-skills"},
+		GitHub: []GitHubSkills{{
+			URL:     "https://github.com/new/skills",
+			Include: []string{"one", "two"},
+		}},
+	}
+
+	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantUnrelated := `# keep this formatting exactly
+[mcp.tolaria]
+command = "/opt/homebrew/bin/node"
+args = ["server.js"]
+env = { WS_UI_PORT = "9711" }
+`
+	if !strings.Contains(string(updated), wantUnrelated) {
+		t.Fatalf("unrelated manifest content changed:\n%s", updated)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(loaded.Skills, cfg.Skills) {
+		t.Fatalf("skills = %#v, want %#v", loaded.Skills, cfg.Skills)
+	}
+}
+
+func TestUpdateSkillsAtomicAppendsMissingSkillsSection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chai.toml")
+	original := "platforms = ['cursor']\n\n# keep me\n[mcp.test]\ncommand = 'server'\n"
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Skills.Local = []string{"~/skills"}
+
+	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(updated), original) {
+		t.Fatalf("existing manifest content changed:\n%s", updated)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(loaded.Skills.Local, []string{"~/skills"}) {
+		t.Fatalf("local skills = %v", loaded.Skills.Local)
+	}
+}
+
+func TestUpdateSkillsAtomicRecognizesQuotedSkillsTables(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chai.toml")
+	original := `platforms = ["cursor"]
+
+["skills"]
+local = ["~/old"]
+
+[[ "skills" . "github" ]]
+url = "https://github.com/old/skills"
+include = ["old"]
+
+[mcp.test]
+command = "server"
+`
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Skills.Local = []string{"~/new"}
+
+	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(updated), "[skills]") != 1 {
+		t.Fatalf("quoted skills tables were not replaced:\n%s", updated)
+	}
+}
+
+func TestUpdateSkillsAtomicReplacesRootSkillsAssignments(t *testing.T) {
+	for name, declaration := range map[string]string{
+		"dotted key":   `skills.local = ["~/old"]`,
+		"inline table": `skills = { local = ["~/old"] }`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "chai.toml")
+			original := "platforms = [\"cursor\"]\n" + declaration + "\n\n[mcp.test]\ncommand = \"server\"\n"
+			if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.Skills.Local = []string{"~/new"}
+
+			if err := UpdateSkillsAtomic(path, cfg); err != nil {
+				t.Fatal(err)
+			}
+			updated, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(updated), declaration) {
+				t.Fatalf("old skills assignment remains:\n%s", updated)
+			}
+			if !strings.Contains(string(updated), "[mcp.test]\ncommand = \"server\"\n") {
+				t.Fatalf("unrelated table changed:\n%s", updated)
+			}
+		})
+	}
+}
+
+func TestUpdateSkillsAtomicIgnoresTableTextInsideMultilineString(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chai.toml")
+	original := `platforms = ["cursor"]
+
+[mcp.test]
+command = "server"
+env = { SCRIPT = """
+[skills]
+local = [not a TOML expression here]
+""" }
+`
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Skills.Local = []string{"~/new"}
+
+	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(updated), original) {
+		t.Fatalf("multiline string changed:\n%s", updated)
+	}
+}
+
 func TestSaveAtomicUsesPrivatePermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chai.toml")
 	if err := os.WriteFile(path, []byte("old"), 0644); err != nil {
