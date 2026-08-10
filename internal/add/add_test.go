@@ -15,6 +15,7 @@ import (
 	"github.com/charliesbot/chai/internal/githubskill"
 	"github.com/charliesbot/chai/internal/skill"
 	chaisync "github.com/charliesbot/chai/internal/sync"
+	"github.com/charmbracelet/bubbles/spinner"
 )
 
 func TestParseArgsConsumesSkillNamesUntilNextOption(t *testing.T) {
@@ -212,6 +213,13 @@ func TestRunWithHomeRemoteAddReportsProgressWithoutConfirmationSummary(t *testin
 		if strings.Contains(output.String(), unwanted) {
 			t.Errorf("add output contains confirmation summary %q:\n%s", unwanted, output.String())
 		}
+	}
+}
+
+func TestProgressViewHasLeadingBlankLine(t *testing.T) {
+	model := progressModel{spinner: spinner.New(), label: "Inspecting owner/repo"}
+	if view := model.View(); !strings.HasPrefix(view, "\n ") {
+		t.Fatalf("progress view = %q, want leading blank line", view)
 	}
 }
 

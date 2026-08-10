@@ -62,7 +62,7 @@ func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m progressModel) View() string {
-	return fmt.Sprintf(" %s %s", m.spinner.View(), m.label)
+	return fmt.Sprintf("\n %s %s", m.spinner.View(), m.label)
 }
 
 func ParseArgs(args []string) (Request, error) {
