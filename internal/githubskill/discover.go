@@ -64,8 +64,7 @@ func Discover(ctx context.Context, cloneURL, repositoryDir string) (Discovery, e
 		return Discovery{}, err
 	}
 	result := Discovery{Entries: entries}
-	candidateEntries := skillEntries(entries)
-	for _, entry := range candidateEntries {
+	for _, entry := range preferredSkillEntries(entries) {
 		if entry.Mode != "100644" && entry.Mode != "100755" {
 			result.Problems = append(result.Problems, Problem{Path: entry.Path, Err: fmt.Errorf("SKILL.md must be a regular file")})
 			continue
@@ -99,23 +98,26 @@ func Discover(ctx context.Context, cloneURL, repositoryDir string) (Discovery, e
 	return result, nil
 }
 
-func skillEntries(entries []TreeEntry) []TreeEntry {
-	standard := make([]TreeEntry, 0)
-	all := make([]TreeEntry, 0)
+func preferredSkillEntries(entries []TreeEntry) []TreeEntry {
+	var skills, conventional []TreeEntry
 	for _, entry := range entries {
 		if path.Base(entry.Path) != "SKILL.md" {
 			continue
 		}
-		all = append(all, entry)
-		parts := strings.Split(entry.Path, "/")
-		if len(parts) >= 3 && len(parts) <= 4 && parts[0] == "skills" {
-			standard = append(standard, entry)
+		skills = append(skills, entry)
+		if isConventionalSkillPath(entry.Path) {
+			conventional = append(conventional, entry)
 		}
 	}
-	if len(standard) > 0 {
-		return standard
+	if len(conventional) > 0 {
+		return conventional
 	}
-	return all
+	return skills
+}
+
+func isConventionalSkillPath(skillFile string) bool {
+	parts := strings.Split(skillFile, "/")
+	return parts[0] == "skills" && (len(parts) == 3 || len(parts) == 4)
 }
 
 func verifyPartialClone(ctx context.Context, repositoryDir string) error {
