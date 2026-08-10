@@ -227,6 +227,9 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 
 	if changed || len(mergeErrors) > 0 {
 		fmt.Println(ui.Box("mcp servers", len(standard), status.statuses(), names))
+	} else {
+		summary := ui.Muted.Render(fmt.Sprintf("%d unchanged", len(standard)))
+		fmt.Println(ui.ResultLine("mcp servers", summary, status.statuses()))
 	}
 	if len(mergeErrors) > 0 {
 		return fmt.Errorf("syncing mcp servers: %s", strings.Join(mergeErrors, "; "))

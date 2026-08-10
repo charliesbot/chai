@@ -645,7 +645,7 @@ func TestSyncMCP_NoMCPs(t *testing.T) {
 	}
 }
 
-func TestSyncMCP_HidesUnchangedResults(t *testing.T) {
+func TestSyncMCP_ShowsUnchangedResults(t *testing.T) {
 	home := t.TempDir()
 	cfg := &config.Config{MCP: map[string]config.MCP{
 		"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
@@ -663,8 +663,8 @@ func TestSyncMCP_HidesUnchangedResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(second, "mcp servers") {
-		t.Fatalf("unchanged MCP results were shown:\n%s", second)
+	if !strings.Contains(second, "mcp servers") || !strings.Contains(second, "1 unchanged") {
+		t.Fatalf("unchanged MCP results were omitted:\n%s", second)
 	}
 }
 
