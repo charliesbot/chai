@@ -60,6 +60,61 @@ func TestRunWithHome_CopiesInstructions(t *testing.T) {
 	}
 }
 
+func TestRunWithHome_MergesInstructionsInOrder(t *testing.T) {
+	home := t.TempDir()
+	srcDir := filepath.Join(home, "dotfiles", "ai", "instructions")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "AGENTS.md"), []byte("# Agents\n\nRules\n\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "ADHD.md"), []byte("\n# ADHD\n\nFocus\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Platforms: []string{"claude", "codex"},
+		Instructions: []string{
+			"~/dotfiles/ai/instructions/AGENTS.md",
+			"~/dotfiles/ai/instructions/ADHD.md",
+		},
+	}
+
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	want := "# Agents\n\nRules\n\n# ADHD\n\nFocus"
+	for _, target := range []string{".claude/CLAUDE.md", ".codex/AGENTS.md"} {
+		got, err := os.ReadFile(filepath.Join(home, filepath.FromSlash(target)))
+		if err != nil {
+			t.Fatalf("reading %s: %v", target, err)
+		}
+		if string(got) != want {
+			t.Errorf("%s = %q, want %q", target, got, want)
+		}
+	}
+}
+
+func TestRunWithHome_MissingSecondaryInstructionsFile(t *testing.T) {
+	home := t.TempDir()
+	first := filepath.Join(home, "AGENTS.md")
+	if err := os.WriteFile(first, []byte("instructions"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Platforms:    []string{"claude"},
+		Instructions: []string{first, filepath.Join(home, "ADHD.md")},
+	}
+
+	err := RunWithHome(context.Background(), cfg, home, Options{})
+	if err == nil || !strings.Contains(err.Error(), filepath.Join(home, "ADHD.md")) {
+		t.Fatalf("error = %v, want missing secondary source path", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Fatalf("target written before all sources were validated: %v", err)
+	}
+}
+
 func TestRunWithHome_ReportsInstructionChanges(t *testing.T) {
 	previousProfile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.ANSI256)
@@ -1106,11 +1161,15 @@ func TestRunWithHome_DryRun(t *testing.T) {
 	srcDir := filepath.Join(home, "dotfiles", "ai")
 	os.MkdirAll(srcDir, 0755)
 	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("content"), 0644)
+	os.WriteFile(filepath.Join(srcDir, "adhd.md"), []byte("focus"), 0644)
 
-	cfg := &config.Config{Platforms: []string{"claude", "antigravity"}, Instructions: []string{"~/dotfiles/ai/agents.md"}}
+	cfg := &config.Config{
+		Platforms:    []string{"claude", "antigravity"},
+		Instructions: []string{"~/dotfiles/ai/agents.md", "~/dotfiles/ai/adhd.md"},
+	}
 
 	output := runSyncWithOutput(t, cfg, home, Options{DryRun: true})
-	assertOutputContains(t, output, "instructions", "source:", "first sync")
+	assertOutputContains(t, output, "instructions", "source:", "agents.md", "adhd.md", "first sync")
 	if strings.Contains(output, "1 added") {
 		t.Fatalf("dry-run should keep detailed preview output:\n%s", output)
 	}
