@@ -30,8 +30,8 @@ Resolve `~` from the user's home directory and relative paths from the directory
 
 ## Use the CLI deliberately
 
-| Intent                                           | Command                    |
-| ------------------------------------------------ | -------------------------- |
+| Intent                                            | Command                    |
+| ------------------------------------------------- | -------------------------- |
 | Create the initial manifest and instructions file | `chai init`                |
 | Add local or public GitHub skills                 | `chai add <source>`        |
 | Inspect a GitHub source                           | `chai add <source> --list` |
