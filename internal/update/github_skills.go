@@ -33,16 +33,21 @@ type githubSourceItem struct {
 }
 
 type githubSkillsModel struct {
-	ctx      context.Context
-	items    []githubSourceItem
-	home     string
-	refresh  githubRefreshFunc
-	current  int
-	frame    int
-	done     bool
-	err      error
-	warnings []error
+	ctx       context.Context
+	cancel    context.CancelFunc
+	items     []githubSourceItem
+	home      string
+	refresh   githubRefreshFunc
+	completed int
+	next      int
+	inFlight  int
+	frame     int
+	done      bool
+	err       error
+	warnings  []error
 }
+
+const maxConcurrentGitHubRefreshes = 3
 
 type githubSourceDoneMsg struct {
 	index     int
@@ -60,10 +65,11 @@ func newGitHubSkillsModel(ctx context.Context, sources []config.GitHubSkills, ho
 			status: githubSourceWaiting,
 		}
 	}
-	if len(items) > 0 {
-		items[0].status = githubSourceRefreshing
+	inFlight := min(maxConcurrentGitHubRefreshes, len(items))
+	for i := 0; i < inFlight; i++ {
+		items[i].status = githubSourceRefreshing
 	}
-	return githubSkillsModel{ctx: ctx, items: items, home: home, refresh: refresh}
+	return githubSkillsModel{ctx: ctx, items: items, home: home, refresh: refresh, next: inFlight, inFlight: inFlight}
 }
 
 func runGitHubSkillsUpdate(ctx context.Context, sources []config.GitHubSkills, home string, refresh githubRefreshFunc) ([]error, error) {
@@ -74,7 +80,10 @@ func runGitHubSkillsUpdate(ctx context.Context, sources []config.GitHubSkills, h
 		refresh = githubskill.Refresh
 	}
 
-	m := newGitHubSkillsModel(ctx, sources, home, refresh)
+	refreshCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	m := newGitHubSkillsModel(refreshCtx, sources, home, refresh)
+	m.cancel = cancel
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(nil))
 	final, err := p.Run()
 	if err != nil {
@@ -88,7 +97,11 @@ func (m githubSkillsModel) Init() tea.Cmd {
 	if len(m.items) == 0 {
 		return tea.Quit
 	}
-	return tea.Batch(m.startSource(0), m.tick())
+	commands := []tea.Cmd{m.tick()}
+	for i := 0; i < m.inFlight; i++ {
+		commands = append(commands, m.startSource(i))
+	}
+	return tea.Batch(commands...)
 }
 
 func (m githubSkillsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -106,12 +119,17 @@ func (m githubSkillsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case githubSourceDoneMsg:
 		item := &m.items[msg.index]
 		item.duration = msg.duration
+		m.inFlight--
+		m.completed++
 		if msg.err != nil {
 			var cleanupErr *githubskill.CleanupError
 			if !errors.As(msg.err, &cleanupErr) {
 				item.status = githubSourceFailed
 				m.err = fmt.Errorf("updating %s: %w", item.source.URL, msg.err)
 				m.done = true
+				if m.cancel != nil {
+					m.cancel()
+				}
 				return m, tea.Quit
 			}
 			m.warnings = append(m.warnings, fmt.Errorf("%s: %w", item.source.URL, cleanupErr))
@@ -119,15 +137,17 @@ func (m githubSkillsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		item.status = githubSourceDone
 		item.available = availableSkills(item.source, msg.discovery)
 
-		next := msg.index + 1
-		if next < len(m.items) {
-			m.current = next
+		if m.next < len(m.items) {
+			next := m.next
+			m.next++
+			m.inFlight++
 			m.items[next].status = githubSourceRefreshing
 			return m, m.startSource(next)
 		}
-
-		m.done = true
-		return m, tea.Quit
+		if m.inFlight == 0 {
+			m.done = true
+			return m, tea.Quit
+		}
 	}
 	return m, nil
 }
@@ -138,7 +158,7 @@ func (m githubSkillsModel) View() string {
 	b.WriteString("\n")
 	if !m.done && len(m.items) > 0 {
 		b.WriteString("\n  ")
-		b.WriteString(ui.Muted.Render(fmt.Sprintf("refreshing %d/%d", m.current+1, len(m.items))))
+		b.WriteString(ui.Muted.Render(fmt.Sprintf("refreshing · %d/%d complete", m.completed, len(m.items))))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
