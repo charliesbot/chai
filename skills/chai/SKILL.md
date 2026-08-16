@@ -30,14 +30,14 @@ Resolve `~` from the user's home directory and relative paths from the directory
 
 ## Use the CLI deliberately
 
-| Intent | Command |
-| --- | --- |
-| Add local or public GitHub skills | `chai add <source>` |
-| Inspect a GitHub source | `chai add <source> --list` |
-| Preview distribution | `chai sync --dry-run` |
-| Distribute current configuration | `chai sync` |
-| Refresh remote sources, then sync | `chai update` |
-| Preview generated-output cleanup | `chai clean --dry-run` |
+| Intent                            | Command                    |
+| --------------------------------- | -------------------------- |
+| Add local or public GitHub skills | `chai add <source>`        |
+| Inspect a GitHub source           | `chai add <source> --list` |
+| Preview distribution              | `chai sync --dry-run`      |
+| Distribute current configuration  | `chai sync`                |
+| Refresh remote sources, then sync | `chai update`              |
+| Preview generated-output cleanup  | `chai clean --dry-run`     |
 
 Edit `~/chai.toml` directly for configuration changes without a dedicated command. Preserve its existing formatting and unrelated content.
 
