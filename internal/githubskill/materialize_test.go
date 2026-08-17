@@ -21,8 +21,16 @@ func TestMaterialize(t *testing.T) {
 	}
 	writeRepoFile(t, source, "skills/unselected/SKILL.md", "---\nname: unselected\n---\n")
 	writeRepoFile(t, source, "skills/sibling.txt", "exclude")
+	writeRepoFile(t, source, "README.md", "repository readme\n")
+	writeRepoFile(t, source, "skills/worktrunk/SKILL.md", "---\nname: worktrunk\n---\n")
+	if err := os.MkdirAll(filepath.Join(source, "skills", "worktrunk", "reference"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../../../README.md", filepath.Join(source, "skills", "worktrunk", "reference", "README.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
 	writeRepoFile(t, source, "skills/unsafe/SKILL.md", "---\nname: unsafe\n---\n")
-	if err := os.Symlink("../sibling.txt", filepath.Join(source, "skills", "unsafe", "link")); err != nil {
+	if err := os.Symlink("../../../outside.txt", filepath.Join(source, "skills", "unsafe", "link")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 	commitRepo(t, source, "skills")
@@ -50,12 +58,36 @@ func TestMaterialize(t *testing.T) {
 		}
 	}
 
+	worktrunkRepo := filepath.Join(t.TempDir(), "repository")
+	worktrunkDiscovery, err := Discover(context.Background(), cloneURL, worktrunkRepo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Materialize(context.Background(), worktrunkRepo, worktrunkDiscovery, []string{"worktrunk"}); err != nil {
+		t.Fatalf("Materialize worktrunk: %v", err)
+	}
+	reference := filepath.Join(worktrunkRepo, "skills", "worktrunk", "reference", "README.md")
+	info, err := os.Lstat(reference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.Mode().IsRegular() {
+		t.Fatalf("dereferenced README mode = %v, want regular file", info.Mode())
+	}
+	contents, err := os.ReadFile(reference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != "repository readme\n" {
+		t.Fatalf("dereferenced README = %q", contents)
+	}
+
 	unsafeRepo := filepath.Join(t.TempDir(), "repository")
 	unsafeDiscovery, err := Discover(context.Background(), cloneURL, unsafeRepo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Materialize(context.Background(), unsafeRepo, unsafeDiscovery, []string{"unsafe"}); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+	if _, err := Materialize(context.Background(), unsafeRepo, unsafeDiscovery, []string{"unsafe"}); err == nil || !strings.Contains(err.Error(), "escapes the repository") {
 		t.Fatalf("unsafe materialization error = %v", err)
 	}
 }
