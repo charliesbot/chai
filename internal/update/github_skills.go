@@ -90,6 +90,7 @@ func runGitHubSkillsUpdate(ctx context.Context, sources []config.GitHubSkills, h
 		return nil, fmt.Errorf("running GitHub skills update UI: %w", err)
 	}
 	result := final.(githubSkillsModel)
+	fmt.Print(result.report())
 	return result.warnings, result.err
 }
 
@@ -153,22 +154,36 @@ func (m githubSkillsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m githubSkillsModel) View() string {
+	if m.done {
+		return ""
+	}
+
 	var b strings.Builder
 	b.WriteString(ui.Title.Render("github skills"))
 	b.WriteString("\n")
-	if !m.done && len(m.items) > 0 {
+	if len(m.items) > 0 {
 		b.WriteString("\n  ")
 		b.WriteString(ui.Muted.Render(fmt.Sprintf("refreshing · %d/%d complete", m.completed, len(m.items))))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
 	for _, item := range m.items {
-		b.WriteString(m.renderSource(item))
+		b.WriteString(m.renderSource(item, false))
 	}
 	return b.String()
 }
 
-func (m githubSkillsModel) renderSource(item githubSourceItem) string {
+func (m githubSkillsModel) report() string {
+	var b strings.Builder
+	b.WriteString(ui.Title.Render("github skills"))
+	b.WriteString("\n\n")
+	for _, item := range m.items {
+		b.WriteString(m.renderSource(item, true))
+	}
+	return b.String()
+}
+
+func (m githubSkillsModel) renderSource(item githubSourceItem, includeAvailable bool) string {
 	icon := ui.Muted.Render("○")
 	summary := ""
 	switch item.status {
@@ -187,8 +202,10 @@ func (m githubSkillsModel) renderSource(item githubSourceItem) string {
 		line += "  " + summary
 	}
 	line += "\n"
-	for _, name := range item.available {
-		line += fmt.Sprintf("      %s %s\n", ui.Added.Render("+"), ui.ItemStyle.Render(name))
+	if includeAvailable {
+		for _, name := range item.available {
+			line += fmt.Sprintf("      %s %s\n", ui.Added.Render("+"), ui.ItemStyle.Render(name))
+		}
 	}
 	return line
 }
