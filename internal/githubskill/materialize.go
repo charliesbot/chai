@@ -49,6 +49,9 @@ func Materialize(ctx context.Context, repositoryDir string, discovery Discovery,
 	if _, err := gitOutput(ctx, repositoryDir, "checkout", "--quiet", "HEAD"); err != nil {
 		return nil, err
 	}
+	if err := materializeSelectedSymlinks(ctx, repositoryDir, discovery.Entries, directories); err != nil {
+		return nil, err
+	}
 	for _, directory := range directories {
 		if err := validateMaterializedTree(repositoryDir, directory); err != nil {
 			return nil, err
@@ -76,13 +79,86 @@ func validateSelectedEntries(entries []TreeEntry, directories []string) error {
 					return fmt.Errorf("selected skill %q contains non-blob regular mode at %q", directory, entry.Path)
 				}
 			case "120000":
-				return fmt.Errorf("selected skill %q contains symbolic link %q", directory, entry.Path)
+				if entry.Type != "blob" {
+					return fmt.Errorf("selected skill %q contains non-blob symbolic link mode at %q", directory, entry.Path)
+				}
 			case "160000":
 				return fmt.Errorf("selected skill %q contains Git submodule %q", directory, entry.Path)
 			default:
 				return fmt.Errorf("selected skill %q contains unsupported mode %s at %q", directory, entry.Mode, entry.Path)
 			}
 		}
+	}
+	return nil
+}
+
+func materializeSelectedSymlinks(ctx context.Context, repositoryDir string, entries []TreeEntry, directories []string) error {
+	entriesByPath := make(map[string]TreeEntry, len(entries))
+	for _, entry := range entries {
+		entriesByPath[entry.Path] = entry
+	}
+	for _, directory := range directories {
+		prefix := directory + "/"
+		for _, entry := range entries {
+			if entry.Mode != "120000" || !strings.HasPrefix(entry.Path, prefix) {
+				continue
+			}
+			targetBytes, err := gitOutput(ctx, repositoryDir, "cat-file", "blob", entry.OID)
+			if err != nil {
+				return fmt.Errorf("reading symbolic link %q: %w", entry.Path, err)
+			}
+			target := string(targetBytes)
+			if target == "" || strings.HasPrefix(target, "/") || strings.ContainsAny(target, "\x00\n") {
+				return fmt.Errorf("selected skill %q contains unsafe symbolic link %q", directory, entry.Path)
+			}
+			resolved := path.Clean(path.Join(path.Dir(entry.Path), target))
+			if !safeGitPath(resolved) {
+				return fmt.Errorf("selected skill %q contains symbolic link %q that escapes the repository", directory, entry.Path)
+			}
+			targetEntry, ok := entriesByPath[resolved]
+			if !ok {
+				return fmt.Errorf("selected skill %q contains symbolic link %q with missing or non-file target %q", directory, entry.Path, resolved)
+			}
+			if targetEntry.Type != "blob" || targetEntry.Mode != "100644" && targetEntry.Mode != "100755" {
+				return fmt.Errorf("selected skill %q contains symbolic link %q to unsupported target %q", directory, entry.Path, resolved)
+			}
+			contents, err := gitOutput(ctx, repositoryDir, "cat-file", "blob", targetEntry.OID)
+			if err != nil {
+				return fmt.Errorf("reading symbolic link target %q: %w", resolved, err)
+			}
+			mode := fs.FileMode(0644)
+			if targetEntry.Mode == "100755" {
+				mode = 0755
+			}
+			if err := replaceSymlinkWithFile(repositoryDir, entry.Path, contents, mode); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func replaceSymlinkWithFile(repositoryDir, gitPath string, contents []byte, mode fs.FileMode) error {
+	filePath := filepath.Join(repositoryDir, filepath.FromSlash(gitPath))
+	temporary, err := os.CreateTemp(filepath.Dir(filePath), ".chai-symlink-*")
+	if err != nil {
+		return fmt.Errorf("creating replacement for symbolic link %q: %w", gitPath, err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if _, err := temporary.Write(contents); err != nil {
+		temporary.Close()
+		return fmt.Errorf("writing replacement for symbolic link %q: %w", gitPath, err)
+	}
+	if err := temporary.Chmod(mode); err != nil {
+		temporary.Close()
+		return fmt.Errorf("setting replacement mode for symbolic link %q: %w", gitPath, err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("closing replacement for symbolic link %q: %w", gitPath, err)
+	}
+	if err := os.Rename(temporaryPath, filePath); err != nil {
+		return fmt.Errorf("installing replacement for symbolic link %q: %w", gitPath, err)
 	}
 	return nil
 }
