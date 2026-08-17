@@ -114,7 +114,10 @@ func TestGitHubSkillsModelReportsResultsForEverySource(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("final source did not return a quit command")
 	}
-	view := m.View()
+	if view := m.View(); view != "" {
+		t.Fatalf("completed live view should be cleared, got:\n%s", view)
+	}
+	report := m.report()
 	for _, want := range []string{
 		"example/one",
 		"1 new skill available",
@@ -124,12 +127,33 @@ func TestGitHubSkillsModelReportsResultsForEverySource(t *testing.T) {
 		"no new skills",
 		"800ms",
 	} {
-		if !strings.Contains(view, want) {
-			t.Errorf("View() missing %q:\n%s", want, view)
+		if !strings.Contains(report, want) {
+			t.Errorf("report() missing %q:\n%s", want, report)
 		}
 	}
-	if strings.Index(view, "example/one") > strings.Index(view, "example/two") {
-		t.Fatalf("View() does not preserve config order after out-of-order completion:\n%s", view)
+	if strings.Index(report, "example/one") > strings.Index(report, "example/two") {
+		t.Fatalf("report() does not preserve config order after out-of-order completion:\n%s", report)
+	}
+}
+
+func TestGitHubSkillsModelKeepsAvailableSkillDetailsOutOfLiveView(t *testing.T) {
+	sources := []config.GitHubSkills{
+		{URL: "https://github.com/example/one", Include: []string{"selected-one"}},
+		{URL: "https://github.com/example/two", Include: []string{"selected-two"}},
+	}
+	m := newGitHubSkillsModel(context.Background(), sources, t.TempDir(), nil)
+
+	updated, _ := m.Update(githubSourceDoneMsg{
+		index: 0,
+		discovery: githubskill.Discovery{Candidates: []githubskill.Candidate{
+			{Name: "selected-one"},
+			{Name: "new-one"},
+		}},
+	})
+	m = updated.(githubSkillsModel)
+
+	if view := m.View(); strings.Contains(view, "new-one") {
+		t.Fatalf("live view should omit available skill details:\n%s", view)
 	}
 }
 
@@ -146,7 +170,10 @@ func TestGitHubSkillsModelStopsOnRefreshError(t *testing.T) {
 	if m.err == nil || !strings.Contains(m.err.Error(), "fetch failed") {
 		t.Fatalf("error = %v", m.err)
 	}
-	if view := m.View(); !strings.Contains(view, "error") || !strings.Contains(view, "example/one") {
-		t.Fatalf("View() does not show source error:\n%s", view)
+	if view := m.View(); view != "" {
+		t.Fatalf("failed live view should be cleared, got:\n%s", view)
+	}
+	if report := m.report(); !strings.Contains(report, "error") || !strings.Contains(report, "example/one") {
+		t.Fatalf("report() does not show source error:\n%s", report)
 	}
 }
