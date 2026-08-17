@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/charliesbot/chai/internal/config"
@@ -21,15 +22,20 @@ func TestRunWithHomeRefreshesGitHubSourcesThenSyncs(t *testing.T) {
 			{URL: "https://github.com/example/two", Include: []string{"chosen-two"}},
 		}},
 	}
-	var refreshed []string
+	var mu sync.Mutex
+	refreshed := make(map[string]bool)
 	var synced bool
 	opts := Options{
 		CheckGit: func(context.Context) error { return nil },
 		Refresh: func(_ context.Context, _ string, id githubskill.Identity, names []string) (githubskill.Discovery, error) {
-			refreshed = append(refreshed, id.URL()+":"+names[0])
+			mu.Lock()
+			refreshed[id.URL()+":"+names[0]] = true
+			mu.Unlock()
 			return githubskill.Discovery{Candidates: []githubskill.Candidate{{Name: names[0]}, {Name: "new-skill"}}}, nil
 		},
 		Sync: func(_ context.Context, got *config.Config, _ string, _ chaisync.Options) error {
+			mu.Lock()
+			defer mu.Unlock()
 			synced = len(refreshed) == 2 && got == cfg
 			return nil
 		},
@@ -38,9 +44,9 @@ func TestRunWithHomeRefreshesGitHubSourcesThenSyncs(t *testing.T) {
 	if err := RunWithHome(context.Background(), cfg, t.TempDir(), opts); err != nil {
 		t.Fatal(err)
 	}
-	wantRefreshed := []string{
-		"https://github.com/example/one:chosen-one",
-		"https://github.com/example/two:chosen-two",
+	wantRefreshed := map[string]bool{
+		"https://github.com/example/one:chosen-one": true,
+		"https://github.com/example/two:chosen-two": true,
 	}
 	if !reflect.DeepEqual(refreshed, wantRefreshed) || !synced {
 		t.Fatalf("refreshed=%v synced=%v", refreshed, synced)
