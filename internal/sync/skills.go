@@ -86,13 +86,7 @@ func syncResolvedSkills(skills []skill.Source, home string, platforms []platform
 
 	if !opts.DryRun {
 		fmt.Println(ui.ResultLine("skills", changes.summary(), status.statuses()))
-		details := changes.details()
-		const detailLimit = 5
-		for i, detail := range details {
-			if i == detailLimit {
-				fmt.Printf("   %s %s\n", ui.Muted.Render("..."), ui.ItemStyle.Render(fmt.Sprintf("%d more", len(details)-detailLimit)))
-				break
-			}
+		for _, detail := range changes.details() {
 			fmt.Printf("   %s\n", detail.render())
 		}
 		if count := len(changes.preserved); count > 0 {

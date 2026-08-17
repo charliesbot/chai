@@ -114,7 +114,7 @@ func TestSyncSkills_ReportsCompletedChangesWhenLaterCopyFails(t *testing.T) {
 	assertOutputContains(t, output, "1 removed", "- stale-skill")
 }
 
-func TestSyncSkills_CapsChangedNames(t *testing.T) {
+func TestSyncSkills_ReportsEveryChangedName(t *testing.T) {
 	home := t.TempDir()
 	hashDB := hash.DB{}
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")
@@ -124,9 +124,13 @@ func TestSyncSkills_CapsChangedNames(t *testing.T) {
 
 	output := syncCursorSkills(t, home, hashDB)
 
-	if !strings.Contains(output, "7 added") || !strings.Contains(output, "... 2 more") ||
-		strings.Contains(output, "+ f") || strings.Contains(output, "+ g") {
-		t.Fatalf("output should show at most five changed names:\n%s", output)
+	for _, want := range []string{"7 added", "+ a", "+ b", "+ c", "+ d", "+ e", "+ f", "+ g"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "more") {
+		t.Errorf("output should not truncate changed names:\n%s", output)
 	}
 }
 
