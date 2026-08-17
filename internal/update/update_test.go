@@ -16,19 +16,21 @@ import (
 func TestRunWithHomeRefreshesGitHubSourcesThenSyncs(t *testing.T) {
 	cfg := &config.Config{
 		Platforms: []string{"cursor"},
-		Skills: config.Skills{GitHub: []config.GitHubSkills{{
-			URL: "https://github.com/example/skills", Include: []string{"chosen"},
-		}}},
+		Skills: config.Skills{GitHub: []config.GitHubSkills{
+			{URL: "https://github.com/example/one", Include: []string{"chosen-one"}},
+			{URL: "https://github.com/example/two", Include: []string{"chosen-two"}},
+		}},
 	}
-	var refreshed, synced bool
+	var refreshed []string
+	var synced bool
 	opts := Options{
 		CheckGit: func(context.Context) error { return nil },
 		Refresh: func(_ context.Context, _ string, id githubskill.Identity, names []string) (githubskill.Discovery, error) {
-			refreshed = id.URL() == cfg.Skills.GitHub[0].URL && len(names) == 1 && names[0] == "chosen"
-			return githubskill.Discovery{Candidates: []githubskill.Candidate{{Name: "chosen"}, {Name: "new-skill"}}}, nil
+			refreshed = append(refreshed, id.URL()+":"+names[0])
+			return githubskill.Discovery{Candidates: []githubskill.Candidate{{Name: names[0]}, {Name: "new-skill"}}}, nil
 		},
 		Sync: func(_ context.Context, got *config.Config, _ string, _ chaisync.Options) error {
-			synced = refreshed && got == cfg
+			synced = len(refreshed) == 2 && got == cfg
 			return nil
 		},
 	}
@@ -36,7 +38,11 @@ func TestRunWithHomeRefreshesGitHubSourcesThenSyncs(t *testing.T) {
 	if err := RunWithHome(context.Background(), cfg, t.TempDir(), opts); err != nil {
 		t.Fatal(err)
 	}
-	if !refreshed || !synced {
+	wantRefreshed := []string{
+		"https://github.com/example/one:chosen-one",
+		"https://github.com/example/two:chosen-two",
+	}
+	if !reflect.DeepEqual(refreshed, wantRefreshed) || !synced {
 		t.Fatalf("refreshed=%v synced=%v", refreshed, synced)
 	}
 }

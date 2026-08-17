@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/githubskill"
@@ -47,25 +46,15 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		if err := checkGit(ctx); err != nil {
 			return err
 		}
-		refresh := opts.Refresh
+		refresh := githubRefreshFunc(opts.Refresh)
 		if refresh == nil {
 			refresh = githubskill.Refresh
 		}
-		for _, source := range cfg.Skills.GitHub {
-			id, err := githubskill.ParseCanonical(source.URL)
-			if err != nil {
-				return err
-			}
-			discovery, err := refresh(ctx, home, id, source.Include)
-			if err != nil {
-				var cleanupErr *githubskill.CleanupError
-				if !errors.As(err, &cleanupErr) {
-					return fmt.Errorf("updating %s: %w", source.URL, err)
-				}
-				cleanupWarnings = append(cleanupWarnings, fmt.Errorf("%s: %w", source.URL, cleanupErr))
-			}
-			reportAvailableSkills(source, discovery)
+		warnings, err := runGitHubSkillsUpdate(ctx, cfg.Skills.GitHub, home, refresh)
+		if err != nil {
+			return err
 		}
+		cleanupWarnings = append(cleanupWarnings, warnings...)
 	}
 
 	plugins := cfg.Antigravity.Plugins
@@ -107,13 +96,6 @@ func validateSourceNames(cfg *config.Config, home string) error {
 		}
 	}
 	return skill.ValidateUniqueNames(sources)
-}
-
-func reportAvailableSkills(source config.GitHubSkills, discovery githubskill.Discovery) {
-	available := availableSkills(source, discovery)
-	if len(available) > 0 {
-		fmt.Printf("%s: new skills available: %s\n", source.URL, strings.Join(available, ", "))
-	}
 }
 
 func availableSkills(source config.GitHubSkills, discovery githubskill.Discovery) []string {
