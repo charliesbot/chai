@@ -231,6 +231,45 @@ env = { WS_UI_PORT = "9711" }
 	}
 }
 
+func TestUpdateSkillsAtomicPreservesManifestSymlink(t *testing.T) {
+	home := t.TempDir()
+	dotfiles := filepath.Join(home, "dotfiles")
+	if err := os.MkdirAll(dotfiles, 0755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dotfiles, "chai.toml")
+	if err := os.WriteFile(target, []byte("platforms = [\"cursor\"]\n\n[skills]\nlocal = [\"~/old\"]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(home, "chai.toml")
+	if err := os.Symlink(filepath.Join("dotfiles", "chai.toml"), manifest); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	cfg, err := Load(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Skills.Local = []string{"~/new"}
+
+	if err := UpdateSkillsAtomic(manifest, cfg); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("manifest mode = %v, want symbolic link", info.Mode())
+	}
+	updated, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(updated), "~/new") {
+		t.Fatalf("symlink target was not updated:\n%s", updated)
+	}
+}
+
 func TestUpdateSkillsAtomicDoesNotAccumulateBlankLines(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chai.toml")
 	original := `platforms = ["cursor"]

@@ -164,6 +164,16 @@ func SaveAtomic(path string, cfg *Config) error {
 }
 
 func writeAtomic(path string, data []byte) error {
+	info, err := os.Lstat(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("inspecting config path: %w", err)
+	}
+	if err == nil && info.Mode()&os.ModeSymlink != 0 {
+		path, err = filepath.EvalSymlinks(path)
+		if err != nil {
+			return fmt.Errorf("resolving config symlink: %w", err)
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
