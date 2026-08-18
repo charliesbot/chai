@@ -13,18 +13,44 @@ import (
 	"strings"
 )
 
+type MissingSkillsError struct {
+	Names []string
+}
+
+func (err *MissingSkillsError) Error() string {
+	if len(err.Names) == 1 {
+		return fmt.Sprintf("remote skill %q was not found", err.Names[0])
+	}
+	return fmt.Sprintf("remote skills %s were not found", quotedNames(err.Names))
+}
+
+func quotedNames(names []string) string {
+	quoted := make([]string, len(names))
+	for i, name := range names {
+		quoted[i] = fmt.Sprintf("%q", name)
+	}
+	return strings.Join(quoted, ", ")
+}
+
 func Materialize(ctx context.Context, repositoryDir string, discovery Discovery, names []string) (map[string]string, error) {
 	candidates := make(map[string][]Candidate)
 	for _, candidate := range discovery.Candidates {
 		candidates[candidate.Name] = append(candidates[candidate.Name], candidate)
 	}
+	var missing []string
+	for _, name := range names {
+		if len(candidates[name]) == 0 {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		missing = sortedUniqueStrings(missing)
+		return nil, &MissingSkillsError{Names: missing}
+	}
 	selected := make(map[string]string, len(names))
 	var directories []string
 	for _, name := range names {
 		matches := candidates[name]
-		if len(matches) == 0 {
-			return nil, fmt.Errorf("remote skill %q was not found", name)
-		}
 		if len(matches) > 1 {
 			return nil, fmt.Errorf("remote skill %q is ambiguous", name)
 		}
@@ -58,6 +84,17 @@ func Materialize(ctx context.Context, repositoryDir string, discovery Discovery,
 		}
 	}
 	return selected, nil
+}
+
+func sortedUniqueStrings(values []string) []string {
+	sort.Strings(values)
+	unique := values[:0]
+	for _, value := range values {
+		if len(unique) == 0 || unique[len(unique)-1] != value {
+			unique = append(unique, value)
+		}
+	}
+	return unique
 }
 
 func validateSelectedEntries(entries []TreeEntry, directories []string) error {

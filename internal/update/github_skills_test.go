@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/githubskill"
+	chaisync "github.com/charliesbot/chai/internal/sync"
 )
 
 func TestGitHubSkillsUpdateRefreshesAtMostThreeSourcesConcurrently(t *testing.T) {
@@ -175,5 +177,74 @@ func TestGitHubSkillsModelStopsOnRefreshError(t *testing.T) {
 	}
 	if report := m.report(); !strings.Contains(report, "error") || !strings.Contains(report, "example/one") {
 		t.Fatalf("report() does not show source error:\n%s", report)
+	}
+}
+
+func TestGitHubSkillsModelContinuesAfterMissingConfiguredSkills(t *testing.T) {
+	sources := []config.GitHubSkills{
+		{URL: "https://github.com/android/skills", Include: []string{"perfetto-sql"}},
+		{URL: "https://github.com/example/two"},
+		{URL: "https://github.com/example/three"},
+		{URL: "https://github.com/example/four"},
+	}
+	m := newGitHubSkillsModel(context.Background(), sources, t.TempDir(), nil)
+
+	updated, cmd := m.Update(githubSourceDoneMsg{index: 0, err: &githubskill.MissingSkillsError{Names: []string{"perfetto-sql"}}})
+	m = updated.(githubSkillsModel)
+	if cmd == nil {
+		t.Fatal("missing-skill failure did not start the waiting source")
+	}
+	if m.done {
+		t.Fatal("missing-skill failure stopped remaining refreshes")
+	}
+	for _, index := range []int{1, 2, 3} {
+		updated, _ = m.Update(githubSourceDoneMsg{index: index})
+		m = updated.(githubSkillsModel)
+	}
+	if !m.done {
+		t.Fatal("model did not finish after every source completed")
+	}
+	var missing *githubskill.MissingSkillsError
+	if !errors.As(m.err, &missing) {
+		t.Fatalf("final error = %v, want MissingSkillsError", m.err)
+	}
+	report := m.report()
+	for _, want := range []string{"perfetto-sql", "Existing cache retained", "chai add android/skills", "example/four"} {
+		if !strings.Contains(report, want) {
+			t.Errorf("report missing %q:\n%s", want, report)
+		}
+	}
+}
+
+func TestRunWithHomeSyncsAfterMissingConfiguredSkills(t *testing.T) {
+	cfg := &config.Config{Skills: config.Skills{GitHub: []config.GitHubSkills{
+		{URL: "https://github.com/android/skills", Include: []string{"perfetto-sql"}},
+		{URL: "https://github.com/example/other", Include: []string{"other"}},
+	}}}
+	var refreshed atomic.Int32
+	synced := false
+	err := RunWithHome(context.Background(), cfg, t.TempDir(), Options{
+		CheckGit: func(context.Context) error { return nil },
+		Refresh: func(_ context.Context, _ string, id githubskill.Identity, _ []string) (githubskill.Discovery, error) {
+			refreshed.Add(1)
+			if id.Owner() == "android" {
+				return githubskill.Discovery{}, &githubskill.MissingSkillsError{Names: []string{"perfetto-sql"}}
+			}
+			return githubskill.Discovery{}, nil
+		},
+		Sync: func(context.Context, *config.Config, string, chaisync.Options) error {
+			synced = true
+			return nil
+		},
+	})
+	var missing *githubskill.MissingSkillsError
+	if !errors.As(err, &missing) {
+		t.Fatalf("error = %v, want MissingSkillsError", err)
+	}
+	if refreshed.Load() != 2 {
+		t.Fatalf("refresh count = %d, want 2", refreshed.Load())
+	}
+	if !synced {
+		t.Fatal("sync did not run after recoverable refresh failure")
 	}
 }
