@@ -98,18 +98,11 @@ func TestGitHubSkillsModelReportsResultsForEverySource(t *testing.T) {
 	updated, _ := m.Update(githubSourceDoneMsg{
 		index:    1,
 		duration: 800 * time.Millisecond,
-		discovery: githubskill.Discovery{Candidates: []githubskill.Candidate{
-			{Name: "selected-two"},
-		}},
 	})
 	m = updated.(githubSkillsModel)
 	updated, cmd := m.Update(githubSourceDoneMsg{
 		index:    0,
 		duration: 1200 * time.Millisecond,
-		discovery: githubskill.Discovery{Candidates: []githubskill.Candidate{
-			{Name: "selected-one"},
-			{Name: "new-one"},
-		}},
 	})
 	m = updated.(githubSkillsModel)
 
@@ -122,11 +115,9 @@ func TestGitHubSkillsModelReportsResultsForEverySource(t *testing.T) {
 	report := m.report()
 	for _, want := range []string{
 		"example/one",
-		"1 new skill available",
-		"new-one",
+		"refreshed",
 		"1.2s",
 		"example/two",
-		"no new skills",
 		"800ms",
 	} {
 		if !strings.Contains(report, want) {
@@ -136,26 +127,30 @@ func TestGitHubSkillsModelReportsResultsForEverySource(t *testing.T) {
 	if strings.Index(report, "example/one") > strings.Index(report, "example/two") {
 		t.Fatalf("report() does not preserve config order after out-of-order completion:\n%s", report)
 	}
+	for _, unwanted := range []string{"new skill", "new-one"} {
+		if strings.Contains(report, unwanted) {
+			t.Fatalf("report() contains unselected-skill detail %q:\n%s", unwanted, report)
+		}
+	}
 }
 
-func TestGitHubSkillsModelKeepsAvailableSkillDetailsOutOfLiveView(t *testing.T) {
-	sources := []config.GitHubSkills{
-		{URL: "https://github.com/example/one", Include: []string{"selected-one"}},
-		{URL: "https://github.com/example/two", Include: []string{"selected-two"}},
-	}
-	m := newGitHubSkillsModel(context.Background(), sources, t.TempDir(), nil)
-
-	updated, _ := m.Update(githubSourceDoneMsg{
-		index: 0,
-		discovery: githubskill.Discovery{Candidates: []githubskill.Candidate{
+func TestGitHubSkillsModelReportsOnlyRefreshStatus(t *testing.T) {
+	sources := []config.GitHubSkills{{URL: "https://github.com/example/one", Include: []string{"selected-one"}}}
+	refresh := func(context.Context, string, githubskill.Identity, []string) (githubskill.Discovery, error) {
+		return githubskill.Discovery{Candidates: []githubskill.Candidate{
 			{Name: "selected-one"},
 			{Name: "new-one"},
-		}},
-	})
+		}}, nil
+	}
+	m := newGitHubSkillsModel(context.Background(), sources, t.TempDir(), refresh)
+
+	message := m.startSource(0)().(githubSourceDoneMsg)
+	updated, _ := m.Update(message)
 	m = updated.(githubSkillsModel)
 
-	if view := m.View(); strings.Contains(view, "new-one") {
-		t.Fatalf("live view should omit available skill details:\n%s", view)
+	report := m.report()
+	if !strings.Contains(report, "refreshed") || strings.Contains(report, "new-one") {
+		t.Fatalf("report should show only refresh status:\n%s", report)
 	}
 }
 

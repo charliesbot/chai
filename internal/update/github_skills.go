@@ -25,12 +25,11 @@ const (
 )
 
 type githubSourceItem struct {
-	source    config.GitHubSkills
-	label     string
-	status    githubSourceStatus
-	available []string
-	missing   []string
-	duration  time.Duration
+	source   config.GitHubSkills
+	label    string
+	status   githubSourceStatus
+	missing  []string
+	duration time.Duration
 }
 
 type githubSkillsModel struct {
@@ -51,10 +50,9 @@ type githubSkillsModel struct {
 const maxConcurrentGitHubRefreshes = 3
 
 type githubSourceDoneMsg struct {
-	index     int
-	discovery githubskill.Discovery
-	duration  time.Duration
-	err       error
+	index    int
+	duration time.Duration
+	err      error
 }
 
 func newGitHubSkillsModel(ctx context.Context, sources []config.GitHubSkills, home string, refresh githubRefreshFunc) githubSkillsModel {
@@ -146,10 +144,6 @@ func (m githubSkillsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			item.status = githubSourceDone
 		}
-		if item.status == githubSourceDone {
-			item.available = availableSkills(item.source, msg.discovery)
-		}
-
 		if m.next < len(m.items) {
 			next := m.next
 			m.next++
@@ -195,7 +189,7 @@ func (m githubSkillsModel) report() string {
 	return b.String()
 }
 
-func (m githubSkillsModel) renderSource(item githubSourceItem, includeAvailable bool) string {
+func (m githubSkillsModel) renderSource(item githubSourceItem, includeDetails bool) string {
 	icon := ui.Muted.Render("○")
 	summary := ""
 	switch item.status {
@@ -203,7 +197,7 @@ func (m githubSkillsModel) renderSource(item githubSourceItem, includeAvailable 
 		icon = ui.Title.Render(spinnerFrames[m.frame%len(spinnerFrames)])
 	case githubSourceDone:
 		icon = ui.Check()
-		summary = ui.Muted.Render(availabilitySummary(len(item.available)) + "  " + formatRefreshDuration(item.duration))
+		summary = ui.Muted.Render("refreshed  " + formatRefreshDuration(item.duration))
 	case githubSourceFailed:
 		icon = ui.Warning.Render("✗")
 		summary = ui.Warning.Render("error")
@@ -214,10 +208,7 @@ func (m githubSkillsModel) renderSource(item githubSourceItem, includeAvailable 
 		line += "  " + summary
 	}
 	line += "\n"
-	if includeAvailable {
-		for _, name := range item.available {
-			line += fmt.Sprintf("      %s %s\n", ui.Added.Render("+"), ui.ItemStyle.Render(name))
-		}
+	if includeDetails {
 		if len(item.missing) > 0 {
 			for _, name := range item.missing {
 				line += fmt.Sprintf("      %s %s\n", ui.Removed.Render("-"), ui.ItemStyle.Render(name))
@@ -237,24 +228,13 @@ func (m githubSkillsModel) startSource(index int) tea.Cmd {
 		if err != nil {
 			return githubSourceDoneMsg{index: index, duration: time.Since(started), err: err}
 		}
-		discovery, err := m.refresh(m.ctx, m.home, id, item.source.Include)
-		return githubSourceDoneMsg{index: index, discovery: discovery, duration: time.Since(started), err: err}
+		_, err = m.refresh(m.ctx, m.home, id, item.source.Include)
+		return githubSourceDoneMsg{index: index, duration: time.Since(started), err: err}
 	}
 }
 
 func (m githubSkillsModel) tick() tea.Cmd {
 	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return tickMsg{} })
-}
-
-func availabilitySummary(count int) string {
-	switch count {
-	case 0:
-		return "no new skills"
-	case 1:
-		return "1 new skill available"
-	default:
-		return fmt.Sprintf("%d new skills available", count)
-	}
 }
 
 func formatRefreshDuration(duration time.Duration) string {
