@@ -275,7 +275,6 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 	for i, source := range cfg.Skills.GitHub {
 		if source.URL == id.URL() {
 			existingIndex = i
-			selected = append(selected, source.Include...)
 			break
 		}
 	}

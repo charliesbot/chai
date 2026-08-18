@@ -32,6 +32,7 @@ func Run(ctx context.Context, cfg *config.Config, opts Options) error {
 
 func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Options) error {
 	var cleanupWarnings []error
+	var refreshErr error
 	if err := validateSourceNames(cfg, home); err != nil {
 		return err
 	}
@@ -52,7 +53,11 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		}
 		warnings, err := runGitHubSkillsUpdate(ctx, cfg.Skills.GitHub, home, refresh)
 		if err != nil {
-			return err
+			var missingErr *githubskill.MissingSkillsError
+			if !errors.As(err, &missingErr) {
+				return err
+			}
+			refreshErr = err
 		}
 		cleanupWarnings = append(cleanupWarnings, warnings...)
 	}
@@ -63,7 +68,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 	}
 	if len(cfg.Deps) > 0 || len(plugins) > 0 {
 		if err := updateDepsAndPlugins(cfg.Deps, plugins, home); err != nil {
-			return err
+			return errors.Join(err, refreshErr)
 		}
 	}
 	if len(cfg.Skills.GitHub) == 0 {
@@ -77,12 +82,12 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		syncRun = chaisync.RunWithHome
 	}
 	if err := syncRun(ctx, cfg, home, opts.SyncOptions); err != nil {
-		return errors.Join(append([]error{err}, cleanupWarnings...)...)
+		return errors.Join(append([]error{err, refreshErr}, cleanupWarnings...)...)
 	}
 	for _, warning := range cleanupWarnings {
 		fmt.Printf("warning: previous cache cleanup is incomplete: %v\n", warning)
 	}
-	return nil
+	return refreshErr
 }
 
 func validateSourceNames(cfg *config.Config, home string) error {

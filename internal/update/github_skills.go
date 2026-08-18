@@ -29,6 +29,7 @@ type githubSourceItem struct {
 	label     string
 	status    githubSourceStatus
 	available []string
+	missing   []string
 	duration  time.Duration
 }
 
@@ -123,20 +124,31 @@ func (m githubSkillsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.inFlight--
 		m.completed++
 		if msg.err != nil {
-			var cleanupErr *githubskill.CleanupError
-			if !errors.As(msg.err, &cleanupErr) {
+			var missingErr *githubskill.MissingSkillsError
+			if errors.As(msg.err, &missingErr) {
 				item.status = githubSourceFailed
-				m.err = fmt.Errorf("updating %s: %w", item.source.URL, msg.err)
-				m.done = true
-				if m.cancel != nil {
-					m.cancel()
+				item.missing = append([]string(nil), missingErr.Names...)
+				m.err = errors.Join(m.err, fmt.Errorf("updating %s: %w", item.source.URL, msg.err))
+			} else {
+				var cleanupErr *githubskill.CleanupError
+				if !errors.As(msg.err, &cleanupErr) {
+					item.status = githubSourceFailed
+					m.err = fmt.Errorf("updating %s: %w", item.source.URL, msg.err)
+					m.done = true
+					if m.cancel != nil {
+						m.cancel()
+					}
+					return m, tea.Quit
 				}
-				return m, tea.Quit
+				m.warnings = append(m.warnings, fmt.Errorf("%s: %w", item.source.URL, cleanupErr))
+				item.status = githubSourceDone
 			}
-			m.warnings = append(m.warnings, fmt.Errorf("%s: %w", item.source.URL, cleanupErr))
+		} else {
+			item.status = githubSourceDone
 		}
-		item.status = githubSourceDone
-		item.available = availableSkills(item.source, msg.discovery)
+		if item.status == githubSourceDone {
+			item.available = availableSkills(item.source, msg.discovery)
+		}
 
 		if m.next < len(m.items) {
 			next := m.next
@@ -205,6 +217,13 @@ func (m githubSkillsModel) renderSource(item githubSourceItem, includeAvailable 
 	if includeAvailable {
 		for _, name := range item.available {
 			line += fmt.Sprintf("      %s %s\n", ui.Added.Render("+"), ui.ItemStyle.Render(name))
+		}
+		if len(item.missing) > 0 {
+			for _, name := range item.missing {
+				line += fmt.Sprintf("      %s %s\n", ui.Removed.Render("-"), ui.ItemStyle.Render(name))
+			}
+			line += "\n      Existing cache retained.\n"
+			line += fmt.Sprintf("      Run `chai add %s` to reconcile this source.\n", item.label)
 		}
 	}
 	return line

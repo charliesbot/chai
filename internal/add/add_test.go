@@ -125,7 +125,7 @@ func TestRunWithHomeLocalAddRunsWithoutConfirmationSummary(t *testing.T) {
 	}
 }
 
-func TestRunWithHomeAddsSelectedRemoteAndIsIdempotent(t *testing.T) {
+func TestRunWithHomeReconcilesExistingRemoteSelection(t *testing.T) {
 	home := t.TempDir()
 	manifest := filepath.Join(home, "chai.toml")
 	cfg := &config.Config{Platforms: []string{"cursor"}}
@@ -153,23 +153,26 @@ func TestRunWithHomeAddsSelectedRemoteAndIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	output.Reset()
-	mergeArgs := []string{"example/skills", "--skill", "two", "--yes"}
-	if err := RunWithHome(context.Background(), loaded, manifest, home, mergeArgs, opts); err != nil {
+	if err := RunWithHome(context.Background(), loaded, manifest, home, []string{"example/skills"}, opts); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err = config.Load(manifest)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if want := []string{"one", "two"}; !reflect.DeepEqual(loaded.Skills.GitHub[0].Include, want) {
+		t.Fatalf("all-skills reconciliation = %v, want %v", loaded.Skills.GitHub[0].Include, want)
 	}
 	output.Reset()
-	if err := RunWithHome(context.Background(), loaded, manifest, home, mergeArgs, opts); err != nil {
+	exactArgs := []string{"example/skills", "--skill", "two", "--yes"}
+	if err := RunWithHome(context.Background(), loaded, manifest, home, exactArgs, opts); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err = config.Load(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"one", "two"}
+	want := []string{"two"}
 	if syncs != 3 || len(loaded.Skills.GitHub) != 1 || !reflect.DeepEqual(loaded.Skills.GitHub[0].Include, want) {
 		t.Fatalf("syncs=%d github=%#v", syncs, loaded.Skills.GitHub)
 	}

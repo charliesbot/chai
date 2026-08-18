@@ -2,9 +2,11 @@ package githubskill
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -113,6 +115,18 @@ func TestMaterialize_RejectsAmbiguousName(t *testing.T) {
 	}}
 	if _, err := Materialize(context.Background(), t.TempDir(), discovery, []string{"shared"}); err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("ambiguous selection error = %v", err)
+	}
+}
+
+func TestMaterializeReportsEveryMissingSkill(t *testing.T) {
+	discovery := Discovery{Candidates: []Candidate{{Name: "present", Directory: "skills/present"}}}
+	_, err := Materialize(context.Background(), t.TempDir(), discovery, []string{"missing-two", "present", "missing-one"})
+	var missing *MissingSkillsError
+	if !errors.As(err, &missing) {
+		t.Fatalf("error = %v, want MissingSkillsError", err)
+	}
+	if want := []string{"missing-one", "missing-two"}; !reflect.DeepEqual(missing.Names, want) {
+		t.Fatalf("missing names = %v, want %v", missing.Names, want)
 	}
 }
 
