@@ -125,7 +125,7 @@ func TestRunWithHomeLocalAddRunsWithoutConfirmationSummary(t *testing.T) {
 	}
 }
 
-func TestRunWithHomeReconcilesExistingRemoteSelection(t *testing.T) {
+func TestRunWithHomeAddsExplicitSkillsAndReconcilesAllSkills(t *testing.T) {
 	home := t.TempDir()
 	manifest := filepath.Join(home, "chai.toml")
 	cfg := &config.Config{Platforms: []string{"cursor"}}
@@ -153,7 +153,8 @@ func TestRunWithHomeReconcilesExistingRemoteSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	output.Reset()
-	if err := RunWithHome(context.Background(), loaded, manifest, home, []string{"example/skills"}, opts); err != nil {
+	explicitArgs := []string{"example/skills", "--skill", "two", "--yes"}
+	if err := RunWithHome(context.Background(), loaded, manifest, home, explicitArgs, opts); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err = config.Load(manifest)
@@ -161,19 +162,26 @@ func TestRunWithHomeReconcilesExistingRemoteSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := []string{"one", "two"}; !reflect.DeepEqual(loaded.Skills.GitHub[0].Include, want) {
-		t.Fatalf("all-skills reconciliation = %v, want %v", loaded.Skills.GitHub[0].Include, want)
+		t.Fatalf("additive selection = %v, want %v", loaded.Skills.GitHub[0].Include, want)
 	}
 	output.Reset()
-	exactArgs := []string{"example/skills", "--skill", "two", "--yes"}
-	if err := RunWithHome(context.Background(), loaded, manifest, home, exactArgs, opts); err != nil {
+	if err := RunWithHome(context.Background(), loaded, manifest, home, explicitArgs, opts); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err = config.Load(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"two"}
-	if syncs != 3 || len(loaded.Skills.GitHub) != 1 || !reflect.DeepEqual(loaded.Skills.GitHub[0].Include, want) {
+	loaded.Skills.GitHub[0].Include = append(loaded.Skills.GitHub[0].Include, "removed-upstream")
+	if err := RunWithHome(context.Background(), loaded, manifest, home, []string{"example/skills"}, opts); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = config.Load(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"one", "two"}
+	if syncs != 4 || len(loaded.Skills.GitHub) != 1 || !reflect.DeepEqual(loaded.Skills.GitHub[0].Include, want) {
 		t.Fatalf("syncs=%d github=%#v", syncs, loaded.Skills.GitHub)
 	}
 }
