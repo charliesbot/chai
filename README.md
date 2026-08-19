@@ -68,6 +68,15 @@ paths = ["~/dotfiles/ai/subagents/*"]
 # MCP server definitions written to each platform's config file.
 command = "npx"
 args = ["-y", "@angular/cli", "mcp"]
+
+[[droid.custom_models]]
+# Optional Droid-only BYOK model written to ~/.factory/settings.json.
+model = "openai/gpt-4o-mini"
+display_name = "GPT-4o Mini"
+base_url = "https://api.openai.com/v1"
+api_key = "${OPENAI_API_KEY}"
+provider = "generic-chat-completion-api"
+max_output_tokens = 4096
 ```
 
 Local skill paths support `~`, absolute paths, and paths relative to
