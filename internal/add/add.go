@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -26,14 +25,11 @@ type Request struct {
 }
 
 type Options struct {
-	CheckGit        func(context.Context) error
-	Discover        func(context.Context, githubskill.Identity, string) (githubskill.Discovery, error)
-	Materialize     func(context.Context, string, githubskill.Discovery, []string) (map[string]string, error)
-	CommitPromotion func(githubskill.Promotion) error
-	Sync            func(context.Context, *config.Config, string, chaisync.Options) error
-	Progress        func(string, func() error) error
-	SyncOptions     chaisync.Options
-	Output          io.Writer
+	Acquire     githubskill.AcquireFunc
+	Sync        func(context.Context, *config.Config, string, chaisync.Options) error
+	Progress    func(string, func() error) error
+	SyncOptions chaisync.Options
+	Output      io.Writer
 }
 
 type progressDone struct{ err error }
@@ -217,138 +213,93 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 	if err != nil {
 		return err
 	}
-	checkGit := opts.CheckGit
-	if checkGit == nil {
-		checkGit = func(ctx context.Context) error {
-			_, err := githubskill.CheckGit(ctx)
-			return err
-		}
-	}
-	if err := checkGit(ctx); err != nil {
-		return err
+	acquire := opts.Acquire
+	if acquire == nil {
+		acquire = githubskill.Acquire
 	}
 
-	staging, err := os.MkdirTemp("", "chai-skill-add-")
-	if err != nil {
-		return err
-	}
-	keep := false
-	defer func() {
-		if !keep {
-			_ = os.RemoveAll(staging)
+	var selected []string
+	_, acquireErr := acquire(ctx, home, id, func(discovery githubskill.Discovery) (githubskill.AcquisitionDecision, error) {
+		if request.List {
+			printDiscovery(output(opts), discovery)
+			return githubskill.AcquisitionDecision{}, nil
 		}
-	}()
-	discover := opts.Discover
-	if discover == nil {
-		discover = func(ctx context.Context, id githubskill.Identity, repository string) (githubskill.Discovery, error) {
-			return githubskill.Discover(ctx, id.URL(), repository)
-		}
-	}
-	repository := githubskill.RepositoryDir(staging)
-	var discovery githubskill.Discovery
-	err = withProgress(opts, "Inspecting "+request.Source, func() error {
-		var discoverErr error
-		discovery, discoverErr = discover(ctx, id, repository)
-		return discoverErr
-	})
-	if err != nil {
-		return err
-	}
-	if request.List {
-		printDiscovery(output(opts), discovery)
-		return nil
-	}
 
-	selected := append([]string(nil), request.Skills...)
-	if len(selected) == 0 {
-		if len(discovery.Problems) > 0 {
-			return fmt.Errorf("cannot add all skills because %s", discovery.Problems[0])
-		}
-		for _, candidate := range discovery.Candidates {
-			selected = append(selected, candidate.Name)
-		}
+		selected = append([]string(nil), request.Skills...)
 		if len(selected) == 0 {
-			return fmt.Errorf("GitHub source contains no valid skills")
-		}
-	}
-	existingIndex := -1
-	for i, source := range cfg.Skills.GitHub {
-		if source.URL == id.URL() {
-			existingIndex = i
-			if len(request.Skills) > 0 {
-				selected = append(selected, source.Include...)
+			if len(discovery.Problems) > 0 {
+				return githubskill.AcquisitionDecision{}, fmt.Errorf("cannot add all skills because %s", discovery.Problems[0])
 			}
-			break
+			for _, candidate := range discovery.Candidates {
+				selected = append(selected, candidate.Name)
+			}
+			if len(selected) == 0 {
+				return githubskill.AcquisitionDecision{}, fmt.Errorf("GitHub source contains no valid skills")
+			}
 		}
-	}
-	selected = sortedUnique(selected)
-	materialize := opts.Materialize
-	if materialize == nil {
-		materialize = githubskill.Materialize
-	}
-	var mapping map[string]string
-	err = withProgress(opts, fmt.Sprintf("Fetching %d selected skill(s)", len(selected)), func() error {
-		var materializeErr error
-		mapping, materializeErr = materialize(ctx, repository, discovery, selected)
-		return materializeErr
+
+		existingIndex := -1
+		for i, source := range cfg.Skills.GitHub {
+			if source.URL == id.URL() {
+				existingIndex = i
+				if len(request.Skills) > 0 {
+					selected = append(selected, source.Include...)
+				}
+				break
+			}
+		}
+		selected = sortedUnique(selected)
+
+		return githubskill.AcquisitionDecision{
+			Names: selected,
+			BeforeCommit: func() error {
+				locals, err := skill.DiscoverLocal(cfg.Skills.Local, filepath.Dir(configPath), home)
+				if err != nil {
+					return err
+				}
+				selectedSources := make([]skill.Source, len(selected))
+				for i, name := range selected {
+					selectedSources[i] = skill.Source{Name: name, Path: id.URL()}
+				}
+				if err := rejectNameConflicts(selectedSources, locals, cfg, id.URL()); err != nil {
+					return err
+				}
+				if err := chaisync.ValidateUnmanagedSkillDestinations(selected, home, cfg.Platforms); err != nil {
+					return err
+				}
+				if existingIndex >= 0 {
+					cfg.Skills.GitHub[existingIndex].Include = selected
+				} else {
+					cfg.Skills.GitHub = append(cfg.Skills.GitHub, config.GitHubSkills{URL: id.URL(), Include: selected})
+					sort.Slice(cfg.Skills.GitHub, func(i, j int) bool { return cfg.Skills.GitHub[i].URL < cfg.Skills.GitHub[j].URL })
+				}
+				if err := chaisync.ValidateSources(cfg, home); err != nil {
+					return err
+				}
+				return config.UpdateSkillsAtomic(configPath, cfg)
+			},
+		}, nil
+	}, func(phase githubskill.AcquisitionPhase, count int, operation func() error) error {
+		label := "Inspecting " + request.Source
+		if phase == githubskill.AcquisitionFetching {
+			label = fmt.Sprintf("Fetching %d selected skill(s)", count)
+		}
+		return withProgress(opts, label, operation)
 	})
-	if err != nil {
-		return err
+	if request.List {
+		return acquireErr
 	}
-	locals, err := skill.DiscoverLocal(cfg.Skills.Local, filepath.Dir(configPath), home)
-	if err != nil {
-		return err
+	var cleanupErr *githubskill.CleanupError
+	if acquireErr != nil && !errors.As(acquireErr, &cleanupErr) {
+		return acquireErr
 	}
-	selectedSources := make([]skill.Source, len(selected))
-	for i, name := range selected {
-		selectedSources[i] = skill.Source{Name: name, Path: id.URL()}
-	}
-	if err := rejectNameConflicts(selectedSources, locals, cfg, id.URL()); err != nil {
-		return err
-	}
-	if err := chaisync.ValidateUnmanagedSkillDestinations(selected, home, cfg.Platforms); err != nil {
-		return err
-	}
-	commit, err := gitCommit(ctx, repository)
-	if err != nil {
-		return err
-	}
-	if err := githubskill.CompleteStaging(staging, id, mapping, commit); err != nil {
-		return err
-	}
-	staging, err = githubskill.StagePrepared(home, id, staging)
-	if err != nil {
-		return err
-	}
-	promotion, err := githubskill.BeginPromotion(staging, githubskill.CacheDir(home, id))
-	if err != nil {
-		return err
-	}
-	keep = true
-	if existingIndex >= 0 {
-		cfg.Skills.GitHub[existingIndex].Include = selected
-	} else {
-		cfg.Skills.GitHub = append(cfg.Skills.GitHub, config.GitHubSkills{URL: id.URL(), Include: selected})
-		sort.Slice(cfg.Skills.GitHub, func(i, j int) bool { return cfg.Skills.GitHub[i].URL < cfg.Skills.GitHub[j].URL })
-	}
-	if err := chaisync.ValidateSources(cfg, home); err != nil {
-		return errors.Join(err, promotion.Rollback())
-	}
-	if err := config.UpdateSkillsAtomic(configPath, cfg); err != nil {
-		return errors.Join(err, promotion.Rollback())
-	}
-	commitPromotion := opts.CommitPromotion
-	if commitPromotion == nil {
-		commitPromotion = func(promotion githubskill.Promotion) error { return promotion.Commit() }
-	}
-	commitErr := commitPromotion(promotion)
 	syncErr := runSync(ctx, cfg, home, opts)
-	if commitErr != nil {
-		cleanupErr := fmt.Errorf("previous cache cleanup is incomplete: %w", commitErr)
+	if cleanupErr != nil {
+		incompleteCleanup := fmt.Errorf("previous cache cleanup is incomplete: %w", cleanupErr)
 		if syncErr != nil {
-			return errors.Join(syncErr, cleanupErr)
+			return errors.Join(syncErr, incompleteCleanup)
 		}
-		return fmt.Errorf("source was recorded and synced, but %w", cleanupErr)
+		return fmt.Errorf("source was recorded and synced, but %w", incompleteCleanup)
 	}
 	return syncErr
 }
@@ -413,15 +364,6 @@ func sortedUnique(values []string) []string {
 	}
 	sort.Strings(values)
 	return values
-}
-
-func gitCommit(ctx context.Context, repository string) (string, error) {
-	command := exec.CommandContext(ctx, "git", "-C", repository, "rev-parse", "HEAD")
-	output, err := command.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("reading GitHub source commit: %s: %w", strings.TrimSpace(string(output)), err)
-	}
-	return strings.TrimSpace(string(output)), nil
 }
 
 func runSync(ctx context.Context, cfg *config.Config, home string, opts Options) error {

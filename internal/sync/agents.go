@@ -121,34 +121,22 @@ func resolveFilePatterns(patterns []string, home string) ([]string, error) {
 }
 
 func syncCodexAgentCopies(sources []string, destDir string, hashDB hash.DB) error {
-	generated := make(map[string][]byte, len(sources))
-	for _, src := range sources {
-		data, err := compileCodexAgent(src)
+	desired := make([]managedDesired, 0, len(sources))
+	for _, source := range sources {
+		data, err := compileCodexAgent(source)
 		if err != nil {
 			return err
 		}
-		name := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src)) + ".toml"
-		generated[filepath.Join(destDir, name)] = data
+		name := strings.TrimSuffix(filepath.Base(source), filepath.Ext(source)) + ".toml"
+		desired = append(desired, managedDesired{Name: name, Content: data})
 	}
-
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("creating directory %s: %w", destDir, err)
-	}
-
-	expected := make(map[string]bool, len(generated))
-	for dest := range generated {
-		expected[dest] = true
-	}
-	if err := removeStaleManagedFiles(destDir, ".toml", expected, hashDB); err != nil {
+	result, err := reconcileManagedFiles(destDir, ".toml", desired, hashDB, generatedFileReconciliationPolicy())
+	if err != nil {
 		return err
 	}
-
-	for dest, data := range generated {
-		if err := writeManagedFile(dest, data, hashDB); err != nil {
-			return err
-		}
+	for _, name := range result.preserved {
+		fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), name, ui.Muted.Render("not managed by chai — skipping"))
 	}
-
 	return nil
 }
 

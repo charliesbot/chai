@@ -63,7 +63,6 @@ func syncInstructions(
 	instructionChanges := newItemChanges()
 	skippedInstructionTargets := 0
 	instructionName := filepath.Base(srcPaths[0])
-	contentHash := hash.Sum(content)
 
 	for _, dest := range destOrder {
 		if err := ctx.Err(); err != nil {
@@ -71,33 +70,6 @@ func syncInstructions(
 		}
 
 		sharers := destPlatforms[dest]
-		previousHash, managed := hashDB[dest]
-		_, statErr := os.Stat(dest)
-		existed := statErr == nil
-
-		if !opts.Force && !opts.DryRun {
-			dirty, err := hashDB.IsDirty(dest)
-			if err != nil {
-				return nil, err
-			}
-			if dirty {
-				if opts.Prompt == nil {
-					return nil, &DirtyError{Files: []string{dest}}
-				}
-				overwrite, err := opts.Prompt(dest)
-				if err != nil {
-					return nil, err
-				}
-				if !overwrite {
-					skippedInstructionTargets++
-					for _, p := range sharers {
-						status.setFailed(p.Name)
-					}
-					continue
-				}
-			}
-		}
-
 		if opts.DryRun {
 			dryStatus := ui.Muted.Render("first sync")
 			if _, ok := hashDB[dest]; ok {
@@ -113,17 +85,26 @@ func syncInstructions(
 			continue
 		}
 
-		if err := atomicWrite(dest, content); err != nil {
+		result, err := reconcileManagedFiles(
+			filepath.Dir(dest),
+			filepath.Ext(dest),
+			[]managedDesired{{
+				Name:       filepath.Base(dest),
+				ChangeName: instructionName,
+				Content:    content,
+			}},
+			hashDB,
+			instructionReconciliationPolicy(opts),
+		)
+		if err != nil {
 			return nil, fmt.Errorf("writing instructions to %s: %w", dest, err)
 		}
-		hashDB[dest] = contentHash
-		switch {
-		case !managed:
-			instructionChanges.record(instructionName, itemAdded)
-		case !existed || previousHash != contentHash:
-			instructionChanges.record(instructionName, itemUpdated)
-		default:
-			instructionChanges.record(instructionName, itemUnchanged)
+		instructionChanges.merge(result.changes)
+		if len(result.skipped) > 0 {
+			skippedInstructionTargets++
+			for _, p := range sharers {
+				status.setFailed(p.Name)
+			}
 		}
 	}
 

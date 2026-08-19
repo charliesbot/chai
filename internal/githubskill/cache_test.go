@@ -3,6 +3,7 @@ package githubskill
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -33,6 +34,59 @@ func TestRefreshFromURLPromotesCompleteCache(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(CacheDir(home, id), repositoryDirName, "skills", "ignored")); !os.IsNotExist(err) {
 		t.Fatalf("unselected skill was cached: %v", err)
+	}
+}
+
+func TestAcquireFromURLOwnsRollbackAndProgress(t *testing.T) {
+	source := t.TempDir()
+	runGit(t, source, "init", "-b", "main")
+	runGit(t, source, "config", "uploadpack.allowFilter", "true")
+	writeRepoFile(t, source, "skills/chosen/SKILL.md", "---\nname: chosen\n---\nnew cache\n")
+	commitRepo(t, source, "skills")
+
+	home := t.TempDir()
+	id, _ := ParseCanonical("https://github.com/example/skills")
+	cache := CacheDir(home, id)
+	writeCacheSkill(t, RepositoryDir(cache), "chosen", "chosen")
+	if err := os.WriteFile(filepath.Join(RepositoryDir(cache), "chosen", "SKILL.md"), []byte("---\nname: chosen\n---\nold cache\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CompleteStaging(cache, id, map[string]string{"chosen": "chosen"}, "old-commit"); err != nil {
+		t.Fatal(err)
+	}
+
+	var phases []AcquisitionPhase
+	callbackErr := assertError("manifest write failed")
+	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
+	_, err := acquireFromURL(
+		context.Background(),
+		home,
+		id,
+		cloneURL,
+		func(Discovery) (AcquisitionDecision, error) {
+			return AcquisitionDecision{
+				Names:        []string{"chosen"},
+				BeforeCommit: func() error { return callbackErr },
+			}, nil
+		},
+		func(phase AcquisitionPhase, _ int, operation func() error) error {
+			phases = append(phases, phase)
+			return operation()
+		},
+	)
+	if !errors.Is(err, callbackErr) {
+		t.Fatalf("error = %v, want %v", err, callbackErr)
+	}
+	if len(phases) != 2 || phases[0] != AcquisitionInspecting || phases[1] != AcquisitionFetching {
+		t.Fatalf("phases = %v", phases)
+	}
+	sources, err := ResolveCached(home, id, []string{"chosen"})
+	if err != nil {
+		t.Fatalf("previous cache was not restored: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(sources[0].Path, "SKILL.md"))
+	if err != nil || !strings.Contains(string(data), "old cache") {
+		t.Fatalf("restored content = %q, err=%v", data, err)
 	}
 }
 

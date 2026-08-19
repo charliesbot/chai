@@ -34,6 +34,121 @@ type cacheFile struct {
 	Executable bool   `json:"executable,omitempty"`
 }
 
+// AcquisitionPhase identifies a user-visible step in source acquisition.
+type AcquisitionPhase int
+
+const (
+	AcquisitionInspecting AcquisitionPhase = iota
+	AcquisitionFetching
+)
+
+// AcquisitionDecision selects discovered skills and optionally coordinates a
+// manifest write with cache promotion.
+type AcquisitionDecision struct {
+	Names        []string
+	BeforeCommit func() error
+}
+
+// AcquisitionDecisionFunc decides what to cache after repository discovery.
+type AcquisitionDecisionFunc func(Discovery) (AcquisitionDecision, error)
+
+// AcquisitionProgressFunc runs one acquisition phase with caller-owned progress presentation.
+type AcquisitionProgressFunc func(AcquisitionPhase, int, func() error) error
+
+// AcquireFunc is the complete source-acquisition seam used by command modules.
+type AcquireFunc func(
+	context.Context,
+	string,
+	Identity,
+	AcquisitionDecisionFunc,
+	AcquisitionProgressFunc,
+) (Discovery, error)
+
+// Acquire discovers a source, materializes the selected skills, and owns cache
+// promotion, manifest coordination, rollback, and cleanup.
+func Acquire(
+	ctx context.Context,
+	home string,
+	id Identity,
+	decide AcquisitionDecisionFunc,
+	progress AcquisitionProgressFunc,
+) (Discovery, error) {
+	if _, err := CheckGit(ctx); err != nil {
+		return Discovery{}, err
+	}
+	return acquireFromURL(ctx, home, id, id.URL(), decide, progress)
+}
+
+func acquireFromURL(
+	ctx context.Context,
+	home string,
+	id Identity,
+	cloneURL string,
+	decide AcquisitionDecisionFunc,
+	progress AcquisitionProgressFunc,
+) (Discovery, error) {
+	staging, err := os.MkdirTemp("", "chai-github-source-")
+	if err != nil {
+		return Discovery{}, err
+	}
+	defer func() { _ = os.RemoveAll(staging) }()
+
+	repository := RepositoryDir(staging)
+	var discovery Discovery
+	if err := runAcquisitionPhase(progress, AcquisitionInspecting, 0, func() error {
+		var discoverErr error
+		discovery, discoverErr = Discover(ctx, cloneURL, repository)
+		return discoverErr
+	}); err != nil {
+		return Discovery{}, err
+	}
+	decision, err := decide(discovery)
+	if err != nil || len(decision.Names) == 0 {
+		return discovery, err
+	}
+
+	var selected map[string]string
+	if err := runAcquisitionPhase(progress, AcquisitionFetching, len(decision.Names), func() error {
+		var materializeErr error
+		selected, materializeErr = Materialize(ctx, repository, discovery, decision.Names)
+		return materializeErr
+	}); err != nil {
+		return discovery, err
+	}
+	commitBytes, err := gitOutput(ctx, repository, "rev-parse", "HEAD")
+	if err != nil {
+		return discovery, err
+	}
+	if err := CompleteStaging(staging, id, selected, strings.TrimSpace(string(commitBytes))); err != nil {
+		return discovery, err
+	}
+	prepared, err := stagePrepared(home, id, staging)
+	if err != nil {
+		return discovery, err
+	}
+	staging = prepared
+	promotion, err := BeginPromotion(staging, CacheDir(home, id))
+	if err != nil {
+		return discovery, err
+	}
+	if decision.BeforeCommit != nil {
+		if err := decision.BeforeCommit(); err != nil {
+			return discovery, errors.Join(err, promotion.Rollback())
+		}
+	}
+	if err := promotion.Commit(); err != nil {
+		return discovery, &CleanupError{Err: err}
+	}
+	return discovery, nil
+}
+
+func runAcquisitionPhase(progress AcquisitionProgressFunc, phase AcquisitionPhase, count int, operation func() error) error {
+	if progress == nil {
+		return operation()
+	}
+	return progress(phase, count, operation)
+}
+
 func Refresh(ctx context.Context, home string, id Identity, names []string) (Discovery, error) {
 	if _, err := CheckGit(ctx); err != nil {
 		return Discovery{}, err
@@ -42,41 +157,9 @@ func Refresh(ctx context.Context, home string, id Identity, names []string) (Dis
 }
 
 func refreshFromURL(ctx context.Context, home string, id Identity, cloneURL string, names []string) (Discovery, error) {
-	staging, err := NewStaging(home, id)
-	if err != nil {
-		return Discovery{}, err
-	}
-	keep := false
-	defer func() {
-		if !keep {
-			_ = os.RemoveAll(staging)
-		}
-	}()
-	repository := RepositoryDir(staging)
-	discovery, err := Discover(ctx, cloneURL, repository)
-	if err != nil {
-		return Discovery{}, err
-	}
-	selected, err := Materialize(ctx, repository, discovery, names)
-	if err != nil {
-		return Discovery{}, err
-	}
-	commitBytes, err := gitOutput(ctx, repository, "rev-parse", "HEAD")
-	if err != nil {
-		return Discovery{}, err
-	}
-	if err := CompleteStaging(staging, id, selected, strings.TrimSpace(string(commitBytes))); err != nil {
-		return Discovery{}, err
-	}
-	promotion, err := BeginPromotion(staging, CacheDir(home, id))
-	if err != nil {
-		return Discovery{}, err
-	}
-	keep = true
-	if err := promotion.Commit(); err != nil {
-		return discovery, &CleanupError{Err: err}
-	}
-	return discovery, nil
+	return acquireFromURL(ctx, home, id, cloneURL, func(Discovery) (AcquisitionDecision, error) {
+		return AcquisitionDecision{Names: names}, nil
+	}, nil)
 }
 
 type CleanupError struct {
@@ -104,7 +187,7 @@ func NewStaging(home string, id Identity) (string, error) {
 	return staging, nil
 }
 
-func StagePrepared(home string, id Identity, prepared string) (string, error) {
+func stagePrepared(home string, id Identity, prepared string) (string, error) {
 	staging, err := NewStaging(home, id)
 	if err != nil {
 		return "", err

@@ -7,118 +7,281 @@ import (
 	"path/filepath"
 
 	"github.com/charliesbot/chai/internal/hash"
-	"github.com/charliesbot/chai/internal/ui"
 )
 
-func expectedDestinations(sources []string, destDir string, destName func(string) string) map[string]bool {
-	expected := make(map[string]bool, len(sources))
-	for _, src := range sources {
-		expected[filepath.Join(destDir, destName(src))] = true
-	}
-	return expected
+type managedDesired struct {
+	Name       string
+	ChangeName string
+	Source     string
+	Content    []byte
 }
 
-func removeStaleManagedFiles(destDir, ext string, expected map[string]bool, hashDB hash.DB) error {
-	result, err := removeStaleManagedEntries(destDir, expected, hashDB, func(entry fs.DirEntry) bool {
-		return !entry.IsDir() && filepath.Ext(entry.Name()) == ext
-	}, os.Remove)
-	if err != nil {
-		return err
-	}
-	for _, name := range result.preserved {
-		fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), name, ui.Muted.Render("not managed by chai — skipping"))
-	}
-	return nil
+type reconciliationPolicy struct {
+	RemoveStale      bool
+	ProtectUnmanaged bool
+	ProtectDirty     bool
+	PreserveDeclined bool
+	Force            bool
+	Prompt           PromptFunc
 }
 
-func removeStaleManagedDirs(destDir string, expected map[string]bool, hashDB hash.DB, opts Options) (managedEntryChanges, error) {
-	var result managedEntryChanges
-	entries, err := os.ReadDir(destDir)
+type reconciliationResult struct {
+	changes   itemChanges
+	preserved []string
+	skipped   []string
+}
+
+type unmanagedDestinationError struct {
+	Path string
+}
+
+func (err *unmanagedDestinationError) Error() string {
+	return fmt.Sprintf("destination %s is not managed by chai", err.Path)
+}
+
+type declinedDestinationError struct {
+	Path  string
+	Stale bool
+}
+
+func (err *declinedDestinationError) Error() string {
+	return fmt.Sprintf("modified destination %s was preserved", err.Path)
+}
+
+type managedDestinationAdapter interface {
+	matches(fs.DirEntry) bool
+	digest(string) (string, error)
+	install(managedDesired, string, bool) (string, error)
+	remove(string) error
+}
+
+type fileDestinationAdapter struct {
+	extension string
+}
+
+func (adapter fileDestinationAdapter) matches(entry fs.DirEntry) bool {
+	return !entry.IsDir() && filepath.Ext(entry.Name()) == adapter.extension
+}
+
+func (fileDestinationAdapter) digest(path string) (string, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return result, fmt.Errorf("reading %s: %w", destDir, err)
+		return "", err
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	return hash.Sum(data), nil
+}
+
+func (fileDestinationAdapter) install(desired managedDesired, destination string, _ bool) (string, error) {
+	data := desired.Content
+	if desired.Source != "" {
+		var err error
+		data, err = os.ReadFile(desired.Source)
+		if err != nil {
+			return "", fmt.Errorf("reading %s: %w", desired.Source, err)
 		}
-		path := filepath.Join(destDir, entry.Name())
-		if expected[path] {
-			continue
+	}
+	if err := atomicWrite(destination, data); err != nil {
+		return "", err
+	}
+	return hash.Sum(data), nil
+}
+
+func (fileDestinationAdapter) remove(path string) error {
+	return os.Remove(path)
+}
+
+type directoryDestinationAdapter struct{}
+
+func (directoryDestinationAdapter) matches(entry fs.DirEntry) bool {
+	return entry.IsDir()
+}
+
+func (directoryDestinationAdapter) digest(path string) (string, error) {
+	return dirHash(path)
+}
+
+func (directoryDestinationAdapter) install(desired managedDesired, destination string, existed bool) (string, error) {
+	staging, err := os.MkdirTemp(filepath.Dir(destination), "."+desired.Name+".tmp-")
+	if err != nil {
+		return "", fmt.Errorf("creating staging directory for %s: %w", destination, err)
+	}
+	sum, err := copyAndHashDir(desired.Source, staging)
+	if err != nil {
+		_ = os.RemoveAll(staging)
+		return "", err
+	}
+	if err := replaceDirectory(staging, destination, existed); err != nil {
+		return "", err
+	}
+	return sum, nil
+}
+
+func (directoryDestinationAdapter) remove(path string) error {
+	return os.RemoveAll(path)
+}
+
+func reconcileManagedFiles(
+	destinationDir string,
+	extension string,
+	desired []managedDesired,
+	hashDB hash.DB,
+	policy reconciliationPolicy,
+) (reconciliationResult, error) {
+	return reconcileManagedDestinations(destinationDir, desired, fileDestinationAdapter{extension: extension}, hashDB, policy)
+}
+
+func reconcileManagedDirectories(
+	destinationDir string,
+	desired []managedDesired,
+	hashDB hash.DB,
+	policy reconciliationPolicy,
+) (reconciliationResult, error) {
+	return reconcileManagedDestinations(destinationDir, desired, directoryDestinationAdapter{}, hashDB, policy)
+}
+
+func instructionReconciliationPolicy(opts Options) reconciliationPolicy {
+	return reconciliationPolicy{
+		ProtectDirty:     true,
+		PreserveDeclined: true,
+		Force:            opts.Force,
+		Prompt:           opts.Prompt,
+	}
+}
+
+func skillReconciliationPolicy(opts Options) reconciliationPolicy {
+	return reconciliationPolicy{
+		RemoveStale:      true,
+		ProtectUnmanaged: true,
+		ProtectDirty:     true,
+		Force:            opts.Force,
+		Prompt:           opts.Prompt,
+	}
+}
+
+func generatedFileReconciliationPolicy() reconciliationPolicy {
+	return reconciliationPolicy{RemoveStale: true}
+}
+
+func reconcileManagedDestinations(
+	destinationDir string,
+	desired []managedDesired,
+	adapter managedDestinationAdapter,
+	hashDB hash.DB,
+	policy reconciliationPolicy,
+) (reconciliationResult, error) {
+	result := reconciliationResult{changes: newItemChanges()}
+	if err := os.MkdirAll(destinationDir, 0755); err != nil {
+		return result, fmt.Errorf("creating directory %s: %w", destinationDir, err)
+	}
+
+	expected := make(map[string]bool, len(desired))
+	for _, item := range desired {
+		expected[filepath.Join(destinationDir, item.Name)] = true
+	}
+	if policy.RemoveStale {
+		entries, err := os.ReadDir(destinationDir)
+		if err != nil {
+			return result, fmt.Errorf("reading %s: %w", destinationDir, err)
 		}
-		stored, managed := hashDB[path]
-		if !managed {
-			result.preserved = append(result.preserved, entry.Name())
-			continue
+		for _, entry := range entries {
+			if !adapter.matches(entry) {
+				continue
+			}
+			path := filepath.Join(destinationDir, entry.Name())
+			if expected[path] {
+				continue
+			}
+			stored, managed := hashDB[path]
+			if !managed {
+				result.preserved = append(result.preserved, entry.Name())
+				continue
+			}
+			if policy.ProtectDirty && !policy.Force {
+				dirty, err := managedDestinationDirty(adapter, path, stored)
+				if err != nil {
+					return result, err
+				}
+				if dirty {
+					accepted, err := confirmManagedDestination(policy.Prompt, path)
+					if err != nil {
+						return result, err
+					}
+					if !accepted {
+						return result, &declinedDestinationError{Path: path, Stale: true}
+					}
+				}
+			}
+			if err := adapter.remove(path); err != nil {
+				return result, fmt.Errorf("removing %s: %w", path, err)
+			}
+			delete(hashDB, path)
+			result.changes.record(entry.Name(), itemRemoved)
 		}
-		if !opts.Force {
-			dirty, err := managedDirDirty(path, stored)
+	}
+
+	for _, item := range desired {
+		destination := filepath.Join(destinationDir, item.Name)
+		previousHash, managed := hashDB[destination]
+		_, statErr := os.Stat(destination)
+		existed := statErr == nil
+		if statErr != nil && !os.IsNotExist(statErr) {
+			return result, fmt.Errorf("checking %s: %w", destination, statErr)
+		}
+		if existed && !managed && policy.ProtectUnmanaged {
+			return result, &unmanagedDestinationError{Path: destination}
+		}
+		if existed && managed && policy.ProtectDirty && !policy.Force {
+			dirty, err := managedDestinationDirty(adapter, destination, previousHash)
 			if err != nil {
 				return result, err
 			}
 			if dirty {
-				if opts.Prompt == nil {
-					return result, &DirtyError{Files: []string{path}}
-				}
-				remove, err := opts.Prompt(path)
+				accepted, err := confirmManagedDestination(policy.Prompt, destination)
 				if err != nil {
 					return result, err
 				}
-				if !remove {
-					return result, fmt.Errorf("skill sync incomplete: modified stale destination %s was preserved", path)
+				if !accepted {
+					if policy.PreserveDeclined {
+						result.skipped = append(result.skipped, destination)
+						continue
+					}
+					return result, &declinedDestinationError{Path: destination}
 				}
 			}
 		}
-		if err := os.RemoveAll(path); err != nil {
-			return result, fmt.Errorf("removing %s: %w", path, err)
+
+		currentHash, err := adapter.install(item, destination, existed)
+		if err != nil {
+			return result, err
 		}
-		delete(hashDB, path)
-		result.removed = append(result.removed, entry.Name())
+		hashDB[destination] = currentHash
+		changeName := item.ChangeName
+		if changeName == "" {
+			changeName = item.Name
+		}
+		switch {
+		case !managed:
+			result.changes.record(changeName, itemAdded)
+		case !existed || previousHash != currentHash:
+			result.changes.record(changeName, itemUpdated)
+		default:
+			result.changes.record(changeName, itemUnchanged)
+		}
 	}
 	return result, nil
 }
 
-type managedEntryChanges struct {
-	removed   []string
-	preserved []string
-}
-
-func removeStaleManagedEntries(
-	destDir string,
-	expected map[string]bool,
-	hashDB hash.DB,
-	include func(fs.DirEntry) bool,
-	remove func(string) error,
-) (managedEntryChanges, error) {
-	var result managedEntryChanges
-	entries, err := os.ReadDir(destDir)
+func managedDestinationDirty(adapter managedDestinationAdapter, path, stored string) (bool, error) {
+	current, err := adapter.digest(path)
 	if err != nil {
-		return result, fmt.Errorf("reading %s: %w", destDir, err)
+		return false, fmt.Errorf("hashing managed destination %s: %w", path, err)
 	}
-	for _, entry := range entries {
-		if !include(entry) {
-			continue
-		}
-		path := filepath.Join(destDir, entry.Name())
-		if expected[path] {
-			continue
-		}
-		if _, managed := hashDB[path]; managed {
-			if err := remove(path); err != nil {
-				return result, fmt.Errorf("removing %s: %w", path, err)
-			}
-			delete(hashDB, path)
-			result.removed = append(result.removed, entry.Name())
-		} else {
-			result.preserved = append(result.preserved, entry.Name())
-		}
-	}
-	return result, nil
+	return current != stored, nil
 }
 
-func writeManagedFile(dest string, data []byte, hashDB hash.DB) error {
-	if err := atomicWrite(dest, data); err != nil {
-		return err
+func confirmManagedDestination(prompt PromptFunc, path string) (bool, error) {
+	if prompt == nil {
+		return false, &DirtyError{Files: []string{path}}
 	}
-	hashDB[dest] = hash.Sum(data)
-	return nil
+	return prompt(path)
 }
