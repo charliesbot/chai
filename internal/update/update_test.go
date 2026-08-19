@@ -162,19 +162,6 @@ func TestValidateSourceNamesReportsEveryConflictLocation(t *testing.T) {
 	}
 }
 
-func TestAvailableSkillsSkipsAmbiguousNames(t *testing.T) {
-	source := config.GitHubSkills{Include: []string{"selected"}}
-	discovery := githubskill.Discovery{Candidates: []githubskill.Candidate{
-		{Name: "selected"},
-		{Name: "available"},
-		{Name: "ambiguous"},
-		{Name: "ambiguous"},
-	}}
-	if got := availableSkills(source, discovery); !reflect.DeepEqual(got, []string{"available"}) {
-		t.Fatalf("available skills = %v", got)
-	}
-}
-
 func TestRunWithHomeSyncsAfterCacheCleanupWarning(t *testing.T) {
 	cfg := &config.Config{
 		Platforms: []string{"cursor"},

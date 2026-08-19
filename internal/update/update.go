@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sort"
 
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/githubskill"
@@ -101,23 +100,4 @@ func validateSourceNames(cfg *config.Config, home string) error {
 		}
 	}
 	return skill.ValidateUniqueNames(sources)
-}
-
-func availableSkills(source config.GitHubSkills, discovery githubskill.Discovery) []string {
-	selected := make(map[string]bool, len(source.Include))
-	for _, name := range source.Include {
-		selected[name] = true
-	}
-	counts := make(map[string]int)
-	for _, candidate := range discovery.Candidates {
-		counts[candidate.Name]++
-	}
-	var available []string
-	for name, count := range counts {
-		if count == 1 && !selected[name] {
-			available = append(available, name)
-		}
-	}
-	sort.Strings(available)
-	return available
 }
