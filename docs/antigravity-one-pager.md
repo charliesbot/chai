@@ -10,10 +10,10 @@ Google's agentic coding IDE, released late 2025. Runs on Gemini models and compe
 | ------------- | ------------------------------- | ---------------------------------------- | ------------------------------------------------------ |
 | Instructions  | `~/.claude/CLAUDE.md`           | `~/.gemini/GEMINI.md`                    | `~/.gemini/GEMINI.md` **(shared w/ Gemini)**           |
 | Skills dir    | `~/.claude/skills/`             | `~/.gemini/skills/`                      | `~/.gemini/config/skills/`                             |
-| Subagents dir | `~/.claude/agents/`             | `~/.gemini/agents/`                      | **not supported**                                      |
+| Subagents dir | `~/.claude/agents/`             | `~/.gemini/agents/`                      | `~/.gemini/config/agents/`                             |
 | MCP config    | `~/.claude.json` (`mcpServers`) | `~/.gemini/settings.json` (`mcpServers`) | `~/.gemini/config/mcp_config.json` (`mcpServers`) |
 
-Sources: [antigravity.google/docs/mcp](https://antigravity.google/docs/mcp), [Antigravity Skills codelab](https://codelabs.developers.google.com/getting-started-with-antigravity-skills), [Google AI forum — custom subagents](https://discuss.ai.google.dev/t/antigravity-sub-agents/114381) (Google confirmed March 2026 that user-defined subagents are escalated as a feature request — not shipped).
+Sources: [antigravity.google/docs/mcp](https://antigravity.google/docs/mcp), [antigravity.google/docs/subagents](https://antigravity.google/docs/subagents).
 
 ## Per-area sync plan
 
@@ -29,7 +29,7 @@ Antigravity skill format is a _folder_ with `SKILL.md` (+ optional `scripts/`, `
 
 ### Subagents
 
-No-op. Antigravity has no user-defined subagents as of 2026-04. When Google ships the feature, add the destination dir. Document the skip in `chai sync` output ("antigravity: subagents not supported, skipping").
+Copy to `~/.gemini/config/agents/`. Same strategy as existing platforms: copy with hash-based dirty detection.
 
 ### MCP
 
@@ -43,6 +43,10 @@ Write the `mcpServers` key to `~/.gemini/config/mcp_config.json`. The IDE and CL
     Name:             "Antigravity",
     InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
     SkillsDir:        filepath.Join(".gemini", "config", "skills"),
+    Agents: &AgentTarget{
+        Dir:    filepath.Join(".gemini", "config", "agents"),
+        Format: AgentFormatMarkdown,
+    },
     MCP: &MCPTarget{
         ConfigPath: filepath.Join(".gemini", "config", "mcp_config.json"),
         Key:        "mcpServers",
@@ -50,8 +54,6 @@ Write the `mcpServers` key to `~/.gemini/config/mcp_config.json`. The IDE and CL
     },
 }
 ```
-
-`AgentsDir: ""` needs a sentinel. Options: empty string = skip (current logic would need a guard), or a new `SupportsSubagents bool` field. Lean toward empty string + guard — one less field to plumb.
 
 ## Open questions
 
