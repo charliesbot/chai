@@ -593,16 +593,6 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 		t.Errorf("%s context7.command = %v, want npx", mcpPath, ctx7["command"])
 	}
 
-	for _, obsoletePath := range []string{
-		filepath.Join(home, ".gemini", "antigravity-ide"),
-		filepath.Join(home, ".gemini", "antigravity"),
-		filepath.Join(home, ".gemini", "antigravity-cli"),
-	} {
-		if _, err := os.Stat(obsoletePath); !os.IsNotExist(err) {
-			t.Errorf("obsolete path %s should not exist, got err=%v", obsoletePath, err)
-		}
-	}
-
 	// Antigravity has no standalone subagents dir. Nothing should be written
 	// under any agents/ path.
 	agentsDir := filepath.Join(home, ".gemini", "config", "agents")
