@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -215,80 +216,29 @@ func pluralize(noun string, count int) string {
 }
 
 func syncSkillCopies(sources []skill.Source, destDir string, hashDB hash.DB, opts Options) (itemChanges, error) {
-	changes := newItemChanges()
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return changes, fmt.Errorf("creating directory %s: %w", destDir, err)
+	desired := make([]managedDesired, len(sources))
+	for i, source := range sources {
+		desired[i] = managedDesired{Name: source.Name, Source: source.Path}
 	}
-
-	expected := make(map[string]bool)
-	for _, src := range sources {
-		expected[filepath.Join(destDir, src.Name)] = true
-	}
-	stale, err := removeStaleManagedDirs(destDir, expected, hashDB, opts)
-	for _, name := range stale.removed {
-		changes.record(name, itemRemoved)
-	}
-	for _, name := range stale.preserved {
-		changes.preserved[name] = true
+	result, err := reconcileManagedDirectories(destDir, desired, hashDB, skillReconciliationPolicy(opts))
+	for _, name := range result.preserved {
+		result.changes.preserved[name] = true
 	}
 	if err != nil {
-		return changes, err
-	}
-
-	for _, src := range sources {
-		dest := filepath.Join(destDir, src.Name)
-		previousHash, managed := hashDB[dest]
-		_, statErr := os.Stat(dest)
-		existed := statErr == nil
-		if statErr != nil && !os.IsNotExist(statErr) {
-			return changes, fmt.Errorf("checking %s: %w", dest, statErr)
+		var unmanaged *unmanagedDestinationError
+		if errors.As(err, &unmanaged) {
+			return result.changes, fmt.Errorf("skill destination %s is not managed by chai", unmanaged.Path)
 		}
-		if existed && !managed {
-			return changes, fmt.Errorf("skill destination %s is not managed by chai", dest)
-		}
-		if existed && managed && !opts.Force {
-			dirty, err := managedDirDirty(dest, previousHash)
-			if err != nil {
-				return changes, err
+		var declined *declinedDestinationError
+		if errors.As(err, &declined) {
+			if declined.Stale {
+				return result.changes, fmt.Errorf("skill sync incomplete: modified stale destination %s was preserved", declined.Path)
 			}
-			if dirty {
-				if opts.Prompt == nil {
-					return changes, &DirtyError{Files: []string{dest}}
-				}
-				overwrite, err := opts.Prompt(dest)
-				if err != nil {
-					return changes, err
-				}
-				if !overwrite {
-					return changes, fmt.Errorf("skill sync incomplete: modified destination %s was preserved", dest)
-				}
-			}
+			return result.changes, fmt.Errorf("skill sync incomplete: modified destination %s was preserved", declined.Path)
 		}
-
-		staging, err := os.MkdirTemp(destDir, "."+src.Name+".tmp-")
-		if err != nil {
-			return changes, fmt.Errorf("creating staging directory for %s: %w", dest, err)
-		}
-		sum, err := copyAndHashDir(src.Path, staging)
-		if err != nil {
-			_ = os.RemoveAll(staging)
-			return changes, err
-		}
-		if err := replaceDirectory(staging, dest, existed); err != nil {
-			return changes, err
-		}
-		hashDB[dest] = sum
-		switch {
-		case !managed:
-			changes.record(src.Name, itemAdded)
-		case !existed || previousHash != sum:
-			changes.record(src.Name, itemUpdated)
-		default:
-			changes.record(src.Name, itemUnchanged)
-		}
+		return result.changes, err
 	}
-
-	return changes, nil
+	return result.changes, nil
 }
 
 // syncFileCopies copies source files into destDir.
@@ -298,39 +248,18 @@ func syncSkillCopies(sources []skill.Source, destDir string, hashDB hash.DB, opt
 //
 // Uses atomic writes (write to .tmp, then rename).
 func syncFileCopies(sources []string, destDir string, hashDB hash.DB) error {
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("creating directory %s: %w", destDir, err)
+	desired := make([]managedDesired, len(sources))
+	for i, source := range sources {
+		desired[i] = managedDesired{Name: filepath.Base(source), Source: source}
 	}
-
-	expected := expectedDestinations(sources, destDir, filepath.Base)
-	if err := removeStaleManagedFiles(destDir, ".md", expected, hashDB); err != nil {
+	result, err := reconcileManagedFiles(destDir, ".md", desired, hashDB, generatedFileReconciliationPolicy())
+	if err != nil {
 		return err
 	}
-
-	// Copy files atomically and update hashes
-	for _, src := range sources {
-		name := filepath.Base(src)
-		dest := filepath.Join(destDir, name)
-
-		data, err := os.ReadFile(src)
-		if err != nil {
-			return fmt.Errorf("reading %s: %w", src, err)
-		}
-
-		if err := writeManagedFile(dest, data, hashDB); err != nil {
-			return err
-		}
+	for _, name := range result.preserved {
+		fmt.Printf("  %s %s %s\n", ui.Warning.Render("!"), name, ui.Muted.Render("not managed by chai — skipping"))
 	}
-
 	return nil
-}
-
-func managedDirDirty(path, stored string) (bool, error) {
-	current, err := dirHash(path)
-	if err != nil {
-		return false, fmt.Errorf("hashing managed directory %s: %w", path, err)
-	}
-	return current != stored, nil
 }
 
 func replaceDirectory(staging, dest string, existed bool) error {
