@@ -129,7 +129,7 @@ Defined in chai's source code, not by the user. Each platform specifies where fi
 | Platform | Instructions destination | Skills directory      | Subagents directory | MCP config file              | MCP key        | MCP strategy |
 |----------|--------------------------|----------------------|---------------------|------------------------------|----------------|--------------|
 | Claude   | `~/.claude/CLAUDE.md`    | `~/.claude/skills/`  | `~/.claude/agents/` | `~/.claude.json`             | `mcpServers`   | replace key  |
-| Antigravity | `~/.gemini/GEMINI.md` | `~/.gemini/antigravity-ide/skills/`, `~/.gemini/antigravity/skills/`, `~/.gemini/antigravity-cli/skills/` | _none_ | `~/.gemini/config/mcp_config.json` | `mcpServers` | replace key |
+| Antigravity | `~/.gemini/GEMINI.md` | `~/.gemini/config/skills/` | _none_ | `~/.gemini/config/mcp_config.json` | `mcpServers` | replace key |
 | Droid    | `~/.factory/AGENTS.md`   | `~/.factory/skills/` | `~/.factory/droids/` | `~/.factory/mcp.json`       | `mcpServers`   | replace key with Droid stdio entries |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skills/` | `~/.config/opencode/agents/` | `~/.config/opencode/opencode.json` | `mcp` | replace key with OpenCode entries |
 | Codex    | `~/.codex/AGENTS.md`     | `~/.agents/skills/`  | `~/.codex/agents/` _(compiled TOML)_ | `~/.codex/config.toml` | `mcp_servers` | replace TOML table |

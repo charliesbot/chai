@@ -494,7 +494,7 @@ func TestPlatformStatus_CollapsesAntigravityTargets(t *testing.T) {
 		t.Fatalf("statuses = %#v, want Claude, Antigravity, OpenCode", got)
 	}
 
-	status.setFailed("Antigravity CLI")
+	status.setFailed("Antigravity")
 	got = status.statuses()
 	if got[1].State != ui.PlatformFailed {
 		t.Fatalf("Antigravity aggregate state = %v, want failed", got[1].State)
@@ -566,9 +566,7 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 		body  string
 	}{
 		{"instructions", filepath.Join(home, ".gemini", "GEMINI.md"), "hello"},
-		{"ide skill", filepath.Join(home, ".gemini", "antigravity-ide", "skills", "greet", "SKILL.md"), greetSkillContent},
-		{"legacy skill", filepath.Join(home, ".gemini", "antigravity", "skills", "greet", "SKILL.md"), greetSkillContent},
-		{"skill", filepath.Join(home, ".gemini", "antigravity-cli", "skills", "greet", "SKILL.md"), greetSkillContent},
+		{"skill", filepath.Join(home, ".gemini", "config", "skills", "greet", "SKILL.md"), greetSkillContent},
 	}
 	for _, c := range cases {
 		got, err := os.ReadFile(c.path)
@@ -596,25 +594,20 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 	}
 
 	for _, obsoletePath := range []string{
-		filepath.Join(home, ".gemini", "antigravity-ide", "mcp_config.json"),
-		filepath.Join(home, ".gemini", "antigravity", "mcp_config.json"),
-		filepath.Join(home, ".gemini", "antigravity-cli", "mcp_config.json"),
+		filepath.Join(home, ".gemini", "antigravity-ide"),
+		filepath.Join(home, ".gemini", "antigravity"),
+		filepath.Join(home, ".gemini", "antigravity-cli"),
 	} {
 		if _, err := os.Stat(obsoletePath); !os.IsNotExist(err) {
-			t.Errorf("obsolete MCP config %s should not exist, got err=%v", obsoletePath, err)
+			t.Errorf("obsolete path %s should not exist, got err=%v", obsoletePath, err)
 		}
 	}
 
 	// Antigravity has no standalone subagents dir. Nothing should be written
-	// under any agents/ path for these targets.
-	for _, agentsDir := range []string{
-		filepath.Join(home, ".gemini", "antigravity-ide", "agents"),
-		filepath.Join(home, ".gemini", "antigravity", "agents"),
-		filepath.Join(home, ".gemini", "antigravity-cli", "agents"),
-	} {
-		if _, err := os.Stat(agentsDir); !os.IsNotExist(err) {
-			t.Errorf("%s should not exist, got err=%v", agentsDir, err)
-		}
+	// under any agents/ path.
+	agentsDir := filepath.Join(home, ".gemini", "config", "agents")
+	if _, err := os.Stat(agentsDir); !os.IsNotExist(err) {
+		t.Errorf("%s should not exist, got err=%v", agentsDir, err)
 	}
 }
 
@@ -1145,9 +1138,8 @@ func TestRunWithHome_AntigravitySkipsSubagents(t *testing.T) {
 
 	// Antigravity has no agents dir — nothing should be written under its target trees.
 	for _, antigravityAgents := range []string{
-		filepath.Join(home, ".gemini", "antigravity-ide", "agents"),
-		filepath.Join(home, ".gemini", "antigravity", "agents"),
-		filepath.Join(home, ".gemini", "antigravity-cli", "agents"),
+		filepath.Join(home, ".gemini", "config", "agents"),
+		filepath.Join(home, ".gemini", "agents"),
 	} {
 		if _, err := os.Stat(antigravityAgents); !os.IsNotExist(err) {
 			t.Errorf("%s should not exist, got err=%v", antigravityAgents, err)

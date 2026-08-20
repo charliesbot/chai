@@ -9,7 +9,7 @@ Google's agentic coding IDE, released late 2025. Runs on Gemini models and compe
 |               | Claude Code                     | Gemini CLI                               | Antigravity                                            |
 | ------------- | ------------------------------- | ---------------------------------------- | ------------------------------------------------------ |
 | Instructions  | `~/.claude/CLAUDE.md`           | `~/.gemini/GEMINI.md`                    | `~/.gemini/GEMINI.md` **(shared w/ Gemini)**           |
-| Skills dir    | `~/.claude/skills/`             | `~/.gemini/skills/`                      | `~/.gemini/antigravity-ide/skills/`, `~/.gemini/antigravity/skills/`, `~/.gemini/antigravity-cli/skills/` |
+| Skills dir    | `~/.claude/skills/`             | `~/.gemini/skills/`                      | `~/.gemini/config/skills/`                             |
 | Subagents dir | `~/.claude/agents/`             | `~/.gemini/agents/`                      | **not supported**                                      |
 | MCP config    | `~/.claude.json` (`mcpServers`) | `~/.gemini/settings.json` (`mcpServers`) | `~/.gemini/config/mcp_config.json` (`mcpServers`) |
 
@@ -19,11 +19,11 @@ Sources: [antigravity.google/docs/mcp](https://antigravity.google/docs/mcp), [An
 
 ### Instructions
 
-Antigravity reads `~/.gemini/GEMINI.md`. Chai writes this file once even though the `antigravity` key expands to multiple Antigravity targets.
+Antigravity reads `~/.gemini/GEMINI.md`.
 
 ### Skills
 
-Copy to `~/.gemini/antigravity-ide/skills/`, `~/.gemini/antigravity/skills/`, and `~/.gemini/antigravity-cli/skills/`. Same strategy as existing platforms: copy with hash-based dirty detection, chai owns only files it hashed.
+Copy to `~/.gemini/config/skills/`. Same strategy as existing platforms: copy with hash-based dirty detection, chai owns only files it hashed.
 
 Antigravity skill format is a _folder_ with `SKILL.md` (+ optional `scripts/`, `templates/`, `resources/`). This matches Claude Code's skill format (also a folder with `SKILL.md`), so no transformation — same copy strategy as `skills` today.
 
@@ -35,29 +35,19 @@ No-op. Antigravity has no user-defined subagents as of 2026-04. When Google ship
 
 Write the `mcpServers` key to `~/.gemini/config/mcp_config.json`. The IDE and CLI share this global file. Use the same `replace key` strategy chai uses for Claude/Gemini, creating the file if it does not exist.
 
-## The overlap problem
-
-The Antigravity IDE and CLI targets all share `~/.gemini/GEMINI.md` for instructions, so one config key expands to multiple targets that write the same file.
-
-**Options:**
-
-1. **Detect and write once.** Sync logic dedupes destinations: if two platforms share a target, write once. Cleanest, but adds a special case.
-2. **Make Antigravity a modifier, not a platform.** Treat `antigravity` as an extension of `gemini` — e.g. `gemini` platform gains Antigravity paths automatically. Smaller change, but surprising semantics (user enables `gemini`, gets Antigravity writes too).
-3. **Let it double-write.** Second write is idempotent (same content). Hash DB handles it. Simplest, but dirty-detection prompts may fire twice for the same file.
-
-**Recommendation: option 1.** Dedup destinations at sync time keyed by absolute path. The behavior is obvious ("same file, written once") and it generalizes if future platforms also share files. Implementation: after building the full `(platform, asset, dest)` list, group by `dest` and skip duplicates (warn in `--dry-run`).
-
 ## Platform definition
 
 ```go
 {
     Key:              "antigravity",
-    Name:             "Antigravity IDE",
+    Name:             "Antigravity",
     InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
-    SkillsDir:        filepath.Join(".gemini", "antigravity-ide", "skills"),
-    AgentsDir:        "", // not supported; sync skips empty dirs
-    MCPConfigPath:    filepath.Join(".gemini", "config", "mcp_config.json"),
-    MCPKey:           "mcpServers",
+    SkillsDir:        filepath.Join(".gemini", "config", "skills"),
+    MCP: &MCPTarget{
+        ConfigPath: filepath.Join(".gemini", "config", "mcp_config.json"),
+        Key:        "mcpServers",
+        Format:     MCPFormatStandard,
+    },
 }
 ```
 
