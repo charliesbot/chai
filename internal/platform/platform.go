@@ -79,31 +79,9 @@ func All() []Platform {
 		},
 		{
 			Key:              "antigravity",
-			Name:             "Antigravity IDE",
-			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
-			SkillsDir:        filepath.Join(".gemini", "antigravity-ide", "skills"),
-			MCP: &MCPTarget{
-				ConfigPath: filepath.Join(".gemini", "config", "mcp_config.json"),
-				Key:        "mcpServers",
-				Format:     MCPFormatStandard,
-			},
-		},
-		{
-			Key:              "antigravity",
 			Name:             "Antigravity",
 			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
-			SkillsDir:        filepath.Join(".gemini", "antigravity", "skills"),
-			MCP: &MCPTarget{
-				ConfigPath: filepath.Join(".gemini", "config", "mcp_config.json"),
-				Key:        "mcpServers",
-				Format:     MCPFormatStandard,
-			},
-		},
-		{
-			Key:              "antigravity",
-			Name:             "Antigravity CLI",
-			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
-			SkillsDir:        filepath.Join(".gemini", "antigravity-cli", "skills"),
+			SkillsDir:        filepath.Join(".gemini", "config", "skills"),
 			MCP: &MCPTarget{
 				ConfigPath: filepath.Join(".gemini", "config", "mcp_config.json"),
 				Key:        "mcpServers",

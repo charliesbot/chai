@@ -18,9 +18,7 @@ func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 	cfg := &config.Config{Platforms: []string{"antigravity", "codex", "cursor"}}
 
 	dirs := []string{
-		filepath.Join(home, ".gemini", "antigravity-ide", "skills"),
-		filepath.Join(home, ".gemini", "antigravity", "skills"),
-		filepath.Join(home, ".gemini", "antigravity-cli", "skills"),
+		filepath.Join(home, ".gemini", "config", "skills"),
 		filepath.Join(home, ".agents", "skills"),
 		filepath.Join(home, ".codex", "agents"),
 		filepath.Join(home, ".cursor", "skills"),
@@ -33,12 +31,12 @@ func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 	writeFile(t, unselected, "keep")
 
 	db := hash.DB{
-		filepath.Join(home, ".gemini", "antigravity", "skills", "managed"): "hash",
-		filepath.Join(home, ".agents", "skills", "managed"):                "hash",
-		filepath.Join(home, ".codex", "agents", "reviewer.toml"):           "hash",
-		filepath.Join(home, ".cursor", "skills", "managed"):                "hash",
-		filepath.Join(home, ".cursor", "agents", "reviewer.md"):            "hash",
-		filepath.Join(home, ".claude", "skills", "keep"):                   "hash",
+		filepath.Join(home, ".gemini", "config", "skills", "managed"): "hash",
+		filepath.Join(home, ".agents", "skills", "managed"):           "hash",
+		filepath.Join(home, ".codex", "agents", "reviewer.toml"):      "hash",
+		filepath.Join(home, ".cursor", "skills", "managed"):           "hash",
+		filepath.Join(home, ".cursor", "agents", "reviewer.md"):       "hash",
+		filepath.Join(home, ".claude", "skills", "keep"):              "hash",
 	}
 	if err := db.Save(home); err != nil {
 		t.Fatalf("saving hash DB: %v", err)
