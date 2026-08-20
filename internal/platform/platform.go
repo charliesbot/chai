@@ -82,6 +82,10 @@ func All() []Platform {
 			Name:             "Antigravity",
 			InstructionsPath: filepath.Join(".gemini", "GEMINI.md"),
 			SkillsDir:        filepath.Join(".gemini", "config", "skills"),
+			Agents: &AgentTarget{
+				Dir:    filepath.Join(".gemini", "config", "agents"),
+				Format: AgentFormatMarkdown,
+			},
 			MCP: &MCPTarget{
 				ConfigPath: filepath.Join(".gemini", "config", "mcp_config.json"),
 				Key:        "mcpServers",

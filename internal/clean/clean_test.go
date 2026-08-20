@@ -19,6 +19,7 @@ func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 
 	dirs := []string{
 		filepath.Join(home, ".gemini", "config", "skills"),
+		filepath.Join(home, ".gemini", "config", "agents"),
 		filepath.Join(home, ".agents", "skills"),
 		filepath.Join(home, ".codex", "agents"),
 		filepath.Join(home, ".cursor", "skills"),
@@ -32,6 +33,7 @@ func TestRunWithHome_RemovesConfiguredPlatformOutputs(t *testing.T) {
 
 	db := hash.DB{
 		filepath.Join(home, ".gemini", "config", "skills", "managed"): "hash",
+		filepath.Join(home, ".gemini", "config", "agents", "managed"): "hash",
 		filepath.Join(home, ".agents", "skills", "managed"):           "hash",
 		filepath.Join(home, ".codex", "agents", "reviewer.toml"):      "hash",
 		filepath.Join(home, ".cursor", "skills", "managed"):           "hash",

@@ -593,11 +593,12 @@ func TestRunWithHome_AntigravityPaths(t *testing.T) {
 		t.Errorf("%s context7.command = %v, want npx", mcpPath, ctx7["command"])
 	}
 
-	// Antigravity has no standalone subagents dir. Nothing should be written
-	// under any agents/ path.
-	agentsDir := filepath.Join(home, ".gemini", "config", "agents")
-	if _, err := os.Stat(agentsDir); !os.IsNotExist(err) {
-		t.Errorf("%s should not exist, got err=%v", agentsDir, err)
+	gotAgent, err := os.ReadFile(filepath.Join(home, ".gemini", "config", "agents", "reviewer.md"))
+	if err != nil {
+		t.Fatalf("reading Antigravity subagent: %v", err)
+	}
+	if string(gotAgent) != "reviewer body" {
+		t.Errorf("Antigravity subagent body = %q, want %q", string(gotAgent), "reviewer body")
 	}
 }
 
@@ -1105,7 +1106,7 @@ reviewer body`), 0644)
 	}
 }
 
-func TestRunWithHome_AntigravitySkipsSubagents(t *testing.T) {
+func TestRunWithHome_AntigravitySyncsSubagents(t *testing.T) {
 	home := t.TempDir()
 
 	srcDir := filepath.Join(home, "dotfiles", "ai")
@@ -1126,14 +1127,12 @@ func TestRunWithHome_AntigravitySkipsSubagents(t *testing.T) {
 		t.Fatalf("sync: %v", err)
 	}
 
-	// Antigravity has no agents dir — nothing should be written under its target trees.
-	for _, antigravityAgents := range []string{
-		filepath.Join(home, ".gemini", "config", "agents"),
-		filepath.Join(home, ".gemini", "agents"),
-	} {
-		if _, err := os.Stat(antigravityAgents); !os.IsNotExist(err) {
-			t.Errorf("%s should not exist, got err=%v", antigravityAgents, err)
-		}
+	got, err := os.ReadFile(filepath.Join(home, ".gemini", "config", "agents", "reviewer.md"))
+	if err != nil {
+		t.Fatalf("reading Antigravity subagent: %v", err)
+	}
+	if string(got) != "reviewer body" {
+		t.Errorf("Antigravity subagent body = %q, want %q", string(got), "reviewer body")
 	}
 }
 
