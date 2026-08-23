@@ -4,14 +4,187 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
 	"github.com/pelletier/go-toml/v2/unstable"
 )
 
-// UpdateSkillsAtomic replaces only Chai's skills configuration, preserving all
+// NormalizeLocalSkillPath converts a local skill source to its manifest form.
+func NormalizeLocalSkillPath(raw, home string) (string, error) {
+	if !isLocalSkillInput(raw) {
+		return "", fmt.Errorf("local source must begin with /, ~/, ./, or ../")
+	}
+	switch {
+	case raw == "~":
+		return "~", nil
+	case strings.HasPrefix(raw, "~/"):
+		clean := filepath.Clean(raw[2:])
+		if clean == "." {
+			return "~", nil
+		}
+		return "~/" + filepath.ToSlash(clean), nil
+	case filepath.IsAbs(raw):
+		clean := filepath.Clean(raw)
+		relative, err := filepath.Rel(home, clean)
+		if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			if relative == "." {
+				return "~", nil
+			}
+			return "~/" + filepath.ToSlash(relative), nil
+		}
+		return clean, nil
+	case strings.HasPrefix(raw, "./"):
+		clean := filepath.Clean(raw)
+		if clean == "." {
+			return "./.", nil
+		}
+		return "./" + filepath.ToSlash(strings.TrimPrefix(clean, "./")), nil
+	default:
+		clean := filepath.Clean(raw)
+		if clean == ".." {
+			return "../.", nil
+		}
+		return filepath.ToSlash(clean), nil
+	}
+}
+
+func isLocalSkillInput(source string) bool {
+	return source == "~" || strings.HasPrefix(source, "~/") || filepath.IsAbs(source) ||
+		strings.HasPrefix(source, "./") || strings.HasPrefix(source, "../")
+}
+
+// AddLocalSkillSourceAtomic records one normalized local source without
+// exposing manifest formatting or write ordering to the caller.
+func AddLocalSkillSourceAtomic(
+	path string,
+	cfg *Config,
+	source string,
+	home string,
+	validateCandidate func(*Config) error,
+) error {
+	candidate := cloneConfig(cfg)
+	found := false
+	for _, existing := range candidate.Skills.Local {
+		canonical, err := NormalizeLocalSkillPath(existing, home)
+		if err == nil && canonical == source {
+			found = true
+			break
+		}
+	}
+	if !found {
+		candidate.Skills.Local = append(candidate.Skills.Local, source)
+		sort.Strings(candidate.Skills.Local)
+	}
+	return commitSkillsMutation(path, cfg, candidate, validateCandidate)
+}
+
+// ReconcileGitHubSkillSourceAtomic records the selected skills for one GitHub
+// source without exposing manifest formatting or write ordering to the caller.
+func ReconcileGitHubSkillSourceAtomic(
+	path string,
+	cfg *Config,
+	source GitHubSkills,
+	validateCandidate func(*Config) error,
+) error {
+	candidate := cloneConfig(cfg)
+	source.Include = sortedUniqueStrings(source.Include)
+	replaced := false
+	for i := range candidate.Skills.GitHub {
+		if candidate.Skills.GitHub[i].URL == source.URL {
+			candidate.Skills.GitHub[i] = source
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		candidate.Skills.GitHub = append(candidate.Skills.GitHub, source)
+	}
+	sort.Slice(candidate.Skills.GitHub, func(i, j int) bool {
+		return candidate.Skills.GitHub[i].URL < candidate.Skills.GitHub[j].URL
+	})
+	return commitSkillsMutation(path, cfg, candidate, validateCandidate)
+}
+
+func cloneConfig(cfg *Config) *Config {
+	candidate := *cfg
+	candidate.Platforms = append([]string(nil), cfg.Platforms...)
+	candidate.Instructions = append([]string(nil), cfg.Instructions...)
+	if cfg.Deps != nil {
+		candidate.Deps = make(map[string]Dep, len(cfg.Deps))
+		for name, dep := range cfg.Deps {
+			candidate.Deps[name] = dep
+		}
+	}
+	candidate.Skills.Local = append([]string(nil), cfg.Skills.Local...)
+	candidate.Skills.GitHub = append([]GitHubSkills(nil), cfg.Skills.GitHub...)
+	for i := range candidate.Skills.GitHub {
+		candidate.Skills.GitHub[i].Include = append([]string(nil), cfg.Skills.GitHub[i].Include...)
+	}
+	candidate.Subagents.Paths = append([]string(nil), cfg.Subagents.Paths...)
+	if cfg.MCP != nil {
+		candidate.MCP = make(map[string]MCP, len(cfg.MCP))
+		for name, mcp := range cfg.MCP {
+			mcp.Args = append([]string(nil), mcp.Args...)
+			mcp.Env = cloneStringMap(mcp.Env)
+			candidate.MCP[name] = mcp
+		}
+	}
+	candidate.Antigravity.Plugins = cloneStringMap(cfg.Antigravity.Plugins)
+	candidate.Droid.CustomModels = append([]CustomModel(nil), cfg.Droid.CustomModels...)
+	return &candidate
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	clone := make(map[string]string, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
+}
+
+func sortedUniqueStrings(values []string) []string {
+	unique := make(map[string]bool, len(values))
+	for _, value := range values {
+		unique[value] = true
+	}
+	result := make([]string, 0, len(unique))
+	for value := range unique {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func commitSkillsMutation(
+	path string,
+	cfg *Config,
+	candidate *Config,
+	validateCandidate func(*Config) error,
+) error {
+	if err := validate(candidate); err != nil {
+		return fmt.Errorf("validating config before write: %w", err)
+	}
+	if validateCandidate != nil {
+		if err := validateCandidate(cloneConfig(candidate)); err != nil {
+			return err
+		}
+	}
+	if err := writeSkillsAtomic(path, candidate); err != nil {
+		return err
+	}
+	*cfg = *candidate
+	return nil
+}
+
+// writeSkillsAtomic replaces only Chai's skills configuration, preserving all
 // other user-authored manifest content.
-func UpdateSkillsAtomic(path string, cfg *Config) error {
+func writeSkillsAtomic(path string, cfg *Config) error {
 	if err := validate(cfg); err != nil {
 		return fmt.Errorf("validating config before write: %w", err)
 	}

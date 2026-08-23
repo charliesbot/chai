@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -173,7 +174,7 @@ func TestSaveAtomicOmitsEmptyMCPCWD(t *testing.T) {
 	}
 }
 
-func TestUpdateSkillsAtomicPreservesUnrelatedFormatting(t *testing.T) {
+func TestWriteSkillsAtomicPreservesUnrelatedFormatting(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chai.toml")
 	original := `# user-owned manifest
 platforms = ["cursor"]
@@ -206,7 +207,7 @@ env = { WS_UI_PORT = "9711" }
 		}},
 	}
 
-	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+	if err := writeSkillsAtomic(path, cfg); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := os.ReadFile(path)
@@ -231,7 +232,7 @@ env = { WS_UI_PORT = "9711" }
 	}
 }
 
-func TestUpdateSkillsAtomicPreservesManifestSymlink(t *testing.T) {
+func TestWriteSkillsAtomicPreservesManifestSymlink(t *testing.T) {
 	home := t.TempDir()
 	dotfiles := filepath.Join(home, "dotfiles")
 	if err := os.MkdirAll(dotfiles, 0755); err != nil {
@@ -251,7 +252,7 @@ func TestUpdateSkillsAtomicPreservesManifestSymlink(t *testing.T) {
 	}
 	cfg.Skills.Local = []string{"~/new"}
 
-	if err := UpdateSkillsAtomic(manifest, cfg); err != nil {
+	if err := writeSkillsAtomic(manifest, cfg); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Lstat(manifest)
@@ -270,7 +271,7 @@ func TestUpdateSkillsAtomicPreservesManifestSymlink(t *testing.T) {
 	}
 }
 
-func TestUpdateSkillsAtomicDoesNotAccumulateBlankLines(t *testing.T) {
+func TestWriteSkillsAtomicDoesNotAccumulateBlankLines(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chai.toml")
 	original := `platforms = ["cursor"]
 
@@ -300,7 +301,7 @@ args = ["-y", "@google-cloud/gcloud-mcp"]
 	}
 	cfg.Skills.Local = []string{"~/dotfiles/ai/skills"}
 
-	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+	if err := writeSkillsAtomic(path, cfg); err != nil {
 		t.Fatal(err)
 	}
 	first, err := os.ReadFile(path)
@@ -311,7 +312,7 @@ args = ["-y", "@google-cloud/gcloud-mcp"]
 		t.Fatalf("unexpected spacing before MCP table:\n%s", first)
 	}
 
-	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+	if err := writeSkillsAtomic(path, cfg); err != nil {
 		t.Fatal(err)
 	}
 	second, err := os.ReadFile(path)
@@ -323,7 +324,7 @@ args = ["-y", "@google-cloud/gcloud-mcp"]
 	}
 }
 
-func TestUpdateSkillsAtomicPreservesSeparatorAfterNonContiguousSkillsRange(t *testing.T) {
+func TestWriteSkillsAtomicPreservesSeparatorAfterNonContiguousSkillsRange(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chai.toml")
 	original := `platforms = ["cursor"]
 skills.local = []
@@ -347,7 +348,7 @@ command = "two"
 	}
 	cfg.Skills.Local = []string{"~/skills"}
 
-	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+	if err := writeSkillsAtomic(path, cfg); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := os.ReadFile(path)
@@ -360,7 +361,7 @@ command = "two"
 	}
 }
 
-func TestUpdateSkillsAtomicAppendsMissingSkillsSection(t *testing.T) {
+func TestWriteSkillsAtomicAppendsMissingSkillsSection(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chai.toml")
 	original := "platforms = ['cursor']\n\n# keep me\n[mcp.test]\ncommand = 'server'\n"
 	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
@@ -372,7 +373,7 @@ func TestUpdateSkillsAtomicAppendsMissingSkillsSection(t *testing.T) {
 	}
 	cfg.Skills.Local = []string{"~/skills"}
 
-	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+	if err := writeSkillsAtomic(path, cfg); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := os.ReadFile(path)
@@ -391,7 +392,7 @@ func TestUpdateSkillsAtomicAppendsMissingSkillsSection(t *testing.T) {
 	}
 }
 
-func TestUpdateSkillsAtomicRecognizesQuotedSkillsTables(t *testing.T) {
+func TestWriteSkillsAtomicRecognizesQuotedSkillsTables(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chai.toml")
 	original := `platforms = ["cursor"]
 
@@ -414,7 +415,7 @@ command = "server"
 	}
 	cfg.Skills.Local = []string{"~/new"}
 
-	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+	if err := writeSkillsAtomic(path, cfg); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := os.ReadFile(path)
@@ -426,7 +427,7 @@ command = "server"
 	}
 }
 
-func TestUpdateSkillsAtomicReplacesRootSkillsAssignments(t *testing.T) {
+func TestWriteSkillsAtomicReplacesRootSkillsAssignments(t *testing.T) {
 	for name, declaration := range map[string]string{
 		"dotted key":   `skills.local = ["~/old"]`,
 		"inline table": `skills = { local = ["~/old"] }`,
@@ -443,7 +444,7 @@ func TestUpdateSkillsAtomicReplacesRootSkillsAssignments(t *testing.T) {
 			}
 			cfg.Skills.Local = []string{"~/new"}
 
-			if err := UpdateSkillsAtomic(path, cfg); err != nil {
+			if err := writeSkillsAtomic(path, cfg); err != nil {
 				t.Fatal(err)
 			}
 			updated, err := os.ReadFile(path)
@@ -460,7 +461,7 @@ func TestUpdateSkillsAtomicReplacesRootSkillsAssignments(t *testing.T) {
 	}
 }
 
-func TestUpdateSkillsAtomicIgnoresTableTextInsideMultilineString(t *testing.T) {
+func TestWriteSkillsAtomicIgnoresTableTextInsideMultilineString(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chai.toml")
 	original := `platforms = ["cursor"]
 
@@ -480,7 +481,7 @@ local = [not a TOML expression here]
 	}
 	cfg.Skills.Local = []string{"~/new"}
 
-	if err := UpdateSkillsAtomic(path, cfg); err != nil {
+	if err := writeSkillsAtomic(path, cfg); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := os.ReadFile(path)
@@ -798,4 +799,83 @@ func searchString(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestNormalizeLocalSkillPath(t *testing.T) {
+	home := filepath.Join(string(filepath.Separator), "Users", "test")
+	cases := map[string]string{
+		filepath.Join(home, "skills") + string(filepath.Separator): "~/skills",
+		"~/skills/../skills": "~/skills",
+		"./skills/../skills": "./skills",
+		"./skills/..":        "./.",
+		"../shared/skills/":  "../shared/skills",
+		"../skills/..":       "../.",
+	}
+	for input, want := range cases {
+		if got, err := NormalizeLocalSkillPath(input, home); err != nil || got != want {
+			t.Fatalf("NormalizeLocalSkillPath(%q) = %q, %v; want %q", input, got, err, want)
+		}
+	}
+}
+
+func TestAddLocalSkillSourceAtomicValidationFailurePreservesConfig(t *testing.T) {
+	path := writeTempFile(t, "chai.toml", `platforms = ["cursor"]
+[skills]
+local = ["~/existing"]
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := cloneConfigForTest(cfg)
+	validationErr := errors.New("source validation failed")
+
+	err = AddLocalSkillSourceAtomic(path, cfg, "~/added", t.TempDir(), func(candidate *Config) error {
+		if !reflect.DeepEqual(candidate.Skills.Local, []string{"~/added", "~/existing"}) {
+			t.Fatalf("candidate local skills = %v", candidate.Skills.Local)
+		}
+		return validationErr
+	})
+	if !errors.Is(err, validationErr) {
+		t.Fatalf("error = %v, want %v", err, validationErr)
+	}
+	if !reflect.DeepEqual(cfg, original) {
+		t.Fatalf("config changed after validation failure:\n got: %#v\nwant: %#v", cfg, original)
+	}
+}
+
+func TestReconcileGitHubSkillSourceAtomicWriteFailurePreservesConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chai.toml")
+	if err := os.Mkdir(path, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{
+		Platforms: []string{"cursor"},
+		Skills: Skills{GitHub: []GitHubSkills{{
+			URL:     "https://github.com/example/skills",
+			Include: []string{"existing"},
+		}}},
+	}
+	original := cloneConfigForTest(cfg)
+
+	err := ReconcileGitHubSkillSourceAtomic(path, cfg, GitHubSkills{
+		URL:     "https://github.com/example/skills",
+		Include: []string{"added", "existing"},
+	}, nil)
+	if err == nil {
+		t.Fatal("expected manifest write failure")
+	}
+	if !reflect.DeepEqual(cfg, original) {
+		t.Fatalf("config changed after write failure:\n got: %#v\nwant: %#v", cfg, original)
+	}
+}
+
+func cloneConfigForTest(cfg *Config) *Config {
+	clone := *cfg
+	clone.Skills.Local = append([]string(nil), cfg.Skills.Local...)
+	clone.Skills.GitHub = append([]GitHubSkills(nil), cfg.Skills.GitHub...)
+	for i := range clone.Skills.GitHub {
+		clone.Skills.GitHub[i].Include = append([]string(nil), cfg.Skills.GitHub[i].Include...)
+	}
+	return &clone
 }
