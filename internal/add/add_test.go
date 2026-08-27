@@ -28,24 +28,6 @@ func TestParseArgsConsumesSkillNamesUntilNextOption(t *testing.T) {
 	}
 }
 
-func TestNormalizeLocalPath(t *testing.T) {
-	home := filepath.Join(string(filepath.Separator), "Users", "test")
-	manifestDir := filepath.Join(home, "dotfiles")
-	cases := map[string]string{
-		filepath.Join(home, "skills") + string(filepath.Separator): "~/skills",
-		"~/skills/../skills": "~/skills",
-		"./skills/../skills": "./skills",
-		"./skills/..":        "./.",
-		"../shared/skills/":  "../shared/skills",
-		"../skills/..":       "../.",
-	}
-	for input, want := range cases {
-		if got, err := NormalizeLocalPath(input, manifestDir, home); err != nil || got != want {
-			t.Fatalf("NormalizeLocalPath(%q) = %q, %v; want %q", input, got, err, want)
-		}
-	}
-}
-
 func TestRunWithHomeAddsLocalSourceAndSyncs(t *testing.T) {
 	home := t.TempDir()
 	manifest := filepath.Join(home, "chai.toml")

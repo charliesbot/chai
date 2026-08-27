@@ -127,44 +127,6 @@ func isLocalInput(source string) bool {
 		strings.HasPrefix(source, "./") || strings.HasPrefix(source, "../")
 }
 
-func NormalizeLocalPath(raw, manifestDir, home string) (string, error) {
-	if !isLocalInput(raw) {
-		return "", fmt.Errorf("local source must begin with /, ~/, ./, or ../")
-	}
-	switch {
-	case raw == "~":
-		return "~", nil
-	case strings.HasPrefix(raw, "~/"):
-		clean := filepath.Clean(raw[2:])
-		if clean == "." {
-			return "~", nil
-		}
-		return "~/" + filepath.ToSlash(clean), nil
-	case filepath.IsAbs(raw):
-		clean := filepath.Clean(raw)
-		relative, err := filepath.Rel(home, clean)
-		if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			if relative == "." {
-				return "~", nil
-			}
-			return "~/" + filepath.ToSlash(relative), nil
-		}
-		return clean, nil
-	case strings.HasPrefix(raw, "./"):
-		clean := filepath.Clean(raw)
-		if clean == "." {
-			return "./.", nil
-		}
-		return "./" + filepath.ToSlash(strings.TrimPrefix(clean, "./")), nil
-	default:
-		clean := filepath.Clean(raw)
-		if clean == ".." {
-			return "../.", nil
-		}
-		return filepath.ToSlash(clean), nil
-	}
-}
-
 func addLocal(ctx context.Context, cfg *config.Config, configPath, home string, request Request, opts Options) error {
 	if request.List {
 		return fmt.Errorf("--list is supported only for GitHub sources")
@@ -172,37 +134,20 @@ func addLocal(ctx context.Context, cfg *config.Config, configPath, home string, 
 	if len(request.Skills) > 0 {
 		return fmt.Errorf("--skill is supported only for GitHub sources")
 	}
-	normalized, err := NormalizeLocalPath(request.Source, filepath.Dir(configPath), home)
+	normalized, err := config.NormalizeLocalSkillPath(request.Source, home)
 	if err != nil {
 		return err
 	}
-	found := false
-	for _, existing := range cfg.Skills.Local {
-		canonical, err := NormalizeLocalPath(existing, filepath.Dir(configPath), home)
-		if err == nil && canonical == normalized {
-			found = true
-			break
+	if err := config.AddLocalSkillSourceAtomic(configPath, cfg, normalized, home, func(candidate *config.Config) error {
+		discovered, err := skill.DiscoverLocal(candidate.Skills.Local, filepath.Dir(configPath), home)
+		if err != nil {
+			return err
 		}
-	}
-	roots := append([]string(nil), cfg.Skills.Local...)
-	if !found {
-		roots = append(roots, normalized)
-	}
-	discovered, err := skill.DiscoverLocal(roots, filepath.Dir(configPath), home)
-	if err != nil {
-		return err
-	}
-	if err := rejectNameConflicts(discovered, nil, cfg, ""); err != nil {
-		return err
-	}
-	if !found {
-		cfg.Skills.Local = append(cfg.Skills.Local, normalized)
-		sort.Strings(cfg.Skills.Local)
-	}
-	if err := chaisync.ValidateSources(cfg, home); err != nil {
-		return err
-	}
-	if err := config.UpdateSkillsAtomic(configPath, cfg); err != nil {
+		if err := rejectNameConflicts(discovered, nil, candidate, ""); err != nil {
+			return err
+		}
+		return chaisync.ValidateSources(candidate, home)
+	}); err != nil {
 		return err
 	}
 	return runSync(ctx, cfg, home, opts)
@@ -238,10 +183,8 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 			}
 		}
 
-		existingIndex := -1
-		for i, source := range cfg.Skills.GitHub {
+		for _, source := range cfg.Skills.GitHub {
 			if source.URL == id.URL() {
-				existingIndex = i
 				if len(request.Skills) > 0 {
 					selected = append(selected, source.Include...)
 				}
@@ -253,30 +196,28 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 		return githubskill.AcquisitionDecision{
 			Names: selected,
 			Install: func() error {
-				locals, err := skill.DiscoverLocal(cfg.Skills.Local, filepath.Dir(configPath), home)
-				if err != nil {
-					return err
-				}
-				selectedSources := make([]skill.Source, len(selected))
-				for i, name := range selected {
-					selectedSources[i] = skill.Source{Name: name, Path: id.URL()}
-				}
-				if err := rejectNameConflicts(selectedSources, locals, cfg, id.URL()); err != nil {
-					return err
-				}
-				if err := chaisync.ValidateUnmanagedSkillDestinations(selected, home, cfg.Platforms); err != nil {
-					return err
-				}
-				if existingIndex >= 0 {
-					cfg.Skills.GitHub[existingIndex].Include = selected
-				} else {
-					cfg.Skills.GitHub = append(cfg.Skills.GitHub, config.GitHubSkills{URL: id.URL(), Include: selected})
-					sort.Slice(cfg.Skills.GitHub, func(i, j int) bool { return cfg.Skills.GitHub[i].URL < cfg.Skills.GitHub[j].URL })
-				}
-				if err := chaisync.ValidateSources(cfg, home); err != nil {
-					return err
-				}
-				return config.UpdateSkillsAtomic(configPath, cfg)
+				return config.ReconcileGitHubSkillSourceAtomic(
+					configPath,
+					cfg,
+					config.GitHubSkills{URL: id.URL(), Include: selected},
+					func(candidate *config.Config) error {
+						locals, err := skill.DiscoverLocal(candidate.Skills.Local, filepath.Dir(configPath), home)
+						if err != nil {
+							return err
+						}
+						selectedSources := make([]skill.Source, len(selected))
+						for i, name := range selected {
+							selectedSources[i] = skill.Source{Name: name, Path: id.URL()}
+						}
+						if err := rejectNameConflicts(selectedSources, locals, candidate, id.URL()); err != nil {
+							return err
+						}
+						if err := chaisync.ValidateUnmanagedSkillDestinations(selected, home, candidate.Platforms); err != nil {
+							return err
+						}
+						return chaisync.ValidateSources(candidate, home)
+					},
+				)
 			},
 		}, nil
 	}, func(phase githubskill.AcquisitionPhase, count int, operation func() error) error {
