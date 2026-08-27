@@ -61,7 +61,7 @@ url = "https://github.com/vercel-labs/agent-skills"
 include = ["frontend-design", "skill-creator"]
 
 [subagents]
-# Files copied to each platform's agents folder.
+# Files copied to each platform that supports subagents.
 paths = ["~/dotfiles/ai/subagents/*"]
 
 [mcp.angular-cli]
@@ -93,7 +93,7 @@ Local skill paths support `~`, absolute paths, and paths relative to
 | Icon | Platform        | AGENTS.md | MCP | Skills | Subagents |
 | ---- | --------------- | --------- | --- | ------ | --------- |
 | ●    | Claude          | ✅        | ✅  | ✅     | ✅        |
-| ◆    | Antigravity     | ✅        | ✅  | ✅     | ❌        |
+| ◆    | Antigravity     | ✅        | ✅  | ✅     | ✅        |
 | ✦    | Droid           | ✅        | ✅  | ✅     | ✅        |
 | ■    | OpenCode        | ✅        | ✅  | ✅     | ✅        |
 | ▲    | Codex           | ✅        | ✅  | ✅     | ✅        |
