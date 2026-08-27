@@ -130,14 +130,10 @@ func TestRunWithHomeAddsExplicitSkillsAndReconcilesAllSkills(t *testing.T) {
 	manifest := filepath.Join(home, "chai.toml")
 	cfg := &config.Config{Platforms: []string{"cursor"}}
 	source := testRepository(t)
-	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
+	redirectGitHubClone(t, source)
 	syncs := 0
 	var output bytes.Buffer
 	opts := Options{
-		CheckGit: func(context.Context) error { return nil },
-		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
-			return githubskill.Discover(ctx, cloneURL, repository)
-		},
 		Sync: func(context.Context, *config.Config, string, chaisync.Options) error {
 			syncs++
 			return nil
@@ -191,15 +187,11 @@ func TestRunWithHomeRemoteAddReportsProgressWithoutConfirmationSummary(t *testin
 	manifest := filepath.Join(home, "chai.toml")
 	cfg := &config.Config{Platforms: []string{"claude", "cursor"}}
 	source := testRepository(t)
-	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
+	redirectGitHubClone(t, source)
 	var labels []string
 	synced := false
 	var output bytes.Buffer
 	opts := Options{
-		CheckGit: func(context.Context) error { return nil },
-		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
-			return githubskill.Discover(ctx, cloneURL, repository)
-		},
 		Progress: func(label string, operation func() error) error {
 			labels = append(labels, label)
 			return operation()
@@ -240,12 +232,8 @@ func TestRunWithHomeRemoteAddRejectsUnmanagedDestinationsBeforeMutation(t *testi
 	cfg := &config.Config{Platforms: []string{"cursor"}}
 	writeSkill(t, filepath.Join(home, ".cursor", "skills", "one"), "one")
 	source := testRepository(t)
-	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
+	redirectGitHubClone(t, source)
 	opts := Options{
-		CheckGit: func(context.Context) error { return nil },
-		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
-			return githubskill.Discover(ctx, cloneURL, repository)
-		},
 		Progress: func(_ string, operation func() error) error { return operation() },
 	}
 
@@ -285,13 +273,8 @@ func TestRunWithHomeRemoteAddCompletesRealSync(t *testing.T) {
 	manifest := filepath.Join(home, "chai.toml")
 	cfg := &config.Config{Platforms: []string{"cursor"}}
 	source := testRepository(t)
-	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
-	opts := Options{
-		CheckGit: func(context.Context) error { return nil },
-		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
-			return githubskill.Discover(ctx, cloneURL, repository)
-		},
-	}
+	redirectGitHubClone(t, source)
+	opts := Options{}
 	if err := RunWithHome(context.Background(), cfg, manifest, home, []string{"example/skills", "--skill", "one", "--yes"}, opts); err != nil {
 		t.Fatal(err)
 	}
@@ -315,13 +298,8 @@ func TestRunWithHomeRejectsConflictBeforePromotion(t *testing.T) {
 	writeSkill(t, local, "one")
 	cfg := &config.Config{Platforms: []string{"cursor"}, Skills: config.Skills{Local: []string{local}}}
 	source := testRepository(t)
-	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
-	opts := Options{
-		CheckGit: func(context.Context) error { return nil },
-		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
-			return githubskill.Discover(ctx, cloneURL, repository)
-		},
-	}
+	redirectGitHubClone(t, source)
+	opts := Options{}
 	err := RunWithHome(context.Background(), cfg, manifest, home, []string{"example/skills", "--skill", "one"}, opts)
 	if err == nil {
 		t.Fatal("expected name conflict")
@@ -353,17 +331,12 @@ func TestRunWithHomeRestoresExistingCacheWhenManifestWriteFails(t *testing.T) {
 		}}},
 	}
 	source := testRepository(t)
-	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
+	redirectGitHubClone(t, source)
 	configPath := filepath.Join(home, "manifest-is-a-directory")
 	if err := os.Mkdir(configPath, 0755); err != nil {
 		t.Fatal(err)
 	}
-	opts := Options{
-		CheckGit: func(context.Context) error { return nil },
-		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
-			return githubskill.Discover(ctx, cloneURL, repository)
-		},
-	}
+	opts := Options{}
 	if err := RunWithHome(context.Background(), cfg, configPath, home, []string{"example/skills", "--skill", "one", "--yes"}, opts); err == nil {
 		t.Fatal("expected manifest write failure")
 	}
@@ -382,14 +355,27 @@ func TestRunWithHomeSyncsWhenPreviousCacheCleanupFails(t *testing.T) {
 	manifest := filepath.Join(home, "chai.toml")
 	cfg := &config.Config{Platforms: []string{"cursor"}}
 	source := testRepository(t)
-	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
+	redirectGitHubClone(t, source)
 	synced := false
 	opts := Options{
-		CheckGit: func(context.Context) error { return nil },
-		Discover: func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
-			return githubskill.Discover(ctx, cloneURL, repository)
+		Acquire: func(_ context.Context, home string, id githubskill.Identity, decide githubskill.AcquisitionDecisionFunc, _ githubskill.AcquisitionProgressFunc) (githubskill.Discovery, error) {
+			discovery := githubskill.Discovery{Candidates: []githubskill.Candidate{{Name: "one"}}}
+			decision, err := decide(discovery)
+			if err != nil {
+				return discovery, err
+			}
+			cache := githubskill.CacheDir(home, id)
+			writeSkill(t, filepath.Join(githubskill.RepositoryDir(cache), "one"), "one")
+			if err := githubskill.CompleteStaging(cache, id, map[string]string{"one": "one"}, "new-commit"); err != nil {
+				return discovery, err
+			}
+			if decision.Install != nil {
+				if err := decision.Install(); err != nil {
+					return discovery, err
+				}
+			}
+			return discovery, &githubskill.CleanupError{Err: assertError("cleanup failed")}
 		},
-		CommitPromotion: func(githubskill.Promotion) error { return assertError("cleanup failed") },
 		Sync: func(context.Context, *config.Config, string, chaisync.Options) error {
 			synced = true
 			return nil
@@ -415,17 +401,14 @@ func TestRunWithHomeMalformedCandidatePolicy(t *testing.T) {
 	}
 	runGit(t, source, "add", ".")
 	runGit(t, source, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "broken candidate")
-	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
-	discover := func(ctx context.Context, _ githubskill.Identity, repository string) (githubskill.Discovery, error) {
-		return githubskill.Discover(ctx, cloneURL, repository)
-	}
+	redirectGitHubClone(t, source)
 
 	explicitHome := t.TempDir()
 	explicitManifest := filepath.Join(explicitHome, "chai.toml")
 	explicitCfg := &config.Config{Platforms: []string{"cursor"}}
 	if err := RunWithHome(context.Background(), explicitCfg, explicitManifest, explicitHome,
 		[]string{"example/skills", "--skill", "one", "--yes"},
-		Options{CheckGit: func(context.Context) error { return nil }, Discover: discover, Sync: func(context.Context, *config.Config, string, chaisync.Options) error { return nil }}); err != nil {
+		Options{Sync: func(context.Context, *config.Config, string, chaisync.Options) error { return nil }}); err != nil {
 		t.Fatalf("explicit selection should ignore unrelated malformed candidate: %v", err)
 	}
 
@@ -434,7 +417,7 @@ func TestRunWithHomeMalformedCandidatePolicy(t *testing.T) {
 	allCfg := &config.Config{Platforms: []string{"cursor"}}
 	err := RunWithHome(context.Background(), allCfg, allManifest, allHome,
 		[]string{"example/skills", "--yes"},
-		Options{CheckGit: func(context.Context) error { return nil }, Discover: discover})
+		Options{})
 	if err == nil || !strings.Contains(err.Error(), "cannot add all") {
 		t.Fatalf("add-all malformed candidate error = %v", err)
 	}
@@ -479,4 +462,13 @@ func runGit(t *testing.T, dir string, args ...string) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %s: %v", args, output, err)
 	}
+}
+
+func redirectGitHubClone(t *testing.T, source string) {
+	t.Helper()
+	cloneURL := (&url.URL{Scheme: "file", Path: source}).String()
+	t.Setenv("GIT_ALLOW_PROTOCOL", "file")
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "url."+cloneURL+".insteadOf")
+	t.Setenv("GIT_CONFIG_VALUE_0", "https://github.com/example/skills")
 }
