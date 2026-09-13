@@ -162,3 +162,49 @@ func writeFile(t *testing.T, path, content string) {
 		t.Fatalf("writing %s: %v", path, err)
 	}
 }
+
+func TestNamespacedMetadata(t *testing.T) {
+	for _, name := range []string{"stitch::react-components", "google::stitch::design", "a::" + strings.Repeat("b", 61)} {
+		t.Run(name, func(t *testing.T) {
+			metadata, err := ParseMetadata([]byte("---\nname: " + name + "\n---\n"))
+			if err != nil || metadata.Name != name {
+				t.Fatalf("metadata = %+v, error = %v; want identity %q", metadata, err, name)
+			}
+		})
+	}
+	for _, name := range []string{"::skill", "stitch::", "stitch:skill", "stitch:::skill", "stitch::::skill", "Stitch::skill", "stitch::bad--name", "stitch::../skill", "stitch::a/b", "stitch::a\\b", "stitch::a b", "stitch::a\n", "a::" + strings.Repeat("b", 62)} {
+		if ValidName(name) {
+			t.Errorf("accepted invalid name %q", name)
+		}
+	}
+}
+
+func TestNamespacedDestinationCollisions(t *testing.T) {
+	sources := []Source{
+		{Name: "stitch::react-components", Path: "remote-a"},
+		{Name: "stitch-react-components", Path: "local-b"},
+		{Name: "stitch::react::components", Path: "remote-c"},
+	}
+	err := ValidateUniqueNames(sources)
+	if err == nil {
+		t.Fatal("expected destination collision")
+	}
+	for _, want := range []string{"destination", "stitch-react-components", "stitch::react-components", "stitch::react::components", "remote-a", "local-b", "remote-c"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err, want)
+		}
+	}
+}
+
+func TestDirectoryName(t *testing.T) {
+	for name, want := range map[string]string{
+		"plain-skill":              "plain-skill",
+		"stitch::react-components": "stitch-react-components",
+		"google::stitch::design":   "google-stitch-design",
+		strings.Repeat("a", 64):    strings.Repeat("a", 64),
+	} {
+		if got := DirectoryName(name); got != want {
+			t.Errorf("DirectoryName(%q) = %q, want %q", name, got, want)
+		}
+	}
+}

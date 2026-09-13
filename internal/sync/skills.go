@@ -29,7 +29,7 @@ func ValidateUnmanagedSkillDestinations(names []string, home string, platformNam
 	var collisions []string
 	for _, p := range platform.ForNames(platformNames) {
 		for _, name := range names {
-			path := filepath.Join(home, p.SkillsDir, name)
+			path := filepath.Join(home, p.SkillsDir, skill.DirectoryName(name))
 			if seen[path] {
 				continue
 			}
@@ -69,7 +69,7 @@ func syncResolvedSkills(skills []skill.Source, home string, platforms []platform
 		destDir := filepath.Join(home, p.SkillsDir)
 		if opts.DryRun {
 			for _, src := range skills {
-				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, src.Name)), ui.Muted.Render("→ "+src.Path))
+				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, skill.DirectoryName(src.Name))), ui.Muted.Render("→ "+src.Path))
 			}
 		} else {
 			platformChanges, err := syncSkillCopies(skills, destDir, hashDB, opts)
@@ -222,7 +222,7 @@ func syncSkillCopies(sources []skill.Source, destDir string, hashDB hash.DB, opt
 
 	expected := make(map[string]bool)
 	for _, src := range sources {
-		expected[filepath.Join(destDir, src.Name)] = true
+		expected[filepath.Join(destDir, skill.DirectoryName(src.Name))] = true
 	}
 	stale, err := removeStaleManagedDirs(destDir, expected, hashDB, opts)
 	for _, name := range stale.removed {
@@ -236,7 +236,7 @@ func syncSkillCopies(sources []skill.Source, destDir string, hashDB hash.DB, opt
 	}
 
 	for _, src := range sources {
-		dest := filepath.Join(destDir, src.Name)
+		dest := filepath.Join(destDir, skill.DirectoryName(src.Name))
 		previousHash, managed := hashDB[dest]
 		_, statErr := os.Stat(dest)
 		existed := statErr == nil
@@ -265,7 +265,7 @@ func syncSkillCopies(sources []skill.Source, destDir string, hashDB hash.DB, opt
 			}
 		}
 
-		staging, err := os.MkdirTemp(destDir, "."+src.Name+".tmp-")
+		staging, err := os.MkdirTemp(destDir, "."+skill.DirectoryName(src.Name)+".tmp-")
 		if err != nil {
 			return changes, fmt.Errorf("creating staging directory for %s: %w", dest, err)
 		}
