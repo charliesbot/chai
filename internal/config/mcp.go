@@ -78,56 +78,89 @@ func ResolveMCP(servers map[string]MCP, home string) (ResolvedMCP, error) {
 	}
 	for _, name := range sortedKeys(servers) {
 		m := servers[name]
-		resolved, preview := m, m
-		resolve := func(raw string, secret bool) (string, string, error) {
-			value, err := expandMCPValue(raw, lookup)
-			if err != nil {
-				return "", "", fmt.Errorf("mcp.%s: %w", name, err)
-			}
-			printable := value
-			if secret || strings.Contains(raw, "${") {
-				printable = "<redacted>"
-			}
-			return value, printable, nil
+		resolved, err := expandMCP(m, lookup)
+		if err != nil {
+			return result, fmt.Errorf("mcp.%s: %w", name, err)
 		}
-		for _, field := range []struct {
-			raw            string
-			value, preview *string
-		}{
-			{m.Command, &resolved.Command, &preview.Command}, {m.URL, &resolved.URL, &preview.URL}, {m.CWD, &resolved.CWD, &preview.CWD},
-		} {
-			*field.value, *field.preview, err = resolve(field.raw, false)
-			if err != nil {
-				return result, err
-			}
-		}
-		resolved.Args, preview.Args = make([]string, len(m.Args)), make([]string, len(m.Args))
-		for i, arg := range m.Args {
-			resolved.Args[i], preview.Args[i], err = resolve(arg, false)
-			if err != nil {
-				return result, err
-			}
-		}
-		for _, field := range []struct {
-			raw            map[string]string
-			value, preview *map[string]string
-		}{
-			{m.Env, &resolved.Env, &preview.Env}, {m.Headers, &resolved.Headers, &preview.Headers},
-		} {
-			*field.value, *field.preview = make(map[string]string), make(map[string]string)
-			for _, key := range sortedKeys(field.raw) {
-				(*field.value)[key], (*field.preview)[key], err = resolve(field.raw[key], true)
-				if err != nil {
-					return result, err
-				}
-			}
-		}
-		result.Values[name], result.Preview[name] = resolved, preview
+		result.Values[name] = resolved
+		result.Preview[name] = previewMCP(m, resolved)
 	}
 	if err := validateMCP(result.Values, false); err != nil {
 		return result, err
 	}
 	return result, nil
+}
+
+func expandMCP(m MCP, lookup func(string) (string, bool)) (MCP, error) {
+	resolved := m
+	var err error
+	resolved.Command, err = expandMCPValue(m.Command, lookup)
+	if err != nil {
+		return MCP{}, err
+	}
+	resolved.URL, err = expandMCPValue(m.URL, lookup)
+	if err != nil {
+		return MCP{}, err
+	}
+	resolved.CWD, err = expandMCPValue(m.CWD, lookup)
+	if err != nil {
+		return MCP{}, err
+	}
+	resolved.Args = make([]string, len(m.Args))
+	for i, arg := range m.Args {
+		resolved.Args[i], err = expandMCPValue(arg, lookup)
+		if err != nil {
+			return MCP{}, err
+		}
+	}
+	resolved.Env, err = expandMCPMap(m.Env, lookup)
+	if err != nil {
+		return MCP{}, err
+	}
+	resolved.Headers, err = expandMCPMap(m.Headers, lookup)
+	if err != nil {
+		return MCP{}, err
+	}
+	return resolved, nil
+}
+
+func expandMCPMap(values map[string]string, lookup func(string) (string, bool)) (map[string]string, error) {
+	resolved := make(map[string]string)
+	for _, key := range sortedKeys(values) {
+		value, err := expandMCPValue(values[key], lookup)
+		if err != nil {
+			return nil, err
+		}
+		resolved[key] = value
+	}
+	return resolved, nil
+}
+
+func previewMCP(original, resolved MCP) MCP {
+	preview := resolved
+	preview.Command = previewMCPValue(original.Command, resolved.Command)
+	preview.URL = previewMCPValue(original.URL, resolved.URL)
+	preview.CWD = previewMCPValue(original.CWD, resolved.CWD)
+	preview.Args = make([]string, len(resolved.Args))
+	for i, arg := range original.Args {
+		preview.Args[i] = previewMCPValue(arg, resolved.Args[i])
+	}
+	preview.Env = make(map[string]string)
+	for key := range original.Env {
+		preview.Env[key] = "<redacted>"
+	}
+	preview.Headers = make(map[string]string)
+	for key := range original.Headers {
+		preview.Headers[key] = "<redacted>"
+	}
+	return preview
+}
+
+func previewMCPValue(original, resolved string) string {
+	if strings.Contains(original, "${") {
+		return "<redacted>"
+	}
+	return resolved
 }
 
 func readPrivateEnv(path string) (map[string]string, error) {
