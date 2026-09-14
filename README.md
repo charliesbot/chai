@@ -82,22 +82,6 @@ max_output_tokens = 4096
 Local skill paths support `~`, absolute paths, and paths relative to
 `chai.toml`. Skill names come from `SKILL.md` frontmatter, not directory names.
 
-Namespaced names are supported for local and GitHub skills:
-
-```bash
-chai add google-labs-code/stitch-skills --skill stitch::react-components
-```
-
-Names use lowercase kebab-case segments separated by `::`, with a 64-character
-total limit. Selections preserve the full name, while installation directories
-replace `::` with `-` (for example, `stitch-react-components`). Chai rejects
-selections that map to the same directory. Existing unnamespaced skills keep
-their paths.
-
-Upstream `SKILL.md` files are copied unchanged. Target agents may impose stricter
-frontmatter rules. This supports namespaces, not every name accepted by Vercel
-Skills, and does not install a skill's MCP or plugin dependencies.
-
 ## Sync strategy
 
 - **Instructions** are merged in declaration order and copied to each supported target. Instructions, skills, and subagents use dirty detection to protect local edits.
