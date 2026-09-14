@@ -126,17 +126,26 @@ Validation rules:
 - Every GitHub entry must use a canonical `https://github.com/owner/repo` URL.
 - Every GitHub entry must contain at least one explicit skill name in `include`.
 - `include` must not contain `*`.
-- Skill names must use lowercase ASCII letters, digits, and single hyphens. A
-  name must start and end with a letter or digit, contain no consecutive
-  hyphens, and be at most 64 characters.
+- Skill names contain one or more kebab-case segments separated by `::`.
+  Each segment uses lowercase ASCII letters, digits, and single hyphens, starts
+  and ends with a letter or digit, and contains no consecutive hyphens.
+  The entire name, including namespace separators, is at most 64 characters.
 - Duplicate local paths, case-insensitively equivalent repository URLs, and
   skill names within one repository are invalid.
 
 The authoritative skill identity is the `name` field in `SKILL.md` frontmatter,
 not the containing directory name. The frontmatter name must satisfy the safe
 grammar above and must exactly match a requested `include` value. Chai uses the
-validated name for destination and cache paths. Directory names may differ and
-may move without changing the manifest.
+original name for manifest selections and cache identity. Installation directory
+names replace each `::` with `-`: `stitch::react-components` installs into
+`stitch-react-components`. Existing unnamespaced names retain their paths.
+Repository directory names may differ and may move without changing the manifest.
+
+This rule applies equally to local and GitHub skills. Chai copies upstream
+`SKILL.md` content unchanged, including the namespaced frontmatter. Acceptance
+by Chai does not guarantee that every target agent accepts that frontmatter.
+This is namespace support, not full parity with Vercel Skills' broader name
+handling. Chai does not install plugin dependencies or MCP servers from skills.
 
 ## Local source discovery
 
@@ -459,12 +468,17 @@ run where practical.
 
 ## Name conflicts
 
-Platform skill directories identify skills by name. Every resolved skill name
-must therefore be globally unique. Chai must detect duplicates across GitHub
-repositories, across local roots, among children of one local collection, and
-through overlapping local paths. It fails with every conflicting source
-location rather than silently overwriting one skill with another. Aliasing is
-out of scope for the first version.
+Every resolved skill identity and derived installation directory must be globally
+unique. Chai detects duplicate identities and destination collisions across
+GitHub repositories, across local roots, among children of one local collection,
+and through overlapping local paths. For example, `stitch::react-components`,
+`stitch::react::components`, and `stitch-react-components` cannot be selected
+together because they all install into `stitch-react-components`.
+
+Conflicts fail validation before manifest changes or platform writes, reporting
+the conflicting sources rather than silently overwriting or renaming a skill.
+Unmanaged destination checks, dirty detection, and stale-output cleanup all use
+the derived directory name. Aliasing remains out of scope.
 
 ## Relationship to dependencies
 

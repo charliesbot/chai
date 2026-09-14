@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var namePattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+var namePattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*(?:::[a-z0-9]+(?:-[a-z0-9]+)*)*$`)
 
 type Source struct {
 	Name string
@@ -25,6 +25,12 @@ type Metadata struct {
 
 func ValidName(name string) bool {
 	return len(name) <= 64 && namePattern.MatchString(name)
+}
+
+// DirectoryName derives the installation directory from a validated skill name.
+// Keep the original name for metadata, manifest selections, and cache identity.
+func DirectoryName(name string) string {
+	return strings.ReplaceAll(name, "::", "-")
 }
 
 func DiscoverLocal(roots []string, baseDir, home string) ([]Source, error) {
@@ -140,18 +146,29 @@ func ParseMetadata(data []byte) (Metadata, error) {
 }
 
 func ValidateUniqueNames(sources []Source) error {
-	conflicts := duplicateNameConflicts(sources)
-	if len(conflicts) == 0 {
-		return nil
+	names := make(map[string][]string)
+	for _, source := range sources {
+		if !ValidName(source.Name) {
+			return fmt.Errorf("invalid skill name %q at %s", source.Name, source.Path)
+		}
+		names[source.Name] = append(names[source.Name], source.Path)
 	}
-	return fmt.Errorf("duplicate skill name conflicts: %s", strings.Join(conflicts, "; "))
+	if conflicts := formatConflicts(names); len(conflicts) > 0 {
+		return fmt.Errorf("duplicate skill name conflicts: %s", strings.Join(conflicts, "; "))
+	}
+
+	destinations := make(map[string][]string)
+	for _, source := range sources {
+		dir := DirectoryName(source.Name)
+		destinations[dir] = append(destinations[dir], fmt.Sprintf("%q at %s", source.Name, source.Path))
+	}
+	if conflicts := formatConflicts(destinations); len(conflicts) > 0 {
+		return fmt.Errorf("skill destination conflicts: %s", strings.Join(conflicts, "; "))
+	}
+	return nil
 }
 
-func duplicateNameConflicts(sources []Source) []string {
-	locations := make(map[string][]string)
-	for _, source := range sources {
-		locations[source.Name] = append(locations[source.Name], source.Path)
-	}
+func formatConflicts(locations map[string][]string) []string {
 	var conflicts []string
 	for name, paths := range locations {
 		if len(paths) > 1 {
