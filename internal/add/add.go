@@ -116,6 +116,11 @@ func RunWithHome(ctx context.Context, cfg *config.Config, configPath, home strin
 	if request.List && len(request.Skills) > 0 {
 		return fmt.Errorf("--list cannot be combined with --skill")
 	}
+	if !request.List {
+		if _, err := config.ResolveMCP(cfg.MCP, home); err != nil {
+			return err
+		}
+	}
 	if isLocalInput(request.Source) {
 		return addLocal(ctx, cfg, configPath, home, request, opts)
 	}

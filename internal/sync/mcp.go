@@ -20,6 +20,8 @@ import (
 // mcpEntry is the JSON structure written per MCP server for standard-format platforms
 // (Claude, Antigravity).
 type mcpEntry struct {
+	URL     string            `json:"-"`
+	Headers map[string]string `json:"-"`
 	Command string            `json:"command"`
 	Args    []string          `json:"args"`
 	Env     map[string]string `json:"env,omitempty"`
@@ -65,7 +67,19 @@ type cursorMCPEntry struct {
 // syncMCP writes MCP server definitions to each platform's config file,
 // using each platform's preferred entry shape.
 func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dryRun bool) error {
-	if len(cfg.MCP) == 0 {
+	resolved, err := config.ResolveMCP(cfg.MCP, home)
+	if err != nil {
+		return err
+	}
+	return syncResolvedMCP(resolved, home, platforms, dryRun)
+}
+
+func syncResolvedMCP(resolved config.ResolvedMCP, home string, platforms []platform.Platform, dryRun bool) error {
+	mcps := resolved.Values
+	if dryRun {
+		mcps = resolved.Preview
+	}
+	if len(mcps) == 0 {
 		return nil
 	}
 	platforms = platformsWithMCP(platforms)
@@ -73,7 +87,7 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 		return nil
 	}
 
-	standard, err := buildMCPServers(cfg.MCP, home)
+	standard, err := buildMCPServers(mcps, home)
 	if err != nil {
 		return err
 	}
@@ -127,6 +141,11 @@ func syncMCP(cfg *config.Config, home string, platforms []platform.Platform, dry
 		default:
 			for name, e := range standard {
 				out[name] = e
+			}
+		}
+		for name, entry := range standard {
+			if entry.URL != "" {
+				out[name] = remoteMCPEntry(p, entry)
 			}
 		}
 		return out
@@ -253,8 +272,9 @@ func buildMCPServers(mcps map[string]config.MCP, home string) (map[string]mcpEnt
 	servers := make(map[string]mcpEntry, len(mcps))
 	for name, m := range mcps {
 		entry := mcpEntry{
+			URL: m.URL, Headers: m.Headers,
 			Command: m.Command,
-			Args:    m.Args,
+			Args:    append([]string(nil), m.Args...),
 			Env:     m.Env,
 		}
 		// Resolve @name in args (only for args starting with @)
@@ -273,7 +293,7 @@ func buildMCPServers(mcps map[string]config.MCP, home string) (map[string]mcpEnt
 		if m.CWD != "" {
 			resolved, err := resolve.PathWithHome(m.CWD, home)
 			if err != nil {
-				return nil, fmt.Errorf("resolving cwd for mcp %q: %w", name, err)
+				return nil, fmt.Errorf("resolving cwd for mcp %q: invalid path (value omitted)", name)
 			}
 			entry.CWD = resolved
 		}
@@ -371,7 +391,7 @@ func mergeMCPIntoTOMLFile(path, mcpKey string, servers map[string]any) error {
 	if err == nil {
 		if len(data) > 0 {
 			if err := toml.Unmarshal(data, &existing); err != nil {
-				return fmt.Errorf("parsing existing config %s: %w", path, err)
+				return fmt.Errorf("parsing existing config %s: invalid syntax (contents omitted)", path)
 			}
 		}
 	} else if !os.IsNotExist(err) {
@@ -385,7 +405,7 @@ func mergeMCPIntoTOMLFile(path, mcpKey string, servers map[string]any) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	return atomicWrite(path, out)
+	return atomicWritePrivate(path, out)
 }
 
 // mergeMCPIntoFile reads an existing JSON file, replaces the mcpKey, and writes it back atomically.
@@ -402,7 +422,7 @@ func replaceJSONKey(path, key string, value any) error {
 		// treat zero-byte files as a fresh start rather than a parse error.
 		if len(data) > 0 {
 			if err := json.Unmarshal(data, &existing); err != nil {
-				return fmt.Errorf("parsing existing config %s: %w", path, err)
+				return fmt.Errorf("parsing existing config %s: invalid syntax (contents omitted)", path)
 			}
 			if existing == nil {
 				return fmt.Errorf("parsing existing config %s: expected JSON object", path)
@@ -424,5 +444,55 @@ func replaceJSONKey(path, key string, value any) error {
 	}
 	out = append(out, '\n')
 
-	return atomicWrite(path, out)
+	return atomicWritePrivate(path, out)
+}
+
+// remoteMCPEntry translates the shared HTTP transport into each client's schema.
+func remoteMCPEntry(p platform.Platform, entry mcpEntry) map[string]any {
+	result := map[string]any{"url": entry.URL}
+	headerKey := "headers"
+	switch p.MCP.Format {
+	case platform.MCPFormatAntigravity:
+		delete(result, "url")
+		result["serverUrl"] = entry.URL
+	case platform.MCPFormatCodex:
+		headerKey = "http_headers"
+	case platform.MCPFormatOpenCode:
+		result["type"], result["enabled"] = "remote", true
+		if len(entry.Headers) > 0 {
+			result["oauth"] = false
+		}
+	case platform.MCPFormatDroid:
+		result["type"], result["disabled"] = "http", false
+		if len(entry.Headers) > 0 {
+			result["oauth"] = false
+		}
+	case platform.MCPFormatStandard:
+		result["type"] = "http"
+	}
+	if len(entry.Headers) > 0 {
+		result[headerKey] = entry.Headers
+	}
+	return result
+}
+
+// All MCP config files are private, including staging files. Rename replaces
+// existing permissive files rather than leaving secrets readable to other users.
+func atomicWritePrivate(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".chai-mcp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }

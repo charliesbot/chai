@@ -30,6 +30,9 @@ func Run(ctx context.Context, cfg *config.Config, opts Options) error {
 }
 
 func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Options) error {
+	if _, err := config.ResolveMCP(cfg.MCP, home); err != nil {
+		return err
+	}
 	var cleanupWarnings []error
 	var refreshErr error
 	if err := validateSourceNames(cfg, home); err != nil {

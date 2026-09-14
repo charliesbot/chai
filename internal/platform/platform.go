@@ -13,6 +13,9 @@ const (
 	//   {"command": "npx", "args": [...], "env": {...}, "cwd": "..."}
 	MCPFormatStandard MCPFormat = "standard"
 
+	// Antigravity uses serverUrl for remote MCP endpoints.
+	MCPFormatAntigravity MCPFormat = "antigravity"
+
 	// MCPFormatOpenCode is the OpenCode shape:
 	//   {"type": "local", "command": ["npx", ...], "environment": {...}, "enabled": true}
 	MCPFormatOpenCode MCPFormat = "opencode"
@@ -89,7 +92,7 @@ func All() []Platform {
 			MCP: &MCPTarget{
 				ConfigPath: filepath.Join(".gemini", "config", "mcp_config.json"),
 				Key:        "mcpServers",
-				Format:     MCPFormatStandard,
+				Format:     MCPFormatAntigravity,
 			},
 		},
 		{

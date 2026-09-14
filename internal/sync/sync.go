@@ -39,6 +39,10 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		fmt.Println()
 	}
 
+	resolvedMCP, err := config.ResolveMCP(cfg.MCP, home)
+	if err != nil {
+		return err
+	}
 	platforms := platform.ForNames(cfg.Platforms)
 	resolvedSkills, err := resolveConfiguredSkills(cfg, home)
 	if err != nil {
@@ -70,7 +74,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return persistHashError(hashDB, home, opts.DryRun, err)
 	}
 
-	if err := syncMCP(cfg, home, platforms, opts.DryRun); err != nil {
+	if err := syncResolvedMCP(resolvedMCP, home, platforms, opts.DryRun); err != nil {
 		return persistHashError(hashDB, home, opts.DryRun, err)
 	}
 
