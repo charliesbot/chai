@@ -63,9 +63,11 @@ type Subagents struct {
 }
 
 type MCP struct {
-	Command string            `toml:"command"`
-	Args    []string          `toml:"args"`
-	Env     map[string]string `toml:"env"`
+	URL     string            `toml:"url,omitempty"`
+	Headers map[string]string `toml:"headers,omitempty"`
+	Command string            `toml:"command,omitempty"`
+	Args    []string          `toml:"args,omitempty"`
+	Env     map[string]string `toml:"env,omitempty"`
 	CWD     string            `toml:"cwd,omitempty"`
 }
 
@@ -99,9 +101,18 @@ func load(path string, data []byte) (*Config, error) {
 	if err := decoder.Decode(&raw); err != nil {
 		var strictErr *toml.StrictMissingError
 		if errors.As(err, &strictErr) {
-			return nil, fmt.Errorf("parsing %s: %s", path, strictErr.String())
+			var fields []string
+			for _, field := range strictErr.Errors {
+				fields = append(fields, strings.Join(field.Key(), "."))
+			}
+			return nil, fmt.Errorf("parsing %s: missing field or table: %s", path, strings.Join(fields, ", "))
 		}
-		return nil, fmt.Errorf("parsing %s: %w", path, err)
+		var decodeErr *toml.DecodeError
+		if errors.As(err, &decodeErr) {
+			row, column := decodeErr.Position()
+			return nil, fmt.Errorf("parsing %s at %d:%d: invalid TOML or field type (contents omitted)", path, row, column)
+		}
+		return nil, fmt.Errorf("parsing %s: invalid TOML (contents omitted)", path)
 	}
 
 	deps, err := parseDeps(raw.Deps)
@@ -254,6 +265,9 @@ func validate(cfg *Config) error {
 		seenPlatforms[key] = true
 	}
 
+	if err := ValidateMCP(cfg.MCP); err != nil {
+		return err
+	}
 	return validateSkills(cfg.Skills)
 }
 

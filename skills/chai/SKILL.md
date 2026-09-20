@@ -43,6 +43,33 @@ Resolve `~` from the user's home directory and relative paths from the directory
 
 Edit `~/chai.toml` directly for configuration changes without a dedicated command. Preserve its existing formatting and unrelated content.
 
+## MCP transports and secrets
+
+Use `[mcp.<name>]` with either `command` (stdio) or `url` (remote HTTP).
+Remote entries accept an arbitrary `headers` map, but not `args`, `env`, or `cwd`.
+Chai translates these shared fields into each platform's format; use `url`, not
+platform-specific names such as `serverUrl` or `http_headers`, in the manifest.
+
+Keep credentials out of the tracked manifest. Reference them as `${NAME}` in MCP
+string values, with actual values in the private, untracked
+`~/.config/chai/.env` file or the invoking process environment. Process values
+win, even when empty. The file is optional and must be owner-only (`0600`);
+Chai neither searches project `.env` files nor executes shell code. Single-quote
+secret values in the dotenv file to preserve literal dollar signs.
+
+When setting up secrets, create the file with restrictive permissions before
+asking the user to enter keys locally. Inspect names and permissions without
+printing values. Never ask the user to paste keys into chat or put them in a
+command argument. Keep `${NAME}` references intact when editing or saving TOML.
+Only MCP string values are expanded; use `$$` to escape a dollar sign.
+
+Missing or empty references stop sync before writes. Use `chai sync --dry-run`
+for a redacted preview, then sync the approved configuration. Generated MCP files
+contain plaintext credentials with `0600` permissions and must stay out of Git.
+Key rotation requires another sync. Header-configured remote entries disable
+OAuth discovery in OpenCode and Droid; this schema does not configure OAuth or
+legacy SSE-only transports.
+
 ## Protect managed files
 
 Do not directly edit:
