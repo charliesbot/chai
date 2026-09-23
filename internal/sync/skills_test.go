@@ -73,10 +73,13 @@ func TestSyncSkills_ReportsChangesAndCollapsesUnmanagedSkills(t *testing.T) {
 		"\x1b[38;5;42m+ adaptive\x1b[0m",
 		"\x1b[38;5;220m~ web-dev\x1b[0m",
 		"\x1b[38;5;196m- old-skill\x1b[0m",
-		"2 unmanaged skills preserved",
+		"2 unmanaged skills left untouched · inspect with chai doctor",
 	)
 	if strings.Contains(output, "custom-") || strings.Contains(output, "agents-md") {
 		t.Errorf("output should omit preserved and unchanged skill names:\n%s", output)
+	}
+	if strings.Contains(output, "!") {
+		t.Errorf("unmanaged skills should be informational, not a warning:\n%s", output)
 	}
 }
 

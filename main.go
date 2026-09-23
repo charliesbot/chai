@@ -12,6 +12,7 @@ import (
 	chaiadd "github.com/charliesbot/chai/internal/add"
 	"github.com/charliesbot/chai/internal/clean"
 	"github.com/charliesbot/chai/internal/config"
+	"github.com/charliesbot/chai/internal/doctor"
 	chaiinit "github.com/charliesbot/chai/internal/init"
 	chaisync "github.com/charliesbot/chai/internal/sync"
 	"github.com/charliesbot/chai/internal/update"
@@ -114,6 +115,26 @@ func main() {
 		},
 	}
 
+	doctorCmd := &ffcli.Command{
+		Name:       "doctor",
+		ShortUsage: "chai doctor",
+		ShortHelp:  "Inspect unmanaged skill destinations",
+		Exec: func(ctx context.Context, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("doctor does not accept positional arguments")
+			}
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			cfg, err := config.Load(filepath.Join(home, "chai.toml"))
+			if err != nil {
+				return err
+			}
+			return doctor.RunWithHome(ctx, cfg, home)
+		},
+	}
+
 	cleanFlags := flag.NewFlagSet("chai clean", flag.ExitOnError)
 	cleanDryRun := cleanFlags.Bool("dry-run", false, "preview clean without deleting files")
 
@@ -164,13 +185,13 @@ func main() {
 		ShortUsage:  "chai <command> [flags]",
 		ShortHelp:   "Keep AI coding agent configs in sync",
 		FlagSet:     rootFlags,
-		Subcommands: []*ffcli.Command{initCmd, addCmd, syncCmd, cleanCmd, updateCmd},
+		Subcommands: []*ffcli.Command{initCmd, addCmd, syncCmd, doctorCmd, cleanCmd, updateCmd},
 		Exec: func(ctx context.Context, args []string) error {
 			if *showVersion {
 				fmt.Println(resolveVersion())
 				return nil
 			}
-			fmt.Println("chai — run 'chai init', 'chai add', 'chai sync', 'chai clean', or 'chai update'")
+			fmt.Println("chai — run 'chai init', 'chai add', 'chai sync', 'chai doctor', 'chai clean', or 'chai update'")
 			return nil
 		},
 	}

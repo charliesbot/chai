@@ -6,13 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/charliesbot/chai/internal/config"
-	"github.com/charliesbot/chai/internal/githubskill"
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
-	"github.com/charliesbot/chai/internal/skill"
+	"github.com/charliesbot/chai/internal/skillsource"
 	"github.com/charliesbot/chai/internal/ui"
 )
 
@@ -44,7 +42,7 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string, opts Opti
 		return err
 	}
 	platforms := platform.ForNames(cfg.Platforms)
-	resolvedSkills, err := resolveConfiguredSkills(cfg, home)
+	resolvedSkills, err := skillsource.Resolve(cfg, home)
 	if err != nil {
 		return err
 	}
@@ -102,44 +100,8 @@ func persistHashError(hashDB hash.DB, home string, dryRun bool, operationErr err
 	return errors.Join(operationErr, hashDB.Save(home))
 }
 
-func resolveConfiguredSkills(cfg *config.Config, home string) ([]skill.Source, error) {
-	resolved, err := resolveLocalSkillSources(cfg.Skills.Local, home, home)
-	if err != nil {
-		return nil, err
-	}
-	configuredSources := append([]skill.Source(nil), resolved...)
-	for _, remote := range cfg.Skills.GitHub {
-		for _, name := range remote.Include {
-			configuredSources = append(configuredSources, skill.Source{Name: name, Path: remote.URL})
-		}
-	}
-	if err := skill.ValidateUniqueNames(configuredSources); err != nil {
-		return nil, err
-	}
-	var sourceErrors []error
-	for _, remote := range cfg.Skills.GitHub {
-		id, err := githubskill.ParseCanonical(remote.URL)
-		if err != nil {
-			return nil, err
-		}
-		cached, err := githubskill.ResolveCached(home, id, remote.Include)
-		if err != nil {
-			sourceErrors = append(sourceErrors, err)
-			continue
-		}
-		for _, source := range cached {
-			resolved = append(resolved, source)
-		}
-	}
-	if len(sourceErrors) > 0 {
-		return nil, errors.Join(sourceErrors...)
-	}
-	sort.Slice(resolved, func(i, j int) bool { return resolved[i].Name < resolved[j].Name })
-	return resolved, nil
-}
-
 func ValidateSources(cfg *config.Config, home string) error {
-	_, err := resolveConfiguredSkills(cfg, home)
+	_, err := skillsource.Resolve(cfg, home)
 	return err
 }
 
