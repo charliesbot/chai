@@ -90,7 +90,7 @@ func syncResolvedSkills(skills []skill.Source, home string, platforms []platform
 			fmt.Printf("   %s\n", detail.render())
 		}
 		if count := len(changes.preserved); count > 0 {
-			fmt.Printf(" %s %s\n", ui.Warning.Render("!"), ui.Muted.Render(fmt.Sprintf("%d unmanaged %s preserved", count, pluralize("skill", count))))
+			fmt.Printf("   %s\n", ui.Muted.Render(fmt.Sprintf("%d unmanaged %s left untouched · inspect with chai doctor", count, pluralize("skill", count))))
 		}
 	}
 
