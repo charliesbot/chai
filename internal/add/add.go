@@ -13,6 +13,8 @@ import (
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/githubskill"
 	"github.com/charliesbot/chai/internal/skill"
+	"github.com/charliesbot/chai/internal/skilldest"
+	"github.com/charliesbot/chai/internal/skillsource"
 	chaisync "github.com/charliesbot/chai/internal/sync"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -151,7 +153,8 @@ func addLocal(ctx context.Context, cfg *config.Config, configPath, home string, 
 		if err := rejectNameConflicts(discovered, nil, candidate, ""); err != nil {
 			return err
 		}
-		return chaisync.ValidateSources(candidate, home)
+		_, err = skillsource.Resolve(candidate, home)
+		return err
 	}); err != nil {
 		return err
 	}
@@ -217,10 +220,11 @@ func addRemote(ctx context.Context, cfg *config.Config, configPath, home string,
 						if err := rejectNameConflicts(selectedSources, locals, candidate, id.URL()); err != nil {
 							return err
 						}
-						if err := chaisync.ValidateUnmanagedSkillDestinations(selected, home, candidate.Platforms); err != nil {
+						if err := skilldest.Validate(selected, home, candidate.Platforms); err != nil {
 							return err
 						}
-						return chaisync.ValidateSources(candidate, home)
+						_, err = skillsource.Resolve(candidate, home)
+						return err
 					},
 				)
 			},

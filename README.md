@@ -30,10 +30,12 @@ chai add owner/repo --skill one two
 chai add owner/repo --list      # Inspect without changing config or caches
 chai update                     # Refresh remote skills, then sync
 chai sync                       # Offline distribution to all platforms
+chai doctor                     # Explain unmanaged skill destinations
 chai clean                      # Remove generated outputs and orphan caches
 ```
 
 `chai sync` supports `--dry-run` to preview changes and `--force` to skip dirty detection.
+`chai doctor` is read-only: it lists unmanaged skills left untouched by sync and reports unmanaged destinations that would block a configured skill.
 Remote skill operations require Git 2.37 or newer. `chai sync` is offline; if a
 remote cache is missing, run `chai update`.
 

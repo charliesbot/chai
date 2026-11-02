@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -73,10 +72,13 @@ func TestSyncSkills_ReportsChangesAndCollapsesUnmanagedSkills(t *testing.T) {
 		"\x1b[38;5;42m+ adaptive\x1b[0m",
 		"\x1b[38;5;220m~ web-dev\x1b[0m",
 		"\x1b[38;5;196m- old-skill\x1b[0m",
-		"2 unmanaged skills preserved",
+		"2 unmanaged skills left untouched · inspect with chai doctor",
 	)
 	if strings.Contains(output, "custom-") || strings.Contains(output, "agents-md") {
 		t.Errorf("output should omit preserved and unchanged skill names:\n%s", output)
+	}
+	if strings.Contains(output, "!") {
+		t.Errorf("unmanaged skills should be informational, not a warning:\n%s", output)
 	}
 }
 
@@ -177,36 +179,6 @@ func TestSyncSkillCopiesForceStillRejectsUnmanagedNameCollision(t *testing.T) {
 	_, err := syncSkillCopies([]skill.Source{{Path: source, Name: "chosen"}}, destDir, hash.DB{}, Options{Force: true})
 	if err == nil || !strings.Contains(err.Error(), "not managed by chai") {
 		t.Fatalf("force collision error = %v", err)
-	}
-}
-
-func TestValidateUnmanagedSkillDestinationsReportsEveryCollision(t *testing.T) {
-	home := t.TempDir()
-	paths := []string{
-		filepath.Join(home, ".claude", "skills", "one"),
-		filepath.Join(home, ".agents", "skills", "one"),
-		filepath.Join(home, ".cursor", "skills", "two"),
-	}
-	for _, path := range paths {
-		writeSkillDir(t, path, "existing")
-	}
-
-	err := ValidateUnmanagedSkillDestinations([]string{"two", "one"}, home, []string{"cursor", "codex", "claude"})
-	if err == nil {
-		t.Fatal("expected unmanaged destination collisions")
-	}
-	if !strings.Contains(err.Error(), "existing skill destinations are not managed by chai") {
-		t.Fatalf("collision error = %v", err)
-	}
-	for _, path := range paths {
-		if !strings.Contains(err.Error(), path) {
-			t.Errorf("collision error missing %s: %v", path, err)
-		}
-	}
-	sort.Strings(paths)
-	if strings.Index(err.Error(), paths[0]) > strings.Index(err.Error(), paths[1]) ||
-		strings.Index(err.Error(), paths[1]) > strings.Index(err.Error(), paths[2]) {
-		t.Errorf("collision paths are not sorted: %v", err)
 	}
 }
 
@@ -355,7 +327,7 @@ func TestSyncLocalSkills_UsesFrontmatterName(t *testing.T) {
 	}
 
 	hashDB := hash.DB{}
-	sources, err := resolveLocalSkillSources([]string{root}, home, home)
+	sources, err := skill.DiscoverLocal([]string{root}, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +361,7 @@ func TestSyncLocalSkills_RemovesLastManagedSkill(t *testing.T) {
 
 	hashDB := hash.DB{}
 	platforms := platform.ForNames([]string{"cursor"})
-	sources, err := resolveLocalSkillSources([]string{root}, home, home)
+	sources, err := skill.DiscoverLocal([]string{root}, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +371,7 @@ func TestSyncLocalSkills_RemovesLastManagedSkill(t *testing.T) {
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
-	sources, err = resolveLocalSkillSources([]string{root}, home, home)
+	sources, err = skill.DiscoverLocal([]string{root}, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}

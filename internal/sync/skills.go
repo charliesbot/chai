@@ -11,48 +11,9 @@ import (
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/skill"
+	"github.com/charliesbot/chai/internal/skilldest"
 	"github.com/charliesbot/chai/internal/ui"
 )
-
-func resolveLocalSkillSources(roots []string, baseDir, home string) ([]skill.Source, error) {
-	return skill.DiscoverLocal(roots, baseDir, home)
-}
-
-// ValidateUnmanagedSkillDestinations reports existing selected-skill paths that
-// chai cannot safely overwrite because they are absent from its ownership DB.
-func ValidateUnmanagedSkillDestinations(names []string, home string, platformNames []string) error {
-	hashDB, err := hash.Load(home)
-	if err != nil {
-		return err
-	}
-	seen := make(map[string]bool)
-	var collisions []string
-	for _, p := range platform.ForNames(platformNames) {
-		for _, name := range names {
-			path := filepath.Join(home, p.SkillsDir, skill.DirectoryName(name))
-			if seen[path] {
-				continue
-			}
-			seen[path] = true
-			if _, managed := hashDB[path]; managed {
-				continue
-			}
-			if _, err := os.Stat(path); err == nil {
-				collisions = append(collisions, path)
-			} else if !os.IsNotExist(err) {
-				return fmt.Errorf("checking skill destination %s: %w", path, err)
-			}
-		}
-	}
-	if len(collisions) == 0 {
-		return nil
-	}
-	sort.Strings(collisions)
-	return fmt.Errorf(
-		"existing skill destinations are not managed by chai:\n  %s\nmove or remove these directories, then retry",
-		strings.Join(collisions, "\n  "),
-	)
-}
 
 func syncResolvedSkills(skills []skill.Source, home string, platforms []platform.Platform, opts Options, hashDB hash.DB) error {
 	if opts.DryRun {
@@ -90,7 +51,7 @@ func syncResolvedSkills(skills []skill.Source, home string, platforms []platform
 			fmt.Printf("   %s\n", detail.render())
 		}
 		if count := len(changes.preserved); count > 0 {
-			fmt.Printf(" %s %s\n", ui.Warning.Render("!"), ui.Muted.Render(fmt.Sprintf("%d unmanaged %s preserved", count, pluralize("skill", count))))
+			fmt.Printf("   %s\n", ui.Muted.Render(fmt.Sprintf("%d unmanaged %s left untouched · inspect with chai doctor", count, pluralize("skill", count))))
 		}
 	}
 
@@ -237,16 +198,23 @@ func syncSkillCopies(sources []skill.Source, destDir string, hashDB hash.DB, opt
 
 	for _, src := range sources {
 		dest := filepath.Join(destDir, skill.DirectoryName(src.Name))
-		previousHash, managed := hashDB[dest]
-		_, statErr := os.Stat(dest)
-		existed := statErr == nil
-		if statErr != nil && !os.IsNotExist(statErr) {
-			return changes, fmt.Errorf("checking %s: %w", dest, statErr)
+		unowned, err := skilldest.Unowned(dest, hashDB)
+		if err != nil {
+			return changes, err
 		}
-		if existed && !managed {
+		if unowned {
 			return changes, fmt.Errorf("skill destination %s is not managed by chai", dest)
 		}
-		if existed && managed && !opts.Force {
+		previousHash, managed := hashDB[dest]
+		existed := false
+		if managed {
+			_, statErr := os.Stat(dest)
+			existed = statErr == nil
+			if statErr != nil && !os.IsNotExist(statErr) {
+				return changes, fmt.Errorf("checking %s: %w", dest, statErr)
+			}
+		}
+		if existed && !opts.Force {
 			dirty, err := managedDirDirty(dest, previousHash)
 			if err != nil {
 				return changes, err
