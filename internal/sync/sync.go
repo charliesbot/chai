@@ -100,11 +100,6 @@ func persistHashError(hashDB hash.DB, home string, dryRun bool, operationErr err
 	return errors.Join(operationErr, hashDB.Save(home))
 }
 
-func ValidateSources(cfg *config.Config, home string) error {
-	_, err := skillsource.Resolve(cfg, home)
-	return err
-}
-
 // DirtyError is returned when target files have been manually edited since the last sync.
 type DirtyError struct {
 	Files []string

@@ -15,30 +15,6 @@ import (
 	"github.com/charliesbot/chai/internal/ui"
 )
 
-// ValidateUnmanagedSkillDestinations reports existing selected-skill paths that
-// chai cannot safely overwrite because they are absent from its ownership DB.
-func ValidateUnmanagedSkillDestinations(names []string, home string, platformNames []string) error {
-	hashDB, err := hash.Load(home)
-	if err != nil {
-		return err
-	}
-	collisions, err := skilldest.Collisions(home, platform.ForNames(platformNames), names, hashDB)
-	if err != nil {
-		return err
-	}
-	if len(collisions) == 0 {
-		return nil
-	}
-	paths := make([]string, len(collisions))
-	for i, collision := range collisions {
-		paths[i] = collision.Path
-	}
-	return fmt.Errorf(
-		"existing skill destinations are not managed by chai:\n  %s\nmove or remove these directories, then retry",
-		strings.Join(paths, "\n  "),
-	)
-}
-
 func syncResolvedSkills(skills []skill.Source, home string, platforms []platform.Platform, opts Options, hashDB hash.DB) error {
 	if opts.DryRun {
 		fmt.Println(ui.Label.Render("skills"))
@@ -238,7 +214,7 @@ func syncSkillCopies(sources []skill.Source, destDir string, hashDB hash.DB, opt
 				return changes, fmt.Errorf("checking %s: %w", dest, statErr)
 			}
 		}
-		if existed && managed && !opts.Force {
+		if existed && !opts.Force {
 			dirty, err := managedDirDirty(dest, previousHash)
 			if err != nil {
 				return changes, err

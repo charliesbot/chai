@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
@@ -70,4 +71,28 @@ func Collisions(home string, platforms []platform.Platform, names []string, hash
 	}
 	sort.Slice(collisions, func(i, j int) bool { return collisions[i].Path < collisions[j].Path })
 	return collisions, nil
+}
+
+// Validate reports existing selected-skill paths that chai cannot safely
+// overwrite because they are absent from its ownership DB.
+func Validate(names []string, home string, platformNames []string) error {
+	hashDB, err := hash.Load(home)
+	if err != nil {
+		return err
+	}
+	collisions, err := Collisions(home, platform.ForNames(platformNames), names, hashDB)
+	if err != nil {
+		return err
+	}
+	if len(collisions) == 0 {
+		return nil
+	}
+	paths := make([]string, len(collisions))
+	for i, collision := range collisions {
+		paths[i] = collision.Path
+	}
+	return fmt.Errorf(
+		"existing skill destinations are not managed by chai:\n  %s\nmove or remove these directories, then retry",
+		strings.Join(paths, "\n  "),
+	)
 }
