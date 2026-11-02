@@ -21,7 +21,7 @@ func TestRunWithHomeReportsUnmanagedSkillsDeterministicallyWithoutWriting(t *tes
 		filepath.Join(home, ".cursor", "skills", "alpha"),
 		filepath.Join(home, ".claude", "skills", "bravo"),
 	} {
-		writeDir(t, path)
+		writeSkill(t, path, filepath.Base(path))
 	}
 
 	before := treeState(t, home)
@@ -43,6 +43,29 @@ func TestRunWithHomeReportsUnmanagedSkillsDeterministicallyWithoutWriting(t *tes
 	}
 	if strings.Index(output, "bravo") > strings.Index(output, "alpha") || strings.Index(output, "alpha") > strings.Index(output, "zeta") {
 		t.Errorf("output is not deterministic:\n%s", output)
+	}
+}
+
+func TestRunWithHomeIgnoresNonSkillDirectories(t *testing.T) {
+	home := t.TempDir()
+	skillsDir := filepath.Join(home, ".claude", "skills")
+	writeSkill(t, filepath.Join(skillsDir, "hand-installed"), "hand-installed")
+	writeDir(t, filepath.Join(skillsDir, "synced", "account", "pdf"))
+	writeDir(t, filepath.Join(skillsDir, ".trash", "1793509282779"))
+	writeSkill(t, filepath.Join(skillsDir, ".hidden-skill"), "hidden-skill")
+	cfg := &config.Config{Platforms: []string{"claude"}}
+
+	output, err := captureOutput(t, func() error { return RunWithHome(context.Background(), cfg, home) })
+	if err != nil {
+		t.Fatalf("RunWithHome: %v", err)
+	}
+	if !strings.Contains(output, "INFO  Unmanaged skill: hand-installed") {
+		t.Fatalf("output missing real unmanaged skill:\n%s", output)
+	}
+	for _, unwanted := range []string{"synced", ".trash", ".hidden-skill"} {
+		if strings.Contains(output, unwanted) {
+			t.Errorf("output reports non-skill directory %q:\n%s", unwanted, output)
+		}
 	}
 }
 

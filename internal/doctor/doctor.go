@@ -109,7 +109,7 @@ func inspect(home string, platforms []platform.Platform, sources []skill.Source,
 				continue
 			}
 			path := filepath.Join(dir, entry.Name())
-			if _, managed := hashDB[path]; managed {
+			if !skilldest.UnmanagedSkill(path, hashDB) {
 				continue
 			}
 			findings = append(findings, finding{kind: unmanagedSkill, name: entry.Name(), platforms: platformsByDir[dir], path: path})
