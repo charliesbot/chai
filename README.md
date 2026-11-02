@@ -149,7 +149,7 @@ SSE-only transport configuration are outside this schema.
 | ■    | OpenCode        | ✅        | ✅  | ✅     | ✅        |
 | ▲    | Codex           | ✅        | ✅  | ✅     | ✅        |
 | ◇    | Cursor          | ❌        | ✅  | ✅     | ✅        |
-| ○    | Pi              | ✅        | ❌  | ✅     | ❌        |
+| ○    | Pi              | ✅        | ✅  | ✅     | ❌        |
 
 ✅ full · ❌ not supported
 

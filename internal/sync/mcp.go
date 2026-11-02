@@ -18,7 +18,7 @@ import (
 )
 
 // mcpEntry is the JSON structure written per MCP server for standard-format platforms
-// (Claude, Antigravity).
+// (Claude, Antigravity, Pi).
 type mcpEntry struct {
 	URL     string            `json:"-"`
 	Headers map[string]string `json:"-"`
@@ -271,10 +271,14 @@ func platformsWithMCP(platforms []platform.Platform) []platform.Platform {
 func buildMCPServers(mcps map[string]config.MCP, home string) (map[string]mcpEntry, error) {
 	servers := make(map[string]mcpEntry, len(mcps))
 	for name, m := range mcps {
+		// Copy into a non-nil slice: a nil Args marshals to null, which Pi
+		// rejects ("args must be an array of strings").
+		args := make([]string, len(m.Args))
+		copy(args, m.Args)
 		entry := mcpEntry{
 			URL: m.URL, Headers: m.Headers,
 			Command: m.Command,
-			Args:    append([]string(nil), m.Args...),
+			Args:    args,
 			Env:     m.Env,
 		}
 		// Resolve @name in args (only for args starting with @)

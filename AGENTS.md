@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project Overview
 
-chai is a Go CLI that keeps AI coding agent configs in sync. It reads a single TOML manifest (`~/chai.toml`) and an `AGENTS.md` file, then distributes them to the right locations for each AI platform (Claude, Antigravity, Droid, OpenCode, Codex, Cursor). Instructions are copied to platforms with a global instructions file; skills and subagents are copied with hash-based dirty detection so chai can prompt before overwriting files an agent has edited.
+chai is a Go CLI that keeps AI coding agent configs in sync. It reads a single TOML manifest (`~/chai.toml`) and an `AGENTS.md` file, then distributes them to the right locations for each AI platform (Claude, Antigravity, Droid, OpenCode, Codex, Cursor, Pi). Instructions are copied to platforms with a global instructions file; skills and subagents are copied with hash-based dirty detection so chai can prompt before overwriting files an agent has edited.
 
 chai is deliberately minimal — it syncs config files, not manages workflows.
 
@@ -67,6 +67,7 @@ Built into source code (not user-configured). Each platform specifies:
 | OpenCode        | `~/.config/opencode/AGENTS.md`    | `~/.config/opencode/skills/`       | `~/.config/opencode/agents/`       | `~/.config/opencode/opencode.json`        | replace `mcp` (OpenCode-format entries) |
 | Codex           | `~/.codex/AGENTS.md`              | `~/.agents/skills/`                | `~/.codex/agents/` _(compiled TOML)_ | `~/.codex/config.toml`                    | replace `mcp_servers` table (TOML, no cwd) |
 | Cursor          | _none_                            | `~/.cursor/skills/`                | `~/.cursor/agents/`                | `~/.cursor/mcp.json`                     | replace `mcpServers` with Cursor stdio entries |
+| Pi              | `~/.pi/agent/AGENTS.md`           | `~/.agents/skills/` _(shared with Codex)_ | _none_                      | `~/.pi/agent/mcp.json`                    | replace key   |
 
 ### Key Design Decisions
 
