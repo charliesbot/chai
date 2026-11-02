@@ -187,11 +187,16 @@ func TestRunWithHome_DryRunDoesNotRemoveOutputs(t *testing.T) {
 	}
 }
 
-func TestRunWithHome_PiSkipsUnsupportedMCP(t *testing.T) {
+func TestRunWithHome_PiRemovesSkillsAndMCP(t *testing.T) {
 	home := t.TempDir()
 	cfg := &config.Config{Platforms: []string{"pi"}}
+	mcpPath := filepath.Join(home, ".pi", "agent", "mcp.json")
+	writeJSON(t, mcpPath, map[string]any{
+		"mcpServers": map[string]any{"ctx": map[string]any{"command": "npx"}},
+		"other":      "pi",
+	})
 
-	skillsDir := filepath.Join(home, ".pi", "agent", "skills")
+	skillsDir := filepath.Join(home, ".agents", "skills")
 	writeFile(t, filepath.Join(skillsDir, "managed", "SKILL.md"), "managed")
 	sentinel := filepath.Join(home, "keep.txt")
 	writeFile(t, sentinel, "keep")
@@ -205,6 +210,13 @@ func TestRunWithHome_PiSkipsUnsupportedMCP(t *testing.T) {
 	}
 	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "keep" {
 		t.Fatalf("home contents should remain untouched, got %q, err=%v", got, err)
+	}
+	pi := readJSON(t, mcpPath)
+	if _, ok := pi["mcpServers"]; ok {
+		t.Fatal("Pi mcpServers should have been removed")
+	}
+	if pi["other"] != "pi" {
+		t.Fatalf("unrelated Pi key was not preserved: %#v", pi)
 	}
 }
 

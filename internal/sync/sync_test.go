@@ -835,7 +835,7 @@ func TestRunWithHome_OpenCodePaths(t *testing.T) {
 	}
 }
 
-func TestRunWithHome_PiPathsAndSkipsUnsupportedFeatures(t *testing.T) {
+func TestRunWithHome_PiPathsAndMCP(t *testing.T) {
 	home := t.TempDir()
 
 	srcDir := filepath.Join(home, "dotfiles", "ai")
@@ -870,7 +870,7 @@ func TestRunWithHome_PiPathsAndSkipsUnsupportedFeatures(t *testing.T) {
 		body  string
 	}{
 		{"instructions", filepath.Join(home, ".pi", "agent", "AGENTS.md"), "hello"},
-		{"skill", filepath.Join(home, ".pi", "agent", "skills", "greet", "SKILL.md"), greetSkillContent},
+		{"skill", filepath.Join(home, ".agents", "skills", "greet", "SKILL.md"), greetSkillContent},
 	}
 	for _, c := range cases {
 		got, err := os.ReadFile(c.path)
@@ -883,42 +883,110 @@ func TestRunWithHome_PiPathsAndSkipsUnsupportedFeatures(t *testing.T) {
 		}
 	}
 
-	for _, unsupported := range []string{
-		filepath.Join(home, ".pi", "agent", "agents"),
-		filepath.Join(home, ".pi", "agent", "mcp.json"),
-	} {
-		if _, err := os.Stat(unsupported); !os.IsNotExist(err) {
-			t.Errorf("unsupported Pi target %s should not exist, got err=%v", unsupported, err)
-		}
+	if _, err := os.Stat(filepath.Join(home, ".pi", "agent", "agents")); !os.IsNotExist(err) {
+		t.Errorf("Pi has no subagent target, got err=%v", err)
+	}
+
+	pi := readJSON(t, filepath.Join(home, ".pi", "agent", "mcp.json"))
+	servers, ok := pi["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatalf("Pi mcpServers = %#v, want object", pi["mcpServers"])
+	}
+	ctx7, ok := servers["ctx7"].(map[string]any)
+	if !ok || ctx7["command"] != "npx" {
+		t.Fatalf("Pi ctx7 entry = %#v, want stdio command npx", servers["ctx7"])
 	}
 }
 
-func TestRunWithHome_PiDoesNotBlockClaudeMCP(t *testing.T) {
+func TestRunWithHome_PiAndCodexShareOneSkillCopy(t *testing.T) {
 	home := t.TempDir()
+	skillDir := filepath.Join(home, "dotfiles", "ai", "skills", "greet")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(greetSkillContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	instructions := filepath.Join(home, "dotfiles", "ai", "agents.md")
+	if err := os.WriteFile(instructions, []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{Platforms: []string{"pi", "codex"}, Instructions: []string{"~/dotfiles/ai/agents.md"}}
+	cfg.Skills.Local = []string{"~/dotfiles/ai/skills"}
 
-	srcDir := filepath.Join(home, "dotfiles", "ai")
-	os.MkdirAll(srcDir, 0755)
-	os.WriteFile(filepath.Join(srcDir, "agents.md"), []byte("hello"), 0644)
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
 
+	// Pi also reads ~/.agents/skills, so a second copy under ~/.pi would make
+	// Pi load every skill twice.
+	if _, err := os.Stat(filepath.Join(home, ".agents", "skills", "greet", "SKILL.md")); err != nil {
+		t.Fatalf("shared skill copy missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".pi", "agent", "skills")); !os.IsNotExist(err) {
+		t.Fatalf("Pi-only skills directory should not be created, got err=%v", err)
+	}
+}
+
+func TestRunWithHome_PiMCPWritesArgsAsArray(t *testing.T) {
+	home := t.TempDir()
+	instructions := filepath.Join(home, "agents.md")
+	if err := os.WriteFile(instructions, []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	cfg := &config.Config{
-		Platforms:    []string{"pi", "claude"},
-		Instructions: []string{"~/dotfiles/ai/agents.md"},
-		MCP: map[string]config.MCP{
-			"ctx7": {Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}},
-		},
+		Platforms:    []string{"pi"},
+		Instructions: []string{"~/agents.md"},
+		MCP:          map[string]config.MCP{"local": {Command: "my-server"}},
 	}
 
 	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 
-	claude := readJSON(t, filepath.Join(home, ".claude.json"))
-	servers, ok := claude["mcpServers"].(map[string]any)
-	if !ok {
-		t.Fatalf("mcpServers = %#v, want object", claude["mcpServers"])
+	// Pi rejects a server whose args field is present but not an array.
+	servers := readJSON(t, filepath.Join(home, ".pi", "agent", "mcp.json"))["mcpServers"].(map[string]any)
+	entry := servers["local"].(map[string]any)
+	if args, present := entry["args"]; present {
+		if _, isArray := args.([]any); !isArray {
+			t.Fatalf("args = %#v, want an array or absent", args)
+		}
 	}
-	if _, ok := servers["ctx7"]; !ok {
-		t.Fatalf("mcpServers = %#v, want ctx7", servers)
+}
+
+func TestRunWithHome_SharedSkillsDirPromptsOncePerRun(t *testing.T) {
+	home := t.TempDir()
+	skillDir := filepath.Join(home, "dotfiles", "ai", "skills", "greet")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(greetSkillContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "agents.md"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{Platforms: []string{"pi", "codex"}, Instructions: []string{"~/agents.md"}}
+	cfg.Skills.Local = []string{"~/dotfiles/ai/skills"}
+	if err := RunWithHome(context.Background(), cfg, home, Options{}); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+	edited := filepath.Join(home, ".agents", "skills", "greet", "SKILL.md")
+	if err := os.WriteFile(edited, []byte("local edit"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	prompts := 0
+	opts := Options{Prompt: func(path string) (bool, error) {
+		if strings.HasPrefix(path, filepath.Join(home, ".agents", "skills")) {
+			prompts++
+		}
+		return false, nil
+	}}
+	_ = RunWithHome(context.Background(), cfg, home, opts)
+
+	if prompts != 1 {
+		t.Fatalf("shared skills directory prompted %d times, want 1", prompts)
 	}
 }
 

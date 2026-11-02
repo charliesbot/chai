@@ -26,22 +26,30 @@ func syncResolvedSkills(skills []skill.Source, home string, platforms []platform
 	status := newPlatformStatus(platforms)
 	changes := newItemChanges()
 	var syncErr error
+	// Platforms can share a skills directory (Codex and Pi use ~/.agents/skills).
+	// Sync each directory once so a shared one is not rewritten or re-prompted,
+	// and give every platform on it the same outcome.
+	dirFailed := make(map[string]bool)
 	for _, p := range platforms {
 		destDir := filepath.Join(home, p.SkillsDir)
 		if opts.DryRun {
 			for _, src := range skills {
 				fmt.Printf("  %s %s %s %s\n", ui.Arrow(), ui.Bold.Render(p.Name), ui.Muted.Render(filepath.Join(destDir, skill.DirectoryName(src.Name))), ui.Muted.Render("→ "+src.Path))
 			}
-		} else {
+			continue
+		}
+		failed, synced := dirFailed[destDir]
+		if !synced {
 			platformChanges, err := syncSkillCopies(skills, destDir, hashDB, opts)
 			changes.merge(platformChanges)
-			if err != nil {
-				status.setFailed(p.Name)
-				if syncErr == nil {
-					syncErr = err
-				}
-				continue
+			failed = err != nil
+			dirFailed[destDir] = failed
+			if err != nil && syncErr == nil {
+				syncErr = err
 			}
+		}
+		if failed {
+			status.setFailed(p.Name)
 		}
 	}
 

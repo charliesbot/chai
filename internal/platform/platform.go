@@ -9,7 +9,7 @@ import (
 type MCPFormat string
 
 const (
-	// MCPFormatStandard is the Claude / Antigravity shape:
+	// MCPFormatStandard is the Claude / Pi shape:
 	//   {"command": "npx", "args": [...], "env": {...}, "cwd": "..."}
 	MCPFormatStandard MCPFormat = "standard"
 
@@ -157,10 +157,18 @@ func All() []Platform {
 			},
 		},
 		{
-			Key:              "pi",
-			Name:             "Pi",
+			Key:  "pi",
+			Name: "Pi",
+			// Pi reads ~/.agents/skills/ in addition to its own directory.
+			// Targeting the shared path keeps Pi from loading each skill twice
+			// when Codex is also enabled.
 			InstructionsPath: filepath.Join(".pi", "agent", "AGENTS.md"),
-			SkillsDir:        filepath.Join(".pi", "agent", "skills"),
+			SkillsDir:        filepath.Join(".agents", "skills"),
+			MCP: &MCPTarget{
+				ConfigPath: filepath.Join(".pi", "agent", "mcp.json"),
+				Key:        "mcpServers",
+				Format:     MCPFormatStandard,
+			},
 		},
 	}
 }
