@@ -40,6 +40,20 @@ func Unowned(path string, hashDB hash.DB) (bool, error) {
 	return false, fmt.Errorf("checking skill destination %s: %w", path, err)
 }
 
+// UnmanagedSkill reports whether path holds a skill that chai does not own.
+// Other tools keep their own data in skills directories (for example Claude
+// Code's hidden .trash and its account-synced bundle), so hidden directories
+// and directories without a SKILL.md are not treated as skills.
+func UnmanagedSkill(path string, hashDB hash.DB) bool {
+	if _, managed := hashDB[path]; managed {
+		return false
+	}
+	if strings.HasPrefix(filepath.Base(path), ".") {
+		return false
+	}
+	return skill.IsSkillDir(path)
+}
+
 // Collisions returns the unowned existing destinations for the named skills,
 // sorted by path.
 func Collisions(home string, platforms []platform.Platform, names []string, hashDB hash.DB) ([]Collision, error) {

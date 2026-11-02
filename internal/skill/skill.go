@@ -87,6 +87,13 @@ func resolveLocalPath(raw, baseDir, home string) string {
 	}
 }
 
+// IsSkillDir reports whether dir directly contains a SKILL.md. It does not
+// parse the file: a skill with broken metadata is still a skill.
+func IsSkillDir(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, "SKILL.md"))
+	return err == nil
+}
+
 func sourceFromDir(dir string) (Source, bool, error) {
 	path := filepath.Join(dir, "SKILL.md")
 	data, err := os.ReadFile(path)

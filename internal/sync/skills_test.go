@@ -82,6 +82,37 @@ func TestSyncSkills_ReportsChangesAndCollapsesUnmanagedSkills(t *testing.T) {
 	}
 }
 
+func TestSyncSkills_IgnoresNonSkillDirectoriesInDestination(t *testing.T) {
+	home := t.TempDir()
+	hashDB := hash.DB{}
+	writeSkillDir(t, filepath.Join(home, "dotfiles", "ai", "skills", "web-dev"), "v1")
+
+	destDir := filepath.Join(home, ".cursor", "skills")
+	writeSkillDir(t, filepath.Join(destDir, "hand-installed"), "user managed")
+	// Other tools keep non-skill data in the skills directory, e.g. Claude
+	// Code's account-synced bundle and its hidden trash.
+	nonSkills := []string{
+		filepath.Join(destDir, "synced", "account"),
+		filepath.Join(destDir, ".trash", "1793509282779"),
+		filepath.Join(destDir, ".hidden-skill"),
+	}
+	for _, dir := range nonSkills[:2] {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeSkillDir(t, nonSkills[2], "hidden")
+
+	output := syncCursorSkills(t, home, hashDB)
+
+	assertOutputContains(t, output, "1 unmanaged skill left untouched · inspect with chai doctor")
+	for _, dir := range nonSkills {
+		if _, err := os.Stat(dir); err != nil {
+			t.Errorf("non-skill directory %s was touched: %v", dir, err)
+		}
+	}
+}
+
 func TestSyncSkills_ReportsCompletedChangesWhenLaterCopyFails(t *testing.T) {
 	home := t.TempDir()
 	skillsDir := filepath.Join(home, "dotfiles", "ai", "skills")

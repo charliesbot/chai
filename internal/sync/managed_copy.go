@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/charliesbot/chai/internal/hash"
+	"github.com/charliesbot/chai/internal/skilldest"
 	"github.com/charliesbot/chai/internal/ui"
 )
 
@@ -47,7 +48,9 @@ func removeStaleManagedDirs(destDir string, expected map[string]bool, hashDB has
 		}
 		stored, managed := hashDB[path]
 		if !managed {
-			result.preserved = append(result.preserved, entry.Name())
+			if skilldest.UnmanagedSkill(path, hashDB) {
+				result.preserved = append(result.preserved, entry.Name())
+			}
 			continue
 		}
 		if !opts.Force {
