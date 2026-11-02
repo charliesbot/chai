@@ -8,11 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/charliesbot/chai/internal/config"
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/skill"
+	"github.com/charliesbot/chai/internal/skilldest"
 	"github.com/charliesbot/chai/internal/skillsource"
 )
 
@@ -24,19 +26,10 @@ const (
 )
 
 type finding struct {
-	kind     findingKind
-	name     string
-	platform string
-	path     string
-}
-
-// Run checks the configured platforms using the current user's home directory.
-func Run(ctx context.Context, cfg *config.Config) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("getting home directory: %w", err)
-	}
-	return RunWithHome(ctx, cfg, home)
+	kind      findingKind
+	name      string
+	platforms []string
+	path      string
 }
 
 // RunWithHome checks configured skill destinations without creating, modifying,
@@ -76,48 +69,34 @@ func RunWithHome(ctx context.Context, cfg *config.Config, home string) error {
 }
 
 func inspect(home string, platforms []platform.Platform, sources []skill.Source, hashDB hash.DB) ([]finding, error) {
-	expected := make(map[string]string, len(sources))
-	for _, source := range sources {
-		expected[skill.DirectoryName(source.Name)] = source.Name
+	names := make([]string, len(sources))
+	configured := make(map[string]bool, len(sources))
+	for i, source := range sources {
+		names[i] = source.Name
+		configured[skill.DirectoryName(source.Name)] = true
 	}
-	expectedDirs := make([]string, 0, len(expected))
-	for directoryName := range expected {
-		expectedDirs = append(expectedDirs, directoryName)
-	}
-	sort.Strings(expectedDirs)
 
-	seenDirs := make(map[string]bool, len(platforms))
-	seenDestinations := make(map[string]bool, len(platforms)*len(sources))
-	var findings []finding
+	collisions, err := skilldest.Collisions(home, platforms, names, hashDB)
+	if err != nil {
+		return nil, err
+	}
+	findings := make([]finding, 0, len(collisions))
+	for _, collision := range collisions {
+		findings = append(findings, finding{kind: blockingDestination, name: collision.Name, platforms: collision.Platforms, path: collision.Path})
+	}
+
+	// Platforms can share a skills directory; scan each directory once and
+	// attribute its extras to every platform that uses it.
+	var dirs []string
+	platformsByDir := make(map[string][]string, len(platforms))
 	for _, target := range platforms {
 		dir := filepath.Join(home, target.SkillsDir)
-
-		// Match sync's collision semantics for every configured destination.
-		// This must run independently of ReadDir: a file or symlink at a
-		// configured path blocks sync even though it is not an unmanaged extra.
-		for _, directoryName := range expectedDirs {
-			name := expected[directoryName]
-			path := filepath.Join(dir, directoryName)
-			if seenDestinations[path] {
-				continue
-			}
-			seenDestinations[path] = true
-			_, err := os.Stat(path)
-			if err == nil {
-				if _, managed := hashDB[path]; !managed {
-					findings = append(findings, finding{kind: blockingDestination, name: name, platform: target.Name, path: path})
-				}
-				continue
-			}
-			if !os.IsNotExist(err) {
-				return nil, fmt.Errorf("checking skill destination %s: %w", path, err)
-			}
+		if _, seen := platformsByDir[dir]; !seen {
+			dirs = append(dirs, dir)
 		}
-
-		if seenDirs[dir] {
-			continue
-		}
-		seenDirs[dir] = true
+		platformsByDir[dir] = append(platformsByDir[dir], target.Name)
+	}
+	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if os.IsNotExist(err) {
 			continue
@@ -126,37 +105,44 @@ func inspect(home string, platforms []platform.Platform, sources []skill.Source,
 			return nil, fmt.Errorf("reading skill destination %s: %w", dir, err)
 		}
 		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			if _, configured := expected[entry.Name()]; configured {
+			if !entry.IsDir() || configured[entry.Name()] {
 				continue
 			}
 			path := filepath.Join(dir, entry.Name())
 			if _, managed := hashDB[path]; managed {
 				continue
 			}
-			findings = append(findings, finding{kind: unmanagedSkill, name: entry.Name(), platform: target.Name, path: path})
+			findings = append(findings, finding{kind: unmanagedSkill, name: entry.Name(), platforms: platformsByDir[dir], path: path})
 		}
 	}
+
 	sort.Slice(findings, func(i, j int) bool {
-		if findings[i].platform != findings[j].platform {
-			return findings[i].platform < findings[j].platform
+		if findings[i].platforms[0] != findings[j].platforms[0] {
+			return findings[i].platforms[0] < findings[j].platforms[0]
 		}
 		return findings[i].path < findings[j].path
 	})
 	return findings, nil
 }
+
 func printFinding(f finding) {
 	if f.kind == blockingDestination {
 		fmt.Printf("ERROR Unmanaged destination blocks configured skill: %s\n", f.name)
-		fmt.Printf("      Platform: %s\n      Path: %s\n", f.platform, f.path)
+		printLocation(f)
 		fmt.Println("      Not tracked by Chai; sync will not overwrite it.")
 		fmt.Println("      Move or remove it, then run chai sync.")
 		return
 	}
 	fmt.Printf("INFO  Unmanaged skill: %s\n", f.name)
-	fmt.Printf("      Platform: %s\n      Path: %s\n", f.platform, f.path)
+	printLocation(f)
 	fmt.Println("      Not tracked by Chai; left untouched.")
 	fmt.Println("      No action required unless you want Chai to manage it.")
+}
+
+func printLocation(f finding) {
+	label := "Platform"
+	if len(f.platforms) > 1 {
+		label = "Platforms"
+	}
+	fmt.Printf("      %s: %s\n      Path: %s\n", label, strings.Join(f.platforms, ", "), f.path)
 }

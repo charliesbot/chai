@@ -18,7 +18,7 @@ chai is deliberately minimal — it syncs config files, not manages workflows.
 
 ### Why ffcli over Cobra/Kong
 
-chai only has three commands (`init`, `sync`, `update`) and a few flags. ffcli wraps stdlib `flag` with minimal abstraction — no codegen, no hidden behavior, easy to read the entire command wiring at a glance. Bubbletea is launched from within ffcli's `Exec` functions for interactive parts.
+chai only has a handful of commands (`init`, `add`, `sync`, `doctor`, `clean`, `update`) and a few flags. ffcli wraps stdlib `flag` with minimal abstraction — no codegen, no hidden behavior, easy to read the entire command wiring at a glance. Bubbletea is launched from within ffcli's `Exec` functions for interactive parts.
 
 Reference project for ffcli patterns: https://github.com/rudrankriyam/App-Store-Connect-CLI
 
@@ -39,7 +39,7 @@ go test -run TestHashDB ./internal/hash  # single test
 
 ## Architecture
 
-The CLI has three commands: `chai init` (scaffold config), `chai sync` (distribute files to platforms), and `chai update` (clone/pull deps).
+The CLI commands are `chai init` (scaffold config), `chai add` (add skills to the manifest), `chai sync` (distribute files to platforms), `chai doctor` (read-only report of unmanaged skill destinations), `chai clean` (remove generated output), and `chai update` (clone/pull deps).
 
 ### Sync Flow
 

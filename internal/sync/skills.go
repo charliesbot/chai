@@ -11,12 +11,9 @@ import (
 	"github.com/charliesbot/chai/internal/hash"
 	"github.com/charliesbot/chai/internal/platform"
 	"github.com/charliesbot/chai/internal/skill"
+	"github.com/charliesbot/chai/internal/skilldest"
 	"github.com/charliesbot/chai/internal/ui"
 )
-
-func resolveLocalSkillSources(roots []string, baseDir, home string) ([]skill.Source, error) {
-	return skill.DiscoverLocal(roots, baseDir, home)
-}
 
 // ValidateUnmanagedSkillDestinations reports existing selected-skill paths that
 // chai cannot safely overwrite because they are absent from its ownership DB.
@@ -25,32 +22,20 @@ func ValidateUnmanagedSkillDestinations(names []string, home string, platformNam
 	if err != nil {
 		return err
 	}
-	seen := make(map[string]bool)
-	var collisions []string
-	for _, p := range platform.ForNames(platformNames) {
-		for _, name := range names {
-			path := filepath.Join(home, p.SkillsDir, skill.DirectoryName(name))
-			if seen[path] {
-				continue
-			}
-			seen[path] = true
-			if _, managed := hashDB[path]; managed {
-				continue
-			}
-			if _, err := os.Stat(path); err == nil {
-				collisions = append(collisions, path)
-			} else if !os.IsNotExist(err) {
-				return fmt.Errorf("checking skill destination %s: %w", path, err)
-			}
-		}
+	collisions, err := skilldest.Collisions(home, platform.ForNames(platformNames), names, hashDB)
+	if err != nil {
+		return err
 	}
 	if len(collisions) == 0 {
 		return nil
 	}
-	sort.Strings(collisions)
+	paths := make([]string, len(collisions))
+	for i, collision := range collisions {
+		paths[i] = collision.Path
+	}
 	return fmt.Errorf(
 		"existing skill destinations are not managed by chai:\n  %s\nmove or remove these directories, then retry",
-		strings.Join(collisions, "\n  "),
+		strings.Join(paths, "\n  "),
 	)
 }
 
@@ -237,14 +222,21 @@ func syncSkillCopies(sources []skill.Source, destDir string, hashDB hash.DB, opt
 
 	for _, src := range sources {
 		dest := filepath.Join(destDir, skill.DirectoryName(src.Name))
-		previousHash, managed := hashDB[dest]
-		_, statErr := os.Stat(dest)
-		existed := statErr == nil
-		if statErr != nil && !os.IsNotExist(statErr) {
-			return changes, fmt.Errorf("checking %s: %w", dest, statErr)
+		unowned, err := skilldest.Unowned(dest, hashDB)
+		if err != nil {
+			return changes, err
 		}
-		if existed && !managed {
+		if unowned {
 			return changes, fmt.Errorf("skill destination %s is not managed by chai", dest)
+		}
+		previousHash, managed := hashDB[dest]
+		existed := false
+		if managed {
+			_, statErr := os.Stat(dest)
+			existed = statErr == nil
+			if statErr != nil && !os.IsNotExist(statErr) {
+				return changes, fmt.Errorf("checking %s: %w", dest, statErr)
+			}
 		}
 		if existed && managed && !opts.Force {
 			dirty, err := managedDirDirty(dest, previousHash)

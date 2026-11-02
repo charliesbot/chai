@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/charliesbot/chai/internal/config"
+	"github.com/charliesbot/chai/internal/hash"
 )
 
 func TestRunWithHomeReportsUnmanagedSkillsDeterministicallyWithoutWriting(t *testing.T) {
@@ -88,6 +89,35 @@ func TestRunWithHomeFailsWhenConfiguredDestinationCannotBeInspected(t *testing.T
 	_, err := captureOutput(t, func() error { return RunWithHome(context.Background(), cfg, home) })
 	if err == nil || !strings.Contains(err.Error(), "checking skill destination") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestRunWithHomeDoesNotFlagManagedDestinations(t *testing.T) {
+	home := t.TempDir()
+	source := filepath.Join(home, "sources", "chosen")
+	writeSkill(t, source, "chosen")
+	skillsDir := filepath.Join(home, ".cursor", "skills")
+	managedDir := filepath.Join(skillsDir, "chosen")
+	writeDir(t, managedDir)
+	// Ownership is decided before touching disk (skilldest.Unowned), so an
+	// uninspectable managed path is not an unmanaged collision.
+	managedLoop := filepath.Join(skillsDir, "looped")
+	if err := os.Symlink(managedLoop, managedLoop); err != nil {
+		t.Fatal(err)
+	}
+	loopSource := filepath.Join(home, "sources", "looped")
+	writeSkill(t, loopSource, "looped")
+	if err := (hash.DB{managedDir: "h1", managedLoop: "h2"}).Save(home); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{Platforms: []string{"cursor"}, Skills: config.Skills{Local: []string{source, loopSource}}}
+
+	output, err := captureOutput(t, func() error { return RunWithHome(context.Background(), cfg, home) })
+	if err != nil {
+		t.Fatalf("RunWithHome: %v (output=%q)", err, output)
+	}
+	if !strings.Contains(output, "no unmanaged skill destinations found") {
+		t.Fatalf("output = %q", output)
 	}
 }
 

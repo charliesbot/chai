@@ -358,7 +358,7 @@ func TestSyncLocalSkills_UsesFrontmatterName(t *testing.T) {
 	}
 
 	hashDB := hash.DB{}
-	sources, err := resolveLocalSkillSources([]string{root}, home, home)
+	sources, err := skill.DiscoverLocal([]string{root}, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +392,7 @@ func TestSyncLocalSkills_RemovesLastManagedSkill(t *testing.T) {
 
 	hashDB := hash.DB{}
 	platforms := platform.ForNames([]string{"cursor"})
-	sources, err := resolveLocalSkillSources([]string{root}, home, home)
+	sources, err := skill.DiscoverLocal([]string{root}, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +402,7 @@ func TestSyncLocalSkills_RemovesLastManagedSkill(t *testing.T) {
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
-	sources, err = resolveLocalSkillSources([]string{root}, home, home)
+	sources, err = skill.DiscoverLocal([]string{root}, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
